@@ -17,6 +17,15 @@ import (
 const (
 	ActionLogin  = "login"
 	ActionLogout = "logout"
+
+	ActionServerCreate = "server_create"
+	ActionServerUpdate = "server_update"
+	ActionServerDelete = "server_delete"
+	ActionServerTrust  = "server_trust"
+
+	ActionGroupCreate = "group_create"
+	ActionGroupUpdate = "group_update"
+	ActionGroupDelete = "group_delete"
 )
 
 // Entry is one audit row. ServerID stays nil for actions that target no

@@ -50,7 +50,11 @@ func NewPool(ctx context.Context, idleTimeout time.Duration) *Pool {
 // A configuration change replaces the connection. A new address, port, user or
 // approved host key means the old connection no longer goes where the record
 // says it should.
-func (p *Pool) Get(cfg Config) (*SSHTransport, error) {
+//
+// The return type is the interface rather than the SSH implementation, so a
+// caller can be tested against a fake and the agent transport can take over
+// later without touching them.
+func (p *Pool) Get(cfg Config) (Transport, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 

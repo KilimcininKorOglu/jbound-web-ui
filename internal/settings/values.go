@@ -106,50 +106,175 @@ func mustDefaultInt(key string) int {
 	return value
 }
 
+// The problem codes. A refusal carries one of these and its values rather than
+// a sentence, so the panel can print it in the language of the reader while the
+// log keeps its English.
+const (
+	CodeNotASetting      = "not_a_setting"
+	CodeDuration         = "duration"
+	CodeDurationRange    = "duration_range"
+	CodeInt              = "int"
+	CodeIntRange         = "int_range"
+	CodeBool             = "bool"
+	CodeEnum             = "enum"
+	CodeUnknownKind      = "unknown_kind"
+	CodeStaleTooShort    = "stale_too_short"
+	CodeLifetimeTooShort = "lifetime_too_short"
+)
+
+// problemCodes is every code the package raises.
+var problemCodes = []string{
+	CodeNotASetting, CodeDuration, CodeDurationRange, CodeInt, CodeIntRange,
+	CodeBool, CodeEnum, CodeUnknownKind, CodeStaleTooShort, CodeLifetimeTooShort,
+}
+
+// Codes returns every problem code.
+//
+// A caller that writes these out for a reader is checked against this list, so
+// a code added here cannot reach a page as a key nobody translated.
+func Codes() []string { return slices.Clone(problemCodes) }
+
+// Problem is one reason the panel refuses a value.
+type Problem struct {
+	// Key is the setting the problem belongs to.
+	Key string
+
+	// Code says which problem it is, and Args carries its values in the order
+	// the sentence needs them.
+	Code string
+	Args []any
+}
+
+// Error renders the problem in English, which is what a log reads.
+func (p *Problem) Error() string {
+	return fmt.Sprintf("%s: %s %s", ErrInvalid, p.Key, p.sentence())
+}
+
+// Unwrap lets a caller ask whether a value was refused at all.
+func (p *Problem) Unwrap() error { return ErrInvalid }
+
+func (p *Problem) sentence() string {
+	switch p.Code {
+	case CodeNotASetting:
+		return "is not a setting of this panel"
+	case CodeDuration:
+		return fmt.Sprintf("must be a duration such as 30m, got %q", p.Args...)
+	case CodeDurationRange, CodeIntRange:
+		return fmt.Sprintf("must be between %v and %v, got %v", p.Args...)
+	case CodeInt:
+		return fmt.Sprintf("must be a whole number, got %q", p.Args...)
+	case CodeBool:
+		return fmt.Sprintf("must be true or false, got %q", p.Args...)
+	case CodeEnum:
+		return fmt.Sprintf("must be one of %v, got %q", p.Args...)
+	case CodeUnknownKind:
+		return fmt.Sprintf("has the unknown kind %q", p.Args...)
+	case CodeStaleTooShort:
+		return fmt.Sprintf("(%v) must be longer than the cache refresh interval (%v)", p.Args...)
+	case CodeLifetimeTooShort:
+		return fmt.Sprintf("(%v) must be at least the idle timeout (%v)", p.Args...)
+	default:
+		return "was refused"
+	}
+}
+
 // Validate reports whether one value fits its definition.
 func Validate(definition Definition, value string) error {
 	trimmed := strings.TrimSpace(value)
+	refuse := func(code string, args ...any) error {
+		return &Problem{Key: definition.Key, Code: code, Args: args}
+	}
 
 	switch definition.Kind {
 	case KindDuration:
 		parsed, err := time.ParseDuration(trimmed)
 		if err != nil {
-			return fmt.Errorf("%w: %s must be a duration such as 30m, got %q",
-				ErrInvalid, definition.Key, value)
+			return refuse(CodeDuration, value)
 		}
 		if parsed < definition.Min || parsed > definition.Max {
-			return fmt.Errorf("%w: %s must be between %s and %s, got %s",
-				ErrInvalid, definition.Key, definition.Min, definition.Max, parsed)
+			return refuse(CodeDurationRange, Human(definition.Min), Human(definition.Max), Human(parsed))
 		}
 
 	case KindInt:
 		parsed, err := strconv.Atoi(trimmed)
 		if err != nil {
-			return fmt.Errorf("%w: %s must be a whole number, got %q",
-				ErrInvalid, definition.Key, value)
+			return refuse(CodeInt, value)
 		}
 		if parsed < definition.MinInt || parsed > definition.MaxInt {
-			return fmt.Errorf("%w: %s must be between %d and %d, got %d",
-				ErrInvalid, definition.Key, definition.MinInt, definition.MaxInt, parsed)
+			return refuse(CodeIntRange, definition.MinInt, definition.MaxInt, parsed)
 		}
 
 	case KindBool:
 		if _, err := strconv.ParseBool(trimmed); err != nil {
-			return fmt.Errorf("%w: %s must be true or false, got %q",
-				ErrInvalid, definition.Key, value)
+			return refuse(CodeBool, value)
 		}
 
 	case KindEnum:
 		if !slices.Contains(definition.Options, trimmed) {
-			return fmt.Errorf("%w: %s must be one of %s, got %q",
-				ErrInvalid, definition.Key, strings.Join(definition.Options, ", "), value)
+			return refuse(CodeEnum, strings.Join(definition.Options, ", "), value)
 		}
 
 	default:
-		return fmt.Errorf("%w: %s has the unknown kind %q",
-			ErrInvalid, definition.Key, definition.Kind)
+		return refuse(CodeUnknownKind, definition.Kind)
 	}
 	return nil
+}
+
+// Refusal is what a submission the panel will not store comes back as.
+//
+// The problems are kept by key as well as in one sentence, so the form can mark
+// the controls that were refused. A message that names a setting in prose still
+// leaves the reader to find it among fifteen fields.
+type Refusal struct {
+	// Fields maps a setting key to its problems. A rule that reads two settings
+	// is filed under both, because either one of them can be the correction.
+	Fields map[string][]*Problem
+}
+
+// Error renders every problem as one sentence.
+func (r *Refusal) Error() string {
+	var sentences []string
+	for _, problem := range r.Problems() {
+		sentences = append(sentences,
+			strings.TrimPrefix(problem.Error(), ErrInvalid.Error()+": "))
+	}
+	return fmt.Sprintf("%s: %s", ErrInvalid, strings.Join(sentences, "; "))
+}
+
+// Unwrap lets a caller ask whether the submission was refused at all.
+func (r *Refusal) Unwrap() error { return ErrInvalid }
+
+// Problems returns every problem once, in a stable order.
+//
+// A rule that reads two settings is filed under both of them and is one problem
+// here, because a reader is told it once.
+func (r *Refusal) Problems() []*Problem {
+	var problems []*Problem
+	for _, key := range slices.Sorted(maps.Keys(r.Fields)) {
+		for _, problem := range r.Fields[key] {
+			if !slices.Contains(problems, problem) {
+				problems = append(problems, problem)
+			}
+		}
+	}
+	return problems
+}
+
+// Of returns the first problem of one setting, or nil.
+func (r *Refusal) Of(key string) *Problem {
+	if r == nil || len(r.Fields[key]) == 0 {
+		return nil
+	}
+	return r.Fields[key][0]
+}
+
+func (r *Refusal) add(problem *Problem, keys ...string) {
+	if r.Fields == nil {
+		r.Fields = map[string][]*Problem{}
+	}
+	for _, key := range keys {
+		r.Fields[key] = append(r.Fields[key], problem)
+	}
 }
 
 // ValidateAll checks a whole submission and reports every problem in one pass.
@@ -157,51 +282,69 @@ func Validate(definition Definition, value string) error {
 // One round of corrections rather than one per field, which is how the
 // configuration loader reports its own errors.
 func ValidateAll(submitted map[string]string) error {
-	var problems []string
+	refusal := &Refusal{}
 
 	for key, value := range submitted {
 		definition, ok := Lookup(key)
 		if !ok {
-			problems = append(problems,
-				fmt.Sprintf("%s is not a setting of this panel", key))
+			refusal.add(&Problem{Key: key, Code: CodeNotASetting, Args: []any{key}}, key)
 			continue
 		}
-		if err := Validate(definition, value); err != nil {
-			problems = append(problems, strings.TrimPrefix(err.Error(), ErrInvalid.Error()+": "))
+
+		if problem, ok := errors.AsType[*Problem](Validate(definition, value)); ok {
+			refusal.add(problem, key)
 		}
 	}
 
 	// The cross field rules run on the merged view, because a submission may
-	// carry one of the pair and the stored value carries the other.
-	if len(problems) == 0 {
-		problems = append(problems, crossRules(submitted)...)
+	// carry one of the pair and the stored value carries the other. They run
+	// only on values that parsed, so a reader is not told two things at once.
+	if len(refusal.Fields) == 0 {
+		for _, rule := range crossRules(submitted) {
+			refusal.add(rule.problem, rule.keys...)
+		}
 	}
 
-	if len(problems) > 0 {
-		slices.Sort(problems)
-		return fmt.Errorf("%w: %s", ErrInvalid, strings.Join(problems, "; "))
+	if len(refusal.Fields) == 0 {
+		return nil
 	}
-	return nil
+	return refusal
+}
+
+// crossProblem is one broken rule and the settings it reads.
+type crossProblem struct {
+	keys    []string
+	problem *Problem
 }
 
 // crossRules holds the rules that read more than one setting.
-func crossRules(merged map[string]string) []string {
-	var problems []string
+func crossRules(merged map[string]string) []crossProblem {
+	var problems []crossProblem
 
 	refresh, refreshOK := duration(merged, CacheRefreshInterval)
 	stale, staleOK := duration(merged, CacheStaleAfter)
 	if refreshOK && staleOK && stale <= refresh {
-		problems = append(problems, fmt.Sprintf(
-			"cache stale after (%s) must be longer than the cache refresh interval (%s)",
-			stale, refresh))
+		problems = append(problems, crossProblem{
+			keys: []string{CacheRefreshInterval, CacheStaleAfter},
+			problem: &Problem{
+				Key:  CacheStaleAfter,
+				Code: CodeStaleTooShort,
+				Args: []any{Human(stale), Human(refresh)},
+			},
+		})
 	}
 
 	idle, idleOK := duration(merged, SessionIdleTimeout)
 	lifetime, lifetimeOK := duration(merged, SessionLifetime)
 	if idleOK && lifetimeOK && lifetime < idle {
-		problems = append(problems, fmt.Sprintf(
-			"session lifetime (%s) must be at least the idle timeout (%s)",
-			lifetime, idle))
+		problems = append(problems, crossProblem{
+			keys: []string{SessionIdleTimeout, SessionLifetime},
+			problem: &Problem{
+				Key:  SessionLifetime,
+				Code: CodeLifetimeTooShort,
+				Args: []any{Human(lifetime), Human(idle)},
+			},
+		})
 	}
 	return problems
 }

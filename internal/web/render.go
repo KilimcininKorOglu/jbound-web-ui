@@ -15,6 +15,7 @@ import (
 
 	"unbound-web/internal/auth"
 	"unbound-web/internal/i18n"
+	"unbound-web/internal/settings"
 )
 
 // Toast severities. They map onto the SweetAlert2 icon names.
@@ -86,18 +87,9 @@ var funcs = template.FuncMap{
 	"join": func(values []string) string {
 		return strings.Join(values, ", ")
 	},
-	// duration writes a bound the way an operator types it. Go prints 24h as
-	// 24h0m0s, which is three units for a value that has one.
-	"duration": func(d time.Duration) string {
-		text := d.String()
-		if strings.HasSuffix(text, "m0s") {
-			text = strings.TrimSuffix(text, "0s")
-		}
-		if strings.HasSuffix(text, "h0m") {
-			text = strings.TrimSuffix(text, "0m")
-		}
-		return text
-	},
+	// duration writes a bound the way an operator types it. The settings package
+	// writes the same durations into its refusals, so both read alike.
+	"duration": settings.Human,
 }
 
 // parseTemplates builds one set per language.

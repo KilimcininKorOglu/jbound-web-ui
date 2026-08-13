@@ -133,6 +133,21 @@
     });
   });
 
+  /* A refused form comes back as a swap, and the reader is left wherever they
+     were. The first control the panel refused takes the focus, which is what
+     carries a screen reader to the problem and scrolls the page to it. */
+  document.body.addEventListener('htmx:afterSwap', function (event) {
+    const target = event.detail ? event.detail.target : null;
+    if (!target || !target.querySelector) {
+      return;
+    }
+
+    const refused = target.querySelector('[aria-invalid="true"]');
+    if (refused) {
+      refused.focus();
+    }
+  });
+
   /* Click handlers, delegated from the document so they survive a swap. */
   document.addEventListener('click', function (event) {
     const trigger = event.target.closest('[data-action]');

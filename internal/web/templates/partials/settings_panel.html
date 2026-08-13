@@ -1,5 +1,8 @@
 {{/* One form for every group. The panel reads these values through accessors,
-     so a saved change applies without a restart. */}}
+     so a saved change applies without a restart.
+
+     A refused control carries its own problem and says so to a screen reader,
+     because a message above fifteen fields does not say which one to correct. */}}
 {{define "settings-panel"}}
 <form hx-post="/settings" hx-target="#settings-panel" hx-swap="innerHTML">
   {{if .Problem}}{{template "alert" (alert "error" .Problem)}}{{end}}
@@ -17,50 +20,66 @@
           {{range .Fields}}
           {{if eq .Kind "bool"}}
           <div class="form-check form-switch mb-4">
-            <input class="form-check-input" type="checkbox" role="switch"
+            <input class="form-check-input{{if .Problem}} is-invalid{{end}}" type="checkbox" role="switch"
                    id="{{.Key}}" name="{{.Key}}"
-                   aria-describedby="{{.Key}}-help"
+                   aria-describedby="{{.Key}}-help{{if .Problem}} {{.Key}}-error{{end}}"
+                   {{if .Problem}}aria-invalid="true"{{end}}
                    {{if .Checked}}checked{{end}} data-field="{{.Key}}">
             <label class="form-check-label" for="{{.Key}}">{{t (print "setting." .Key ".label")}}</label>
             <div class="form-text" id="{{.Key}}-help">{{t (print "setting." .Key ".help")}}</div>
+            {{if .Problem}}
+            <div class="invalid-feedback d-block" id="{{.Key}}-error">{{.Problem}}</div>
+            {{end}}
           </div>
 
           {{else if eq .Kind "enum"}}
           <div class="mb-4">
             <label class="form-label" for="{{.Key}}">{{t (print "setting." .Key ".label")}}</label>
-            <select class="form-select" id="{{.Key}}" name="{{.Key}}"
-                    aria-describedby="{{.Key}}-help" data-field="{{.Key}}">
+            <select class="form-select{{if .Problem}} is-invalid{{end}}" id="{{.Key}}" name="{{.Key}}"
+                    aria-describedby="{{.Key}}-help{{if .Problem}} {{.Key}}-error{{end}}"
+                    {{if .Problem}}aria-invalid="true"{{end}} data-field="{{.Key}}">
               {{$field := .}}
               {{range .Options}}
               <option value="{{.}}" {{if eq . $field.Value}}selected{{end}}>{{t ($field.OptionLabel .)}}</option>
               {{end}}
             </select>
             <div class="form-text" id="{{.Key}}-help">{{t (print "setting." .Key ".help")}}</div>
+            {{if .Problem}}
+            <div class="invalid-feedback d-block" id="{{.Key}}-error">{{.Problem}}</div>
+            {{end}}
           </div>
 
           {{else if eq .Kind "int"}}
           <div class="mb-4">
             <label class="form-label" for="{{.Key}}">{{t (print "setting." .Key ".label")}}</label>
-            <input class="form-control" type="number" inputmode="numeric"
+            <input class="form-control{{if .Problem}} is-invalid{{end}}" type="number" inputmode="numeric"
                    id="{{.Key}}" name="{{.Key}}" value="{{.Value}}"
                    min="{{.MinInt}}" max="{{.MaxInt}}"
-                   aria-describedby="{{.Key}}-help" data-field="{{.Key}}">
+                   aria-describedby="{{.Key}}-help{{if .Problem}} {{.Key}}-error{{end}}"
+                   {{if .Problem}}aria-invalid="true"{{end}} data-field="{{.Key}}">
             <div class="form-text" id="{{.Key}}-help">
               {{t (print "setting." .Key ".help")}}
               {{tf "settings.between" .MinInt .MaxInt}}
             </div>
+            {{if .Problem}}
+            <div class="invalid-feedback d-block" id="{{.Key}}-error">{{.Problem}}</div>
+            {{end}}
           </div>
 
           {{else}}
           <div class="mb-4">
             <label class="form-label" for="{{.Key}}">{{t (print "setting." .Key ".label")}}</label>
-            <input class="form-control" type="text" id="{{.Key}}" name="{{.Key}}"
+            <input class="form-control{{if .Problem}} is-invalid{{end}}" type="text" id="{{.Key}}" name="{{.Key}}"
                    value="{{.Value}}" spellcheck="false" autocapitalize="none"
-                   aria-describedby="{{.Key}}-help" data-field="{{.Key}}">
+                   aria-describedby="{{.Key}}-help{{if .Problem}} {{.Key}}-error{{end}}"
+                   {{if .Problem}}aria-invalid="true"{{end}} data-field="{{.Key}}">
             <div class="form-text" id="{{.Key}}-help">
               {{t (print "setting." .Key ".help")}}
               {{tf "settings.between" (duration .Min) (duration .Max)}}
             </div>
+            {{if .Problem}}
+            <div class="invalid-feedback d-block" id="{{.Key}}-error">{{.Problem}}</div>
+            {{end}}
           </div>
           {{end}}
           {{end}}

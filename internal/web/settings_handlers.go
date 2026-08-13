@@ -28,6 +28,10 @@ type settingsField struct {
 
 	// Checked is only read for a boolean, where the control is a switch.
 	Checked bool
+
+	// Problem is why this control was refused, if it was. The control carries
+	// it as its own text rather than only in the message above the form.
+	Problem string
 }
 
 // optionPrefixes names the catalogue keys that label the choices of an enum.
@@ -53,7 +57,7 @@ type settingsPageData struct {
 func (a *App) handleSettingsPage(w http.ResponseWriter, r *http.Request) {
 	a.Render(w, r, http.StatusOK, "settings", PageData{
 		Title: "nav.settings",
-		Data:  a.settingsPageData(nil, ""),
+		Data:  a.settingsPageData(a.catalog(r), nil, nil),
 	})
 }
 
@@ -64,7 +68,9 @@ func (a *App) handleSettingsPage(w http.ResponseWriter, r *http.Request) {
 // running on a combination nobody approved.
 func (a *App) handleSettingsSave(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		a.settingsProblem(w, r, nil, a.catalog(r).T("error.form_unreadable"), http.StatusBadRequest)
+		data := a.settingsPageData(a.catalog(r), nil, nil)
+		data.Problem = a.catalog(r).T("error.form_unreadable")
+		a.RenderPartial(w, r, http.StatusBadRequest, "settings-panel", data)
 		return
 	}
 
@@ -83,8 +89,9 @@ func (a *App) handleSettingsSave(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := a.Settings.Save(r.Context(), submitted); err != nil {
-		if errors.Is(err, settings.ErrInvalid) {
-			a.settingsProblem(w, r, submitted, settingsMessage(a.catalog(r), err), http.StatusUnprocessableEntity)
+		var refusal *settings.Refusal
+		if errors.As(err, &refusal) {
+			a.settingsProblem(w, r, submitted, refusal, http.StatusUnprocessableEntity)
 			return
 		}
 		a.internalError(w, "cannot store the settings", err)
@@ -93,21 +100,23 @@ func (a *App) handleSettingsSave(w http.ResponseWriter, r *http.Request) {
 
 	a.auditSettings(r)
 	SetToast(w, ToastSuccess, a.catalog(r).T("toast.settings_saved"))
-	a.RenderPartial(w, r, http.StatusOK, "settings-panel", a.settingsPageData(nil, ""))
+	a.RenderPartial(w, r, http.StatusOK, "settings-panel", a.settingsPageData(a.catalog(r), nil, nil))
 }
 
 // settingsProblem re-renders the form with what the operator typed.
 func (a *App) settingsProblem(w http.ResponseWriter, r *http.Request,
-	submitted map[string]string, problem string, status int) {
+	submitted map[string]string, refusal *settings.Refusal, status int) {
 
-	a.RenderPartial(w, r, status, "settings-panel", a.settingsPageData(submitted, problem))
+	a.RenderPartial(w, r, status, "settings-panel", a.settingsPageData(a.catalog(r), submitted, refusal))
 }
 
 // settingsPageData builds the cards in registry order.
 //
 // The submitted map wins over the stored values, so a refused submission comes
 // back as it was typed instead of as it is stored.
-func (a *App) settingsPageData(submitted map[string]string, problem string) settingsPageData {
+func (a *App) settingsPageData(catalog *i18n.Catalog, submitted map[string]string,
+	refusal *settings.Refusal) settingsPageData {
+
 	stored := a.Settings.Values().All()
 
 	byGroup := map[string][]settingsField{}
@@ -121,12 +130,13 @@ func (a *App) settingsPageData(submitted map[string]string, problem string) sett
 			Definition: definition,
 			Value:      value,
 			Checked:    value == "true",
+			Problem:    problemText(catalog, refusal.Of(definition.Key)),
 		})
 	}
 
 	// The card titles are catalogue keys. The registry names the settings and
 	// the page names its own cards, so a new group needs no Go text.
-	data := settingsPageData{Problem: problem}
+	data := settingsPageData{Problem: refusalMessage(catalog, refusal)}
 	for _, name := range settings.Groups() {
 		data.Groups = append(data.Groups, settingsGroup{
 			Key:    name,
@@ -154,12 +164,33 @@ func (a *App) auditSettings(r *http.Request) {
 	})
 }
 
-// settingsMessage turns a refusal into a sentence the form can show.
-func settingsMessage(catalog *i18n.Catalog, err error) string {
-	if !errors.Is(err, settings.ErrInvalid) {
-		return userMessage(catalog, err)
+// problemText writes one refused value out in the language of the reader.
+//
+// The problem carries a code and its values rather than a sentence, so the same
+// refusal reads as English in the log and as Turkish on the page.
+func problemText(catalog *i18n.Catalog, problem *settings.Problem) string {
+	if problem == nil {
+		return ""
 	}
-	return capitalise(strings.TrimPrefix(err.Error(), settings.ErrInvalid.Error()+": ")) + "."
+	return catalog.Tf("settings.problem."+problem.Code, problem.Args...)
+}
+
+// refusalMessage turns a refusal into the sentence above the form.
+//
+// The controls carry their own problem as well. This one stays because it names
+// the settings, and because it is what a reader is taken to when the form comes
+// back.
+func refusalMessage(catalog *i18n.Catalog, refusal *settings.Refusal) string {
+	if refusal == nil {
+		return ""
+	}
+
+	var sentences []string
+	for _, problem := range refusal.Problems() {
+		label := catalog.T("setting." + problem.Key + ".label")
+		sentences = append(sentences, label+": "+problemText(catalog, problem))
+	}
+	return strings.Join(sentences, " ")
 }
 
 // boolValue renders a checkbox as the registry stores it.

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -159,6 +160,79 @@ func TestARefusedSettingComesBackWithTheTypedValue(t *testing.T) {
 	}
 	if !strings.Contains(page, settings.SessionIdleTimeout) {
 		t.Error("the message does not name the setting that was refused")
+	}
+}
+
+// A message above fifteen fields does not say which one to correct, so the
+// control that was refused says it itself and says it to a screen reader.
+func TestARefusedFieldIsMarked(t *testing.T) {
+	env := newTestEnv(t)
+	cookie := env.adminCookie(t)
+
+	body := env.settingsForm(t, map[string]string{settings.SessionIdleTimeout: "10s"})
+	recorder := env.do(t, postForm("/settings", body), cookie)
+	if recorder.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("POST /settings = %d, want 422", recorder.Code)
+	}
+	page := recorder.Body.String()
+
+	control := regexp.MustCompile(
+		`(?s)<input[^>]*id="` + settings.SessionIdleTimeout + `"[^>]*>`).FindString(page)
+	if control == "" {
+		t.Fatalf("the form carries no control for %s", settings.SessionIdleTimeout)
+	}
+	if !strings.Contains(control, `aria-invalid="true"`) {
+		t.Error("the refused control is not marked as refused")
+	}
+	if !strings.Contains(control, settings.SessionIdleTimeout+"-error") {
+		t.Error("the refused control does not point at its own problem")
+	}
+	if !strings.Contains(page, `id="`+settings.SessionIdleTimeout+`-error"`) {
+		t.Error("the problem the control points at is not on the page")
+	}
+
+	// Only the refused one. Marking every field would say nothing.
+	other := regexp.MustCompile(
+		`(?s)<input[^>]*id="` + settings.SessionLifetime + `"[^>]*>`).FindString(page)
+	if strings.Contains(other, "aria-invalid") {
+		t.Error("a field that parsed is marked as refused")
+	}
+}
+
+// A rule that reads two settings marks both, because either one of them is the
+// correction.
+func TestABrokenRuleMarksEverySettingItReads(t *testing.T) {
+	env := newTestEnv(t)
+	cookie := env.adminCookie(t)
+
+	body := env.settingsForm(t, map[string]string{
+		settings.CacheRefreshInterval: "30m",
+		settings.CacheStaleAfter:      "5m",
+	})
+	recorder := env.do(t, postForm("/settings", body), cookie)
+	if recorder.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("POST /settings = %d, want 422", recorder.Code)
+	}
+
+	page := recorder.Body.String()
+	for _, key := range []string{settings.CacheRefreshInterval, settings.CacheStaleAfter} {
+		if !strings.Contains(page, `id="`+key+`-error"`) {
+			t.Errorf("%s carries no problem, and the rule reads it", key)
+		}
+	}
+}
+
+// A code with no text reads as its own key in front of the operator.
+func TestEveryProblemCodeIsTranslated(t *testing.T) {
+	env := newTestEnv(t)
+
+	for _, language := range env.app.Catalogs.Languages() {
+		catalog := env.app.Catalogs.Catalog(language)
+		for _, code := range settings.Codes() {
+			if !catalog.Has("settings.problem." + code) {
+				t.Errorf("%s carries no text for the %s problem", language, code)
+			}
+		}
 	}
 }
 

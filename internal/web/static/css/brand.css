@@ -207,16 +207,32 @@ a:hover {
     color: #A32B12;
 }
 
-/* Apply Rules is a warning button, and the template writes white on amber at
-   1.9:1. Amber carries no dark shade that still reads as amber, so the text
-   turns dark instead, which is what Bootstrap itself does with this colour. */
-.btn-warning,
-.btn-warning:hover,
-.btn-warning:focus,
-.btn-warning:active {
-    color: #3D2800 !important;
-    background-color: #FFAB00 !important;
-    border-color: #FFAB00 !important;
+/* Apply Rules. It is the action that makes a written file take effect, so it
+   reads as a confirmation rather than as a warning: white on a dark green at
+   5.9:1. Amber carried the same weight but wrote at 1.9:1 against it. */
+.btn-apply,
+.btn-apply:hover,
+.btn-apply:focus,
+.btn-apply:active {
+    color: #FFFFFF;
+    background-color: #15703F;
+    border-color: #15703F;
+}
+.btn-apply:hover,
+.btn-apply:focus,
+.btn-apply:active {
+    background-color: #115C34;
+    border-color: #115C34;
+}
+
+/* Nothing to apply. An outline rather than a filled button that cannot be
+   pressed, so the shape of the page stays and the state is obvious. */
+.btn-apply:disabled,
+.btn-apply.disabled {
+    color: #15703F;
+    background-color: transparent;
+    border-color: #9CC7AF;
+    opacity: 1;
 }
 
 /* The dismiss cross is drawn by the template as a tinted image, one data URI

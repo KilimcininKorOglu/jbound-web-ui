@@ -20,7 +20,7 @@
 
     {{/* Nothing to apply is a disabled button rather than a hidden one, so the
          page keeps its shape and the reason sits next to it. */}}
-    <button class="btn btn-warning btn-sm" type="button" data-field="apply-rules"
+    <button class="btn btn-apply btn-sm" type="button" data-field="apply-rules"
             hx-post="/dns/apply" hx-include="#record-controls"
             hx-target="#record-panel" hx-swap="innerHTML"
             hx-confirm="Reload the resolver on every targeted server?"

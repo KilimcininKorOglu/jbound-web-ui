@@ -79,6 +79,14 @@ func (s *Service) Stale(ctx context.Context) (map[int64]bool, error) {
 	return stale, nil
 }
 
+// States returns what the panel last saw on every server it has read.
+//
+// The servers page lists disabled servers as well, which a target based status
+// leaves out, so it reads the states directly.
+func (s *Service) States(ctx context.Context) (map[int64]State, error) {
+	return s.states.List(ctx)
+}
+
 // Status reports where the servers of one target stand.
 //
 // It answers for the whole fleet as well, because the records page keeps its

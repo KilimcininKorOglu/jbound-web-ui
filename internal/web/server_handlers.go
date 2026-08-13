@@ -25,6 +25,14 @@ type serverRow struct {
 	// Status is what the row shows at a glance: ok, untrusted, failing or
 	// disabled.
 	Status string
+
+	// Pending marks a server whose file carries changes its resolver has not
+	// loaded. The indicator is per server rather than one for the whole panel,
+	// because each server holds its own file.
+	Pending bool
+
+	// Records is how many entries the panel last read from that server.
+	Records int
 }
 
 // groupRow is one line of the group table.
@@ -100,11 +108,23 @@ func (a *App) serversPageData(r *http.Request) (serversPageData, error) {
 		return serversPageData{}, err
 	}
 
+	states, err := a.records.States(r.Context())
+	if err != nil {
+		return serversPageData{}, err
+	}
+
 	byID := map[int64]server.Server{}
 	rows := make([]serverRow, 0, len(servers))
 	for _, record := range servers {
 		byID[record.ID] = record
-		rows = append(rows, serverRow{Server: record, Status: serverStatus(record)})
+
+		state := states[record.ID]
+		rows = append(rows, serverRow{
+			Server:  record,
+			Status:  serverStatus(record),
+			Pending: record.Enabled && state.Pending(),
+			Records: state.RecordCount,
+		})
 	}
 
 	groupRows := make([]groupRow, 0, len(groups))

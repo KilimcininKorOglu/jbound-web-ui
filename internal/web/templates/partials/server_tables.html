@@ -12,6 +12,7 @@
           <th>Name</th>
           <th>Endpoint</th>
           <th>Status</th>
+          <th>Records</th>
           <th>Last contact</th>
           <th class="text-end">Actions</th>
         </tr>
@@ -21,7 +22,16 @@
         <tr>
           <td><strong>{{.Name}}</strong></td>
           <td class="text-muted">{{.SSHUser}}@{{.Host}}:{{.SSHPort}}</td>
-          <td>{{template "server-status" .}}</td>
+          <td>
+            {{template "server-status" .}}
+            {{if .Pending}}
+            <span class="badge bg-label-warning ms-1" data-field="pending"
+                  title="The file on this server carries changes its resolver has not loaded.">
+              unapplied changes
+            </span>
+            {{end}}
+          </td>
+          <td class="text-muted">{{.Records}}</td>
           <td class="text-muted">
             {{if .LastSeenAt}}{{localTimePtr .LastSeenAt}}{{else}}never{{end}}
           </td>
@@ -48,7 +58,7 @@
         </tr>
         {{else}}
         <tr>
-          <td colspan="5" class="text-center text-muted py-4">
+          <td colspan="6" class="text-center text-muted py-4">
             No servers yet. Add the first one to start managing records.
           </td>
         </tr>

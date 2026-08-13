@@ -505,3 +505,25 @@ func TestServerFormCarriesTheDefaults(t *testing.T) {
 		}
 	}
 }
+
+func TestTheServerTableMarksUnappliedChanges(t *testing.T) {
+	// The indicator is per server. Each one holds its own file, and a single
+	// panel wide marker would say nothing about which server to look at.
+	env := newFleetEnv(t)
+
+	body := env.do(t, httptest.NewRequest(http.MethodGet, "/servers/table", nil),
+		env.cookie).Body.String()
+	if strings.Count(body, `data-field="pending"`) != 3 {
+		t.Errorf("the table does not mark the servers that lag behind:\n%s", body)
+	}
+
+	if recorder := env.applyRules(t, groupForm(url.Values{})); recorder.Code != http.StatusOK {
+		t.Fatalf("Apply Rules returned %d", recorder.Code)
+	}
+
+	body = env.do(t, httptest.NewRequest(http.MethodGet, "/servers/table", nil),
+		env.cookie).Body.String()
+	if strings.Contains(body, `data-field="pending"`) {
+		t.Errorf("the marker survived a reload:\n%s", body)
+	}
+}

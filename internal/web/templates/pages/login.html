@@ -2,39 +2,39 @@
 <div class="card">
   <div class="card-body">
     <div class="app-brand justify-content-center mb-4">
-      <span class="app-brand-text demo text-body fw-bolder brand-title">JANBOUND DNS PANEL</span>
+      <span class="app-brand-text demo text-body fw-bolder brand-title">{{t "login.heading"}}</span>
     </div>
-    <p class="mb-4 text-center">Please sign in with a local account of this host.</p>
+    <p class="mb-4 text-center">{{t "login.lead"}}</p>
 
-    <div id="login-alert">{{if .Alert}}{{template "alert" .Alert}}{{end}}</div>
+    <div id="login-alert" aria-live="polite">{{if .Alert}}{{template "alert" .Alert}}{{end}}</div>
 
     <form id="login-form" class="mb-3" method="post" action="/login"
           hx-post="/login" hx-target="#login-alert" hx-swap="innerHTML"
           hx-disabled-elt="#login-button">
       <div class="mb-3">
-        <label for="username" class="form-label">Username</label>
+        <label for="username" class="form-label">{{t "login.username"}}</label>
         <input type="text" class="form-control" id="username" name="username"
-               placeholder="Enter your username" autocomplete="username"
+               placeholder="{{t "login.username_placeholder"}}" autocomplete="username"
                autocapitalize="none" spellcheck="false" autofocus required>
       </div>
 
       <div class="mb-3 form-password-toggle">
-        <label for="password" class="form-label">Password</label>
+        <label for="password" class="form-label">{{t "login.password"}}</label>
         <div class="input-group input-group-merge">
           <input type="password" id="password" name="password" class="form-control"
                  placeholder="&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;"
                  autocomplete="current-password" required>
           <span class="input-group-text cursor-pointer" data-action="toggle-password"
                 data-target="password" role="button" tabindex="0"
-                aria-label="Show or hide the password">
-            <i class="bx bx-hide" data-role="toggle-icon"></i>
+                aria-label="{{t "login.password_toggle"}}">
+            <i class="bx bx-hide" data-role="toggle-icon" aria-hidden="true"></i>
           </span>
         </div>
       </div>
 
       <div class="mb-3">
         <button class="btn btn-primary d-grid w-100" type="submit" id="login-button">
-          <span>Sign in</span>
+          <span>{{t "login.submit"}}</span>
         </button>
       </div>
     </form>

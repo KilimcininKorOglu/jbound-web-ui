@@ -10,6 +10,7 @@ import (
 	"unbound-web/internal/audit"
 	"unbound-web/internal/dnsfile"
 	"unbound-web/internal/fleet"
+	"unbound-web/internal/i18n"
 	"unbound-web/internal/server"
 	"unbound-web/internal/store"
 )
@@ -37,8 +38,10 @@ type dnsPageData struct {
 	// Summary reads "Showing X of Y records (Page A/B)".
 	Summary string
 
-	// Status drives the Apply Rules bar above the table.
-	Status fleet.Status
+	// Status drives the Apply Rules bar above the table, and StatusText is
+	// its sentence in the language of the page.
+	Status     fleet.Status
+	StatusText string
 
 	// StaleNote names the servers whose cache is old, so the status bar can
 	// say what it cannot vouch for.
@@ -77,7 +80,8 @@ type reportData struct {
 //
 // The table is the same for a record change and a reload. What differs is what
 // a failure means to the reader, so the sentences travel with the report
-// rather than being decided inside the template.
+// rather than being decided inside the template. Each field is a catalogue
+// key, looked up in the language of the page.
 type reportKind struct {
 	Title   string
 	OK      string
@@ -90,25 +94,25 @@ type reportKind struct {
 }
 
 var changeReport = reportKind{
-	Title:   "Result",
-	OK:      "The change reached every server it was meant for.",
-	Partial: "Some servers took the change and others did not. The ones that failed still hold the old file.",
-	None:    "No server took the change.",
+	Title:   "report.change.title",
+	OK:      "report.change.ok",
+	Partial: "report.change.partial",
+	None:    "report.change.none",
 
-	ToastOK:      "The change reached every server.",
-	ToastPartial: "The change reached some servers but not all.",
-	ToastNone:    "The change reached no server.",
+	ToastOK:      "report.change.toast_ok",
+	ToastPartial: "report.change.toast_partial",
+	ToastNone:    "report.change.toast_none",
 }
 
 var reloadReport = reportKind{
-	Title:   "Apply Rules",
-	OK:      "Every server reloaded and now answers from the file it holds.",
-	Partial: "Some servers reloaded and others did not. The ones that failed still answer from the file they loaded last.",
-	None:    "No server reloaded.",
+	Title:   "report.reload.title",
+	OK:      "report.reload.ok",
+	Partial: "report.reload.partial",
+	None:    "report.reload.none",
 
-	ToastOK:      "Every server reloaded.",
-	ToastPartial: "Some servers reloaded but not all.",
-	ToastNone:    "No server reloaded.",
+	ToastOK:      "report.reload.toast_ok",
+	ToastPartial: "report.reload.toast_partial",
+	ToastNone:    "report.reload.toast_none",
 }
 
 func (a *App) handleDNSPage(w http.ResponseWriter, r *http.Request) {
@@ -117,7 +121,7 @@ func (a *App) handleDNSPage(w http.ResponseWriter, r *http.Request) {
 		a.dnsError(w, "cannot load the records", err)
 		return
 	}
-	a.Render(w, r, http.StatusOK, "dns", PageData{Title: "DNS Records", Data: data})
+	a.Render(w, r, http.StatusOK, "dns", PageData{Title: "nav.dns_records", Data: data})
 }
 
 // handleDNSRecords re-renders the table, which is what every filter, page and
@@ -131,10 +135,12 @@ func (a *App) handleDNSRecords(w http.ResponseWriter, r *http.Request) {
 		a.dnsError(w, "cannot load the records", err)
 		return
 	}
-	a.RenderPartial(w, http.StatusOK, "record-table-swap", data)
+	a.RenderPartial(w, r, http.StatusOK, "record-table-swap", data)
 }
 
 func (a *App) dnsPageData(r *http.Request) (dnsPageData, error) {
+	catalog := a.catalog(r)
+
 	// The controls arrive in the query string of a listing and in the body of
 	// a refresh, so both are read the same way.
 	if err := r.ParseForm(); err != nil {
@@ -168,19 +174,20 @@ func (a *App) dnsPageData(r *http.Request) (dnsPageData, error) {
 		Types:      dnsfile.Types,
 		ShowServer: query.Scope != fleet.ScopeServer,
 		Pages:      pageWindow(pageBounds{page.Page, page.TotalPages}),
-		Summary:    summary(page),
+		Summary:    summary(catalog, page),
 		Status:     status,
-		StaleNote:  staleNote(status),
+		StaleNote:  staleNote(catalog, status),
+		StatusText: status.Summary(catalog),
 	}, nil
 }
 
 // staleNote names the servers the status was drawn from too long ago.
-func staleNote(status fleet.Status) string {
+func staleNote(catalog *i18n.Catalog, status fleet.Status) string {
 	stale := status.Stale()
 	if len(stale) == 0 {
 		return ""
 	}
-	return "The panel has not read " + strings.Join(stale, ", ") + " recently."
+	return catalog.Tf("status.stale_note", strings.Join(stale, ", "))
 }
 
 // listingFrom reads the listing controls out of a form or a query string.
@@ -234,11 +241,11 @@ func listingFrom(values valueSource) fleet.Query {
 }
 
 // summary reads "Showing X of Y records (Page A/B)".
-func summary(page fleet.Page) string {
+func summary(catalog *i18n.Catalog, page fleet.Page) string {
 	if page.Total == 0 {
-		return "No records found."
+		return catalog.T("summary.no_records")
 	}
-	return fmt.Sprintf("Showing %d of %d records (Page %d/%d)",
+	return catalog.Tf("summary.records",
 		len(page.Rows), page.Total, page.Page, page.TotalPages)
 }
 
@@ -312,7 +319,7 @@ func (a *App) handleRecordForm(w http.ResponseWriter, r *http.Request) {
 	data.Servers = servers
 	data.Groups = groups
 
-	a.RenderPartial(w, http.StatusOK, "record-form", data)
+	a.RenderPartial(w, r, http.StatusOK, "record-form", data)
 }
 
 func (a *App) handleRecordCreate(w http.ResponseWriter, r *http.Request) {
@@ -343,17 +350,17 @@ func (a *App) applyOperation(w http.ResponseWriter, r *http.Request, kind string
 
 	target, err := targetFromValues(r.Form)
 	if err != nil {
-		a.recordProblem(w, r, kind, recordMessage(err), http.StatusBadRequest)
+		a.recordProblem(w, r, kind, recordMessage(a.catalog(r), err), http.StatusBadRequest)
 		return
 	}
 
 	report, err := a.Records.Apply(r.Context(), a.actor(r), target, op)
 	if err != nil {
-		a.recordProblem(w, r, kind, recordMessage(err), dnsStatus(err))
+		a.recordProblem(w, r, kind, recordMessage(a.catalog(r), err), dnsStatus(err))
 		return
 	}
 
-	a.renderReport(w, report, changeReport)
+	a.renderReport(w, r, report, changeReport)
 }
 
 // handleRecordApply reloads the resolver on every server of the target.
@@ -362,56 +369,59 @@ func (a *App) applyOperation(w http.ResponseWriter, r *http.Request, kind string
 // this is a separate action rather than the tail of every write.
 func (a *App) handleRecordApply(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		a.reportProblem(w, "The form could not be read.", http.StatusBadRequest)
+		a.reportProblem(w, r, "The form could not be read.", http.StatusBadRequest)
 		return
 	}
 
 	target, err := targetFromValues(r.Form)
 	if err != nil {
-		a.reportProblem(w, recordMessage(err), http.StatusBadRequest)
+		a.reportProblem(w, r, recordMessage(a.catalog(r), err), http.StatusBadRequest)
 		return
 	}
 
 	report, err := a.Records.Reload(r.Context(), a.actor(r), target)
 	if err != nil {
-		a.reportProblem(w, recordMessage(err), dnsStatus(err))
+		a.reportProblem(w, r, recordMessage(a.catalog(r), err), dnsStatus(err))
 		return
 	}
 
-	a.renderReport(w, report, reloadReport)
+	a.renderReport(w, r, report, reloadReport)
 }
 
 // renderReport answers with the result table and the status the outcome earns.
-func (a *App) renderReport(w http.ResponseWriter, report fleet.Report, kind reportKind) {
+func (a *App) renderReport(w http.ResponseWriter, r *http.Request,
+	report fleet.Report, kind reportKind) {
 
+	catalog := a.catalog(r)
 	success, failed, _ := report.Counts()
 
 	status := http.StatusOK
 	switch {
 	case failed == 0:
-		SetToast(w, ToastSuccess, kind.ToastOK)
+		SetToast(w, ToastSuccess, catalog.T(kind.ToastOK))
 	case success == 0:
 		status = http.StatusInternalServerError
-		SetToast(w, ToastError, kind.ToastNone)
+		SetToast(w, ToastError, catalog.T(kind.ToastNone))
 	default:
 		// A partial success is not a success. It gets its own colour, and the
 		// result table stays open so the operator can see which server failed.
 		status = http.StatusMultiStatus
-		SetToast(w, ToastWarning, kind.ToastPartial)
+		SetToast(w, ToastWarning, catalog.T(kind.ToastPartial))
 	}
 
 	SetTrigger(w, "records-changed", nil)
-	a.RenderPartial(w, status, "record-report", reportData{Report: report, Kind: kind})
+	a.RenderPartial(w, r, status, "record-report", reportData{Report: report, Kind: kind})
 }
 
 // reportProblem answers a refused operation that has no form behind it.
 //
 // Apply Rules is a button rather than a form, so the reason goes where the
 // result would have been.
-func (a *App) reportProblem(w http.ResponseWriter, problem string, status int) {
+func (a *App) reportProblem(w http.ResponseWriter, r *http.Request,
+	problem string, status int) {
 
 	SetToast(w, ToastError, problem)
-	a.RenderPartial(w, status, "record-report", reportData{
+	a.RenderPartial(w, r, status, "record-report", reportData{
 		Kind:    reloadReport,
 		Problem: problem,
 	})
@@ -440,7 +450,7 @@ func (a *App) handleQueryForm(w http.ResponseWriter, r *http.Request) {
 		a.dnsError(w, "cannot load the query form", err)
 		return
 	}
-	a.RenderPartial(w, http.StatusOK, "record-query", data)
+	a.RenderPartial(w, r, http.StatusOK, "record-query", data)
 }
 
 // handleQuery asks the target what it answers for a name.
@@ -464,14 +474,14 @@ func (a *App) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 	report, err := a.Records.Query(r.Context(), a.actor(r), target, data.Domain, data.Type)
 	if err != nil {
-		data.Problem = recordMessage(err)
-		a.RenderPartial(w, dnsStatus(err), "record-query", data)
+		data.Problem = recordMessage(a.catalog(r), err)
+		a.RenderPartial(w, r, dnsStatus(err), "record-query", data)
 		return
 	}
 
 	data.Report = report
 	data.Asked = true
-	a.RenderPartial(w, http.StatusOK, "record-query", data)
+	a.RenderPartial(w, r, http.StatusOK, "record-query", data)
 }
 
 // queryData fills the parts of the query panel that do not depend on an answer.
@@ -509,6 +519,8 @@ func (a *App) handleRecordRefresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	catalog := a.catalog(r)
+
 	failed := 0
 	for _, result := range results {
 		if !result.OK() {
@@ -522,12 +534,12 @@ func (a *App) handleRecordRefresh(w http.ResponseWriter, r *http.Request) {
 
 	switch {
 	case len(results) == 0:
-		SetToast(w, ToastInfo, "There is no enabled server to read.")
+		SetToast(w, ToastInfo, catalog.T("toast.no_server_to_read"))
 	case failed == 0:
-		SetToast(w, ToastSuccess, "Every server was read.")
+		SetToast(w, ToastSuccess, catalog.T("toast.every_server_read"))
 	default:
 		SetToast(w, ToastWarning,
-			fmt.Sprintf("%d of %d servers could not be read.", failed, len(results)))
+			catalog.Tf("toast.some_servers_read", failed, len(results)))
 	}
 
 	a.handleDNSRecords(w, r)
@@ -661,21 +673,21 @@ func (a *App) recordProblem(w http.ResponseWriter, r *http.Request,
 		data.Groups = groups
 	}
 
-	a.RenderPartial(w, status, "record-form", data)
+	a.RenderPartial(w, r, status, "record-form", data)
 }
 
 // recordMessage turns a refusal into a sentence the form can show.
 //
 // A rejected record and a missing target are the operator's to fix, so the
 // reason travels as it is rather than as a generic failure.
-func recordMessage(err error) string {
+func recordMessage(catalog *i18n.Catalog, err error) string {
 	switch {
 	case errors.Is(err, dnsfile.ErrInvalid):
 		return capitalise(strings.TrimPrefix(err.Error(), dnsfile.ErrInvalid.Error()+": ")) + "."
 	case errors.Is(err, fleet.ErrScope):
 		return capitalise(strings.TrimPrefix(err.Error(), fleet.ErrScope.Error()+": ")) + "."
 	default:
-		return userMessage(err)
+		return userMessage(catalog, err)
 	}
 }
 

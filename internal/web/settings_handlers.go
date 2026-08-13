@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"unbound-web/internal/audit"
+	"unbound-web/internal/i18n"
 	"unbound-web/internal/settings"
 )
 
@@ -29,34 +30,29 @@ type settingsField struct {
 	Checked bool
 }
 
+// optionPrefixes names the catalogue keys that label the choices of an enum.
+// The choices are interface names the layout already carries, so the page reads
+// those texts rather than keeping a second copy of them.
+var optionPrefixes = map[string]string{
+	settings.DefaultLanguage: "layout.language.",
+	settings.DefaultTheme:    "layout.theme.",
+}
+
+// OptionLabel returns the catalogue key that names one choice. A setting with
+// no named choices falls back to printing the stored value.
+func (f settingsField) OptionLabel(option string) string {
+	return optionPrefixes[f.Key] + option
+}
+
 // settingsPageData feeds the page and the fragment a save swaps back in.
 type settingsPageData struct {
 	Groups  []settingsGroup
 	Problem string
 }
 
-// groupTitles and groupHelp name the cards. They live here rather than in the
-// registry, because they describe the page and not the settings.
-var (
-	groupTitles = map[string]string{
-		settings.GroupTiming:    "Timing",
-		settings.GroupLimits:    "Limits",
-		settings.GroupSIEM:      "SIEM",
-		settings.GroupInterface: "Interface defaults",
-	}
-
-	groupHelp = map[string]string{
-		settings.GroupTiming: "Durations are written as a number and a unit, " +
-			"such as 30s, 15m or 24h.",
-		settings.GroupLimits:    "Whole numbers. Each one bounds how much work the panel takes on at once.",
-		settings.GroupSIEM:      "The forwarding rules themselves live on the SIEM page.",
-		settings.GroupInterface: "What a browser gets before anybody picks a language or a theme.",
-	}
-)
-
 func (a *App) handleSettingsPage(w http.ResponseWriter, r *http.Request) {
 	a.Render(w, r, http.StatusOK, "settings", PageData{
-		Title: "Settings",
+		Title: "nav.settings",
 		Data:  a.settingsPageData(nil, ""),
 	})
 }
@@ -68,7 +64,7 @@ func (a *App) handleSettingsPage(w http.ResponseWriter, r *http.Request) {
 // running on a combination nobody approved.
 func (a *App) handleSettingsSave(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		a.settingsProblem(w, nil, "The form could not be read.", http.StatusBadRequest)
+		a.settingsProblem(w, r, nil, a.catalog(r).T("error.form_unreadable"), http.StatusBadRequest)
 		return
 	}
 
@@ -88,7 +84,7 @@ func (a *App) handleSettingsSave(w http.ResponseWriter, r *http.Request) {
 
 	if err := a.Settings.Save(r.Context(), submitted); err != nil {
 		if errors.Is(err, settings.ErrInvalid) {
-			a.settingsProblem(w, submitted, settingsMessage(err), http.StatusUnprocessableEntity)
+			a.settingsProblem(w, r, submitted, settingsMessage(a.catalog(r), err), http.StatusUnprocessableEntity)
 			return
 		}
 		a.internalError(w, "cannot store the settings", err)
@@ -96,15 +92,15 @@ func (a *App) handleSettingsSave(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a.auditSettings(r)
-	SetToast(w, ToastSuccess, "The settings were saved and are in effect.")
-	a.RenderPartial(w, http.StatusOK, "settings-panel", a.settingsPageData(nil, ""))
+	SetToast(w, ToastSuccess, a.catalog(r).T("toast.settings_saved"))
+	a.RenderPartial(w, r, http.StatusOK, "settings-panel", a.settingsPageData(nil, ""))
 }
 
 // settingsProblem re-renders the form with what the operator typed.
-func (a *App) settingsProblem(w http.ResponseWriter, submitted map[string]string,
-	problem string, status int) {
+func (a *App) settingsProblem(w http.ResponseWriter, r *http.Request,
+	submitted map[string]string, problem string, status int) {
 
-	a.RenderPartial(w, status, "settings-panel", a.settingsPageData(submitted, problem))
+	a.RenderPartial(w, r, status, "settings-panel", a.settingsPageData(submitted, problem))
 }
 
 // settingsPageData builds the cards in registry order.
@@ -128,12 +124,14 @@ func (a *App) settingsPageData(submitted map[string]string, problem string) sett
 		})
 	}
 
+	// The card titles are catalogue keys. The registry names the settings and
+	// the page names its own cards, so a new group needs no Go text.
 	data := settingsPageData{Problem: problem}
 	for _, name := range settings.Groups() {
 		data.Groups = append(data.Groups, settingsGroup{
 			Key:    name,
-			Title:  groupTitles[name],
-			Help:   groupHelp[name],
+			Title:  "settings.group." + name,
+			Help:   "settings.group." + name + ".help",
 			Fields: byGroup[name],
 		})
 	}
@@ -157,9 +155,9 @@ func (a *App) auditSettings(r *http.Request) {
 }
 
 // settingsMessage turns a refusal into a sentence the form can show.
-func settingsMessage(err error) string {
+func settingsMessage(catalog *i18n.Catalog, err error) string {
 	if !errors.Is(err, settings.ErrInvalid) {
-		return userMessage(err)
+		return userMessage(catalog, err)
 	}
 	return capitalise(strings.TrimPrefix(err.Error(), settings.ErrInvalid.Error()+": ")) + "."
 }

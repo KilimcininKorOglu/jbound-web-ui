@@ -4,16 +4,16 @@
 <div class="card">
   <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-3">
     <div>
-      <span data-field="pending-summary">{{.Status.Summary}}</span>
+      <span data-field="pending-summary">{{.StatusText}}</span>
       {{if .Status.GroupName}}
-      <span class="text-muted small">Target: {{.Status.GroupName}}</span>
+      <span class="text-muted small">{{tf "dns.target_label" .Status.GroupName}}</span>
       {{end}}
       {{if .StaleNote}}
       <div class="text-muted small" data-field="stale-note">{{.StaleNote}}</div>
       {{end}}
       {{if not .Status.CanApply}}
       <div class="text-muted small" data-field="apply-note">
-        Choose a single server or a group to apply the rules.
+        {{t "dns.apply_note"}}
       </div>
       {{end}}
     </div>
@@ -23,10 +23,10 @@
     <button class="btn btn-apply btn-sm" type="button" data-field="apply-rules"
             hx-post="/dns/apply" hx-include="#record-controls"
             hx-target="#record-panel" hx-swap="innerHTML"
-            hx-confirm="Reload the resolver on every targeted server?"
-            data-confirm-title="Apply Rules"
+            hx-confirm="{{t "dns.apply_question"}}"
+            data-confirm-title="{{t "dns.apply_rules"}}"
             {{if not (and .Status.CanApply .Status.Pending)}}disabled{{end}}>
-      <i class="bx bx-refresh"></i> Apply Rules
+      <i class="bx bx-refresh" aria-hidden="true"></i> {{t "dns.apply_rules"}}
     </button>
   </div>
 </div>

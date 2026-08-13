@@ -4,14 +4,15 @@
 <div class="card">
   <div class="table-responsive">
     <table class="table table-hover">
+      <caption class="visually-hidden">{{t "logs.caption"}}</caption>
       <thead>
         <tr>
-          <th>Time</th>
-          <th>User</th>
-          <th>Action</th>
-          <th>Server</th>
-          <th>Details</th>
-          <th>Address</th>
+          <th scope="col">{{t "logs.time"}}</th>
+          <th scope="col">{{t "logs.user"}}</th>
+          <th scope="col">{{t "logs.action"}}</th>
+          <th scope="col">{{t "common.server"}}</th>
+          <th scope="col">{{t "logs.details"}}</th>
+          <th scope="col">{{t "logs.address"}}</th>
         </tr>
       </thead>
       <tbody>
@@ -20,18 +21,18 @@
           <td class="text-muted text-nowrap">{{localTime .CreatedAt}}</td>
           <td>
             <strong>{{.Username}}</strong>
-            <div class="text-muted small">uid {{.UID}}</div>
+            <div class="text-muted small">{{tf "logs.uid" .UID}}</div>
           </td>
           <td>{{template "log-action" .Action}}</td>
           <td class="text-muted">
-            {{if .ServerName}}{{.ServerName}}{{else}}<span class="text-body-secondary">panel</span>{{end}}
+            {{if .ServerName}}{{.ServerName}}{{else}}<span class="text-body-secondary">{{t "logs.panel"}}</span>{{end}}
           </td>
           <td class="text-muted">{{.Details}}</td>
           <td class="text-muted text-nowrap">{{.IPAddress}}</td>
         </tr>
         {{else}}
         <tr>
-          <td colspan="6" class="text-center text-muted py-4">No entries found.</td>
+          <td colspan="6" class="text-center text-muted py-4">{{t "logs.no_entries"}}</td>
         </tr>
         {{end}}
       </tbody>
@@ -42,7 +43,7 @@
     <span class="text-muted small" data-field="summary">{{.Summary}}</span>
 
     {{if .Pages}}
-    <nav>
+    <nav aria-label="{{t "common.pagination"}}">
       <ul class="pagination pagination-sm mb-0">
         {{range .Pages}}
         {{if .Gap}}

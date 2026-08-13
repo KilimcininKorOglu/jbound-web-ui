@@ -1,12 +1,12 @@
 package web
 
 import (
-	"fmt"
 	"net/http"
 	"slices"
 	"strings"
 
 	"unbound-web/internal/audit"
+	"unbound-web/internal/i18n"
 	"unbound-web/internal/server"
 )
 
@@ -31,7 +31,7 @@ func (a *App) handleLogsPage(w http.ResponseWriter, r *http.Request) {
 		a.internalError(w, "cannot load the audit log", err)
 		return
 	}
-	a.Render(w, r, http.StatusOK, "logs", PageData{Title: "Audit Logs", Data: data})
+	a.Render(w, r, http.StatusOK, "logs", PageData{Title: "nav.audit_logs", Data: data})
 }
 
 // handleLogsTable re-renders the table, which is what every filter and page
@@ -42,7 +42,7 @@ func (a *App) handleLogsTable(w http.ResponseWriter, r *http.Request) {
 		a.internalError(w, "cannot load the audit log", err)
 		return
 	}
-	a.RenderPartial(w, http.StatusOK, "log-table", data)
+	a.RenderPartial(w, r, http.StatusOK, "log-table", data)
 }
 
 func (a *App) logsPageData(r *http.Request) (logsPageData, error) {
@@ -66,7 +66,7 @@ func (a *App) logsPageData(r *http.Request) (logsPageData, error) {
 		Servers: servers,
 		Actions: audit.Actions(),
 		Pages:   logPageWindow(page),
-		Summary: logSummary(page),
+		Summary: logSummary(a.catalog(r), page),
 	}, nil
 }
 
@@ -98,11 +98,11 @@ func knownAction(action string) bool {
 }
 
 // logSummary reads "Showing X of Y entries (Page A/B)".
-func logSummary(page audit.Page) string {
+func logSummary(catalog *i18n.Catalog, page audit.Page) string {
 	if page.Total == 0 {
-		return "No entries found."
+		return catalog.T("summary.no_entries")
 	}
-	return fmt.Sprintf("Showing %d of %d entries (Page %d/%d)",
+	return catalog.Tf("summary.entries",
 		len(page.Rows), page.Total, page.Page, page.TotalPages)
 }
 

@@ -5,7 +5,7 @@
 {{$query := .Query}}
 <div class="card">
   <div class="card-header">
-    <h6 class="mb-0">{{if .IsNew}}Add a record{{else}}Edit a record{{end}}</h6>
+    <h6 class="mb-0">{{if .IsNew}}{{t "record.add_title"}}{{else}}{{t "record.edit_title"}}{{end}}</h6>
   </div>
   <div class="card-body">
     <form hx-{{if .IsNew}}post{{else}}put{{end}}="/dns/records"
@@ -15,14 +15,14 @@
 
       <div class="row g-3">
         <div class="col-md-5">
-          <label class="form-label" for="fqdn">Name</label>
+          <label class="form-label" for="fqdn">{{t "common.name"}}</label>
           <input class="form-control" id="fqdn" name="fqdn" value="{{.Record.FQDN}}"
                  placeholder="www.example.net" autocapitalize="none"
                  spellcheck="false" required>
         </div>
 
         <div class="col-md-3">
-          <label class="form-label" for="record_type">Type</label>
+          <label class="form-label" for="record_type">{{t "common.type"}}</label>
           <select class="form-select" id="record_type" name="type"
                   data-action="record-type">
             {{$record := .Record}}
@@ -34,27 +34,25 @@
 
         <div class="col-md-4" data-field="priority"
              {{if ne .Record.Type "MX"}}hidden{{end}}>
-          <label class="form-label" for="priority">Preference</label>
+          <label class="form-label" for="priority">{{t "record.preference"}}</label>
           <input class="form-control" id="priority" name="priority" type="number"
                  min="0" max="65535"
                  value="{{if .Record.Priority}}{{.Record.Priority}}{{else}}10{{end}}">
-          <div class="form-text">Lower is tried first. Only MX uses it.</div>
+          <div class="form-text">{{t "record.preference_help"}}</div>
         </div>
 
         <div class="col-12">
-          <label class="form-label" for="value">Value</label>
+          <label class="form-label" for="value">{{t "common.value"}}</label>
           <input class="form-control" id="value" name="value" value="{{.Record.Value}}"
                  placeholder="192.0.2.10" autocapitalize="none" spellcheck="false" required>
-          <div class="form-text">
-            An address for A and AAAA, a name for CNAME and MX, one word for TXT.
-          </div>
+          <div class="form-text">{{t "record.value_help"}}</div>
         </div>
 
         <div class="col-md-6">
-          <label class="form-label" for="form_target">Apply to</label>
+          <label class="form-label" for="form_target">{{t "record.apply_to"}}</label>
           <select class="form-select" id="form_target" name="target">
             {{if .Groups}}
-            <optgroup label="Groups">
+            <optgroup label="{{t "common.groups"}}">
               {{range .Groups}}
               <option value="group:{{.ID}}"
                       {{if and (eq $query.Scope "group") (eq $query.GroupID .ID)}}selected{{end}}>
@@ -64,7 +62,7 @@
             </optgroup>
             {{end}}
             {{if .Servers}}
-            <optgroup label="Servers">
+            <optgroup label="{{t "common.servers"}}">
               {{range .Servers}}
               <option value="server:{{.ID}}"
                       {{if and (eq $query.Scope "server") (eq $query.ServerID .ID)}}selected{{end}}>
@@ -74,9 +72,7 @@
             </optgroup>
             {{end}}
           </select>
-          <div class="form-text">
-            A change needs a single server or a group, never the whole fleet at once.
-          </div>
+          <div class="form-text">{{t "record.apply_to_help"}}</div>
         </div>
       </div>
 
@@ -91,10 +87,10 @@
 
       <div class="dns-toolbar mt-4">
         <button class="btn btn-primary" type="submit">
-          {{if .IsNew}}Add record{{else}}Save changes{{end}}
+          {{if .IsNew}}{{t "record.submit_add"}}{{else}}{{t "record.submit_edit"}}{{end}}
         </button>
         <button class="btn btn-outline-secondary" type="button" data-action="close-record-panel">
-          Cancel
+          {{t "common.cancel"}}
         </button>
       </div>
     </form>

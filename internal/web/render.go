@@ -7,12 +7,14 @@ import (
 	"html/template"
 	"io/fs"
 	"log/slog"
+	"maps"
 	"net/http"
 	"path"
 	"strings"
 	"time"
 
 	"unbound-web/internal/auth"
+	"unbound-web/internal/i18n"
 )
 
 // Toast severities. They map onto the SweetAlert2 icon names.
@@ -41,16 +43,21 @@ var pageLayouts = map[string]string{
 	"system":   "app",
 }
 
-// templateSet holds the parsed templates.
+// templateSet holds the parsed templates of one language.
 //
 // Each page gets its own set, because every page defines a template named
-// "content" and one shared set could not hold them all.
+// "content" and one shared set could not hold them all. Each language gets its
+// own copy of all of them, because the text comes from a template function
+// bound to a catalogue rather than from the data: an htmx fragment carries no
+// page data, and threading a catalogue through every fragment struct would put
+// the same field on all of them.
 type templateSet struct {
 	pages    map[string]*template.Template
 	partials *template.Template
 }
 
-// funcs are available to every template.
+// funcs are available to every template. The text helpers are added per
+// language in parseTemplates.
 var funcs = template.FuncMap{
 	// localTime turns a stored UTC timestamp into the reader's local zone.
 	// Every timestamp in the database is UTC, and showing it raw would make
@@ -93,9 +100,38 @@ var funcs = template.FuncMap{
 	},
 }
 
-// parseTemplates builds one set per page plus the partial set.
-func parseTemplates() (*templateSet, error) {
-	partials, err := template.New("partials").Funcs(funcs).
+// parseTemplates builds one set per language.
+func parseTemplates(catalogs *i18n.Catalogs) (map[string]*templateSet, error) {
+	sets := map[string]*templateSet{}
+
+	for _, language := range catalogs.Languages() {
+		set, err := parseLanguage(catalogs.Catalog(language))
+		if err != nil {
+			return nil, err
+		}
+		sets[language] = set
+	}
+	return sets, nil
+}
+
+// textFuncs binds the lookup helpers to one catalogue.
+func textFuncs(catalog *i18n.Catalog) template.FuncMap {
+	bound := template.FuncMap{}
+	maps.Copy(bound, funcs)
+
+	bound["t"] = catalog.T
+	bound["tf"] = catalog.Tf
+	bound["lang"] = catalog.Language
+	bound["clientStrings"] = func() string { return clientStrings(catalog) }
+
+	return bound
+}
+
+// parseLanguage builds the page and partial templates of one language.
+func parseLanguage(catalog *i18n.Catalog) (*templateSet, error) {
+	bound := textFuncs(catalog)
+
+	partials, err := template.New("partials").Funcs(bound).
 		ParseFS(templateFS, "templates/partials/*.html")
 	if err != nil {
 		return nil, fmt.Errorf("cannot parse the partials: %w", err)
@@ -116,7 +152,7 @@ func parseTemplates() (*templateSet, error) {
 			return nil, fmt.Errorf("page %s has no layout, add it to pageLayouts", name)
 		}
 
-		tmpl, err := template.New(name).Funcs(funcs).ParseFS(templateFS,
+		tmpl, err := template.New(name).Funcs(bound).ParseFS(templateFS,
 			"templates/layouts/"+layout+".html",
 			"templates/partials/*.html",
 			entry,
@@ -150,6 +186,13 @@ type PageData struct {
 	Year       int
 	Alert      *Alert
 
+	// Language is what the html element carries and what the language control
+	// shows as chosen.
+	Language string
+
+	// Languages are the codes the panel was built with, for the control.
+	Languages []string
+
 	// Theme is what the html element carries. It is read from the cookie on
 	// every render, so the first paint is already in the chosen theme and
 	// nothing flashes.
@@ -171,7 +214,9 @@ type Alert struct {
 func (a *App) Render(w http.ResponseWriter, r *http.Request, status int,
 	page string, data PageData) {
 
-	tmpl, ok := a.tmpl.pages[page]
+	language := a.language(r)
+
+	tmpl, ok := a.tmpl[language].pages[page]
 	if !ok {
 		slog.Error("unknown page requested", "page", page)
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -187,6 +232,8 @@ func (a *App) Render(w http.ResponseWriter, r *http.Request, status int,
 	data.ActivePath = r.URL.Path
 	data.Year = time.Now().Year()
 	data.Theme = a.theme(r)
+	data.Language = language
+	data.Languages = a.Catalogs.Languages()
 
 	var buf bytes.Buffer
 	if err := tmpl.ExecuteTemplate(&buf, "layout", data); err != nil {
@@ -198,10 +245,15 @@ func (a *App) Render(w http.ResponseWriter, r *http.Request, status int,
 }
 
 // RenderPartial writes one fragment, which is what an htmx swap expects.
-func (a *App) RenderPartial(w http.ResponseWriter, status int, name string, data any) {
+//
+// It takes the request because the language does, and a fragment carries no
+// page data to read it from.
+func (a *App) RenderPartial(w http.ResponseWriter, r *http.Request, status int,
+	name string, data any) {
+
 	var buf bytes.Buffer
 
-	if err := a.tmpl.partials.ExecuteTemplate(&buf, name, data); err != nil {
+	if err := a.tmpl[a.language(r)].partials.ExecuteTemplate(&buf, name, data); err != nil {
 		slog.Error("cannot render the partial", "partial", name, "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return

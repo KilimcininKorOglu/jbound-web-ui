@@ -3,66 +3,63 @@
      the sudoers rules. */}}
 {{define "server-test"}}
 <div>
-  <h6>Connection test: {{.Server.Name}}</h6>
+  <h6>{{tf "servertest.title" .Server.Name}}</h6>
 
   {{if .Result.OK}}
-    {{template "alert" (alert "success" "Every step passed. The server is ready.")}}
+    {{template "alert" (alert "success" (t "servertest.ok"))}}
 
     <ul class="text-muted small">
-      <li>Connected and the host key matched the approved one.</li>
-      <li>Read the host entries file.</li>
-      <li>Wrote it back through sudo without changing it.</li>
-      <li>Ran the status command.</li>
+      <li>{{t "servertest.step_connect"}}</li>
+      <li>{{t "servertest.step_read"}}</li>
+      <li>{{t "servertest.step_write"}}</li>
+      <li>{{t "servertest.step_status"}}</li>
     </ul>
 
   {{else if .Result.HostKey}}
     {{if .Result.HostKeyChanged}}
-      {{template "alert" (alert "error" "The connection was refused: this server offers a different host key than the approved one.")}}
+      {{template "alert" (alert "error" (t "servertest.key_changed"))}}
 
-      <p class="mb-2">
-        A reinstalled server looks exactly like an impostor from here. Approve the new
-        fingerprint only after you have read it on the server itself, not over the same
-        connection.
-      </p>
+      <p class="mb-2">{{t "servertest.key_changed_help"}}</p>
     {{else}}
-      {{template "alert" (alert "warning" "This server has no approved host key yet.")}}
+      {{template "alert" (alert "warning" (t "servertest.key_missing"))}}
     {{end}}
 
     <p class="mb-2">
-      Compare the fingerprint below against the target. Run
-      <code>ssh-keyscan -t ed25519 {{.Server.Host}}</code> there, or read it from the
-      server console.
+      {{t "servertest.compare_1"}}
+      <code>ssh-keyscan -t ed25519 {{.Server.Host}}</code>
+      {{t "servertest.compare_2"}}
     </p>
     <pre class="border rounded p-3 mb-3" data-field="fingerprint">{{.Result.HostKey.Fingerprint}}</pre>
 
     <form hx-post="/servers/{{.Server.ID}}/trust"
           hx-target="#server-panel" hx-swap="innerHTML"
-          hx-confirm="{{if .Result.HostKeyChanged}}Replace the approved host key of {{.Server.Name}} with this one?{{else}}Approve this fingerprint for {{.Server.Name}}?{{end}}"
-          data-confirm-title="{{if .Result.HostKeyChanged}}Replace host key{{else}}Approve host key{{end}}">
+          hx-confirm="{{if .Result.HostKeyChanged}}{{tf "servertest.replace_question" .Server.Name}}{{else}}{{tf "servertest.approve_question" .Server.Name}}{{end}}"
+          data-confirm-title="{{if .Result.HostKeyChanged}}{{t "servertest.replace_title"}}{{else}}{{t "servertest.approve_title"}}{{end}}">
       <input type="hidden" name="fingerprint" value="{{.Result.HostKey.Fingerprint}}">
       <button class="btn btn-primary" type="submit" data-action-name="trust">
-        {{if .Result.HostKeyChanged}}Replace the approved host key{{else}}Approve this host key{{end}}
+        {{if .Result.HostKeyChanged}}{{t "servertest.replace"}}{{else}}{{t "servertest.approve"}}{{end}}
       </button>
       <button class="btn btn-outline-secondary" type="button" data-action="close-panel">
-        Cancel
+        {{t "common.cancel"}}
       </button>
     </form>
 
   {{else}}
-    {{template "alert" (alert "error" "The connection test failed.")}}
+    {{template "alert" (alert "error" (t "servertest.failed"))}}
 
     {{if .Result.Step}}
     <p class="mb-2">
-      Failed at the <strong data-field="step">{{.Result.Step}}</strong> step.
+      {{t "servertest.failed_at"}}
+      <strong data-field="step">{{.Result.Step}}</strong>
+      {{t "servertest.failed_step_suffix"}}
       {{if eq .Result.Step "connect"}}
-        The panel could not reach the server or the key was refused.
+        {{t "servertest.detail_connect"}}
       {{else if eq .Result.Step "read"}}
-        The host entries file could not be read. Check the path and its permissions.
+        {{t "servertest.detail_read"}}
       {{else if eq .Result.Step "write"}}
-        The write path was refused. The sudoers rules on the target most likely name a
-        different path than this record does.
+        {{t "servertest.detail_write"}}
       {{else if eq .Result.Step "status"}}
-        The status command could not be run.
+        {{t "servertest.detail_status"}}
       {{end}}
     </p>
     {{end}}
@@ -73,10 +70,10 @@
       <button class="btn btn-outline-primary" type="button"
               hx-post="/servers/{{.Server.ID}}/test"
               hx-target="#server-panel" hx-swap="innerHTML">
-        Try again
+        {{t "servertest.retry"}}
       </button>
       <button class="btn btn-outline-secondary" type="button" data-action="close-panel">
-        Close
+        {{t "servertest.close"}}
       </button>
     </div>
   {{end}}

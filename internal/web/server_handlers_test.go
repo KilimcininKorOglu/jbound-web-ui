@@ -313,7 +313,8 @@ func TestAChangedHostKeyAsksForApprovalAgain(t *testing.T) {
 	env := newTestEnv(t)
 
 	recorder := httptest.NewRecorder()
-	env.app.RenderPartial(recorder, http.StatusOK, "server-test", testResultData{
+	request := httptest.NewRequest(http.MethodGet, "/servers", nil)
+	env.app.RenderPartial(recorder, request, http.StatusOK, "server-test", testResultData{
 		Server: server.Server{ID: 1, Name: "dns1", Host: "dns1.example"},
 		Result: server.TestResult{
 			HostKeyChanged: true,

@@ -3,14 +3,14 @@
   <div class="col-12 mb-4">
     <div class="card">
       <div class="card-header d-flex align-items-center justify-content-between">
-        <h5 class="mb-0">Servers</h5>
+        <h5 class="mb-0">{{t "nav.servers"}}</h5>
         <button class="btn btn-primary btn-sm" type="button"
                 hx-get="/servers/new" hx-target="#server-panel" hx-swap="innerHTML">
-          <i class="bx bx-plus"></i> Add server
+          <i class="bx bx-plus" aria-hidden="true"></i> {{t "servers.add"}}
         </button>
       </div>
       <div class="card-body">
-        <div id="server-panel"></div>
+        <div id="server-panel" aria-live="polite"></div>
       </div>
     </div>
   </div>

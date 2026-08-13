@@ -13,6 +13,31 @@
   const PRIMARY = '#1B8A4E';
   const SECONDARY = '#8592a3';
 
+  /* The texts this file raises come from the server, because the panel speaks
+     more than one language and the content security policy allows no inline
+     script to carry them. The body element holds them as JSON. */
+  const STRINGS = readStrings();
+
+  function readStrings() {
+    const raw = document.body.getAttribute('data-strings');
+    if (!raw) {
+      return {};
+    }
+    try {
+      return JSON.parse(raw);
+    } catch (error) {
+      /* A page without its texts still works. Falling back to the key is
+         better than a dialog that never opens. */
+      console.error('cannot read the interface texts', error);
+      return {};
+    }
+  }
+
+  /* text returns one interface string, falling back to its key. */
+  function text(key) {
+    return STRINGS[key] || key;
+  }
+
   /* htmx injects a style element for its indicator classes. The content
      security policy allows no inline style, so the rules live in panel.css
      instead. */
@@ -75,13 +100,13 @@
       }
     }
     if (!message) {
-      message = 'The request failed with status ' + xhr.status + '.';
+      message = text('client.request_failed').replace('%s', xhr.status);
     }
     showToast('error', message);
   });
 
   document.body.addEventListener('htmx:sendError', function () {
-    showToast('error', 'The panel is unreachable.');
+    showToast('error', text('client.unreachable'));
   });
 
   /* hx-confirm asks for a plain browser dialog. This replaces it with the
@@ -93,14 +118,14 @@
     event.preventDefault();
 
     Swal.fire({
-      title: event.target.getAttribute('data-confirm-title') || 'Are you sure?',
+      title: event.target.getAttribute('data-confirm-title') || text('client.confirm_title'),
       text: event.detail.question,
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: PRIMARY,
       cancelButtonColor: SECONDARY,
-      confirmButtonText: 'Yes',
-      cancelButtonText: 'Cancel'
+      confirmButtonText: text('client.yes'),
+      cancelButtonText: text('client.cancel')
     }).then(function (result) {
       if (result.isConfirmed) {
         event.detail.issueRequest(true);
@@ -179,14 +204,14 @@
 
   function confirmLogout() {
     Swal.fire({
-      title: 'Logout',
-      text: 'Are you sure you want to sign out?',
+      title: text('client.logout_title'),
+      text: text('client.logout_question'),
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: PRIMARY,
       cancelButtonColor: SECONDARY,
-      confirmButtonText: 'Yes',
-      cancelButtonText: 'Cancel'
+      confirmButtonText: text('client.yes'),
+      cancelButtonText: text('client.cancel')
     }).then(function (result) {
       if (result.isConfirmed) {
         /* The token rides on the body element, so htmx adds it to this

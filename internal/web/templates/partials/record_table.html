@@ -5,13 +5,14 @@
 <div class="card">
   <div class="table-responsive">
     <table class="table table-hover">
+      <caption class="visually-hidden">{{t "dns.table_caption"}}</caption>
       <thead>
         <tr>
-          {{if .ShowServer}}<th>Server</th>{{end}}
-          <th>Name</th>
-          <th>Type</th>
-          <th>Value</th>
-          <th class="text-end">Actions</th>
+          {{if .ShowServer}}<th scope="col">{{t "common.server"}}</th>{{end}}
+          <th scope="col">{{t "common.name"}}</th>
+          <th scope="col">{{t "common.type"}}</th>
+          <th scope="col">{{t "common.value"}}</th>
+          <th scope="col" class="text-end">{{t "common.actions"}}</th>
         </tr>
       </thead>
       <tbody>
@@ -27,12 +28,12 @@
                   data-field="holders">{{len .Holders}}/{{$.Page.TargetServers}}</span>
             {{else}}
             <a class="badge bg-label-warning text-decoration-none" href="/diff"
-               title="Only on {{join .HolderNames}}. Open the diff view."
+               title="{{tf "dns.holders_title" (join .HolderNames)}}"
                data-field="holders">{{len .Holders}}/{{$.Page.TargetServers}}</a>
             {{end}}
             {{if .Stale}}
             <span class="badge bg-label-warning ms-1" data-field="stale"
-                  title="The panel could not read one of these servers recently.">stale</span>
+                  title="{{t "dns.stale_title"}}">{{t "dns.stale"}}</span>
             {{end}}
           </td>
           {{end}}
@@ -46,22 +47,22 @@
                     hx-get="/dns/records/edit?fqdn={{.FQDN}}&type={{.Type}}&value={{.Value}}&priority={{.Priority}}"
                     hx-include="#record-controls"
                     hx-target="#record-panel" hx-swap="innerHTML">
-              Edit
+              {{t "common.edit"}}
             </button>
             <button class="btn btn-sm btn-outline-danger" type="button"
                     hx-delete="/dns/records"
                     hx-vals='{"fqdn": "{{.FQDN}}", "type": "{{.Type}}", "value": "{{.Value}}", "priority": "{{.Priority}}"}'
                     hx-include="#record-controls"
                     hx-target="#record-panel" hx-swap="innerHTML"
-                    hx-confirm="Delete {{.Type}} {{.FQDN}} from every targeted server?"
-                    data-confirm-title="Delete record">
-              Delete
+                    hx-confirm="{{tf "dns.delete_question" .Type .FQDN}}"
+                    data-confirm-title="{{t "dns.delete_title"}}">
+              {{t "common.delete"}}
             </button>
           </td>
         </tr>
         {{else}}
         <tr>
-          <td colspan="5" class="text-center text-muted py-4">No records found.</td>
+          <td colspan="5" class="text-center text-muted py-4">{{t "dns.no_records"}}</td>
         </tr>
         {{end}}
       </tbody>
@@ -72,7 +73,7 @@
     <span class="text-muted small" data-field="summary">{{.Summary}}</span>
 
     {{if .Pages}}
-    <nav>
+    <nav aria-label="{{t "common.pagination"}}">
       <ul class="pagination pagination-sm mb-0">
         {{range .Pages}}
         {{if .Gap}}

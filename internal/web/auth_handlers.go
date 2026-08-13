@@ -31,7 +31,7 @@ func (a *App) handleLoginPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data := PageData{Title: "Sign in"}
+	data := PageData{Title: "login.title"}
 	if r.URL.Query().Get("timeout") == "1" {
 		data.Alert = &Alert{
 			Severity: ToastWarning,
@@ -135,7 +135,7 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 	slog.Info("login", "username", user.Username, "role", user.Role, "ip", ip)
 
 	w.Header().Set("HX-Redirect", "/dns")
-	a.RenderPartial(w, http.StatusOK, "loggedin", loggedInData{
+	a.RenderPartial(w, r, http.StatusOK, "loggedin", loggedInData{
 		Username: session.Username,
 		Role:     session.Role,
 	})
@@ -185,8 +185,8 @@ func (a *App) loginFailure(w http.ResponseWriter, r *http.Request, status int, m
 	alert := &Alert{Severity: ToastError, Message: message}
 
 	if r.Header.Get("HX-Request") == "true" {
-		a.RenderPartial(w, status, "alert", alert)
+		a.RenderPartial(w, r, status, "alert", alert)
 		return
 	}
-	a.Render(w, r, status, "login", PageData{Title: "Sign in", Alert: alert})
+	a.Render(w, r, status, "login", PageData{Title: "login.title", Alert: alert})
 }

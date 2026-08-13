@@ -1,13 +1,13 @@
 {{/* The layout of the pages that have no session yet. No navigation, because
      there is nothing to navigate to before signing in. */}}
 {{define "layout"}}<!DOCTYPE html>
-<html lang="en" class="light-style customizer-hide" dir="ltr"
+<html lang="{{.Language}}" class="light-style customizer-hide" dir="ltr"
       data-theme="theme-default" data-assets-path="/static/"
       data-color-scheme="{{.Theme}}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{{.Title}} - JanBound DNS Panel</title>
+  <title>{{t .Title}} - {{t "layout.panel_name"}}</title>
   <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
 
   <link rel="stylesheet" href="/static/css/publicsans.css">
@@ -22,12 +22,12 @@
   {{/* Last, because it overrides both the vendor sheets and the panel ones. */}}
   <link rel="stylesheet" href="/static/css/theme-dark.css">
 </head>
-<body>
+<body data-strings="{{clientStrings}}">
 <div class="container-xxl">
   <div class="authentication-wrapper authentication-basic container-p-y">
-    <div class="authentication-inner">
+    <main id="main" class="authentication-inner">
       {{template "content" .}}
-    </div>
+    </main>
   </div>
 </div>
 

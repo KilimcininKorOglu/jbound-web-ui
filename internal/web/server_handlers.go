@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"unbound-web/internal/auth"
+	"unbound-web/internal/i18n"
 	"unbound-web/internal/server"
 	"unbound-web/internal/store"
 	"unbound-web/internal/transport"
@@ -75,7 +76,7 @@ func (a *App) handleServersPage(w http.ResponseWriter, r *http.Request) {
 		a.internalError(w, "cannot load the servers", err)
 		return
 	}
-	a.Render(w, r, http.StatusOK, "servers", PageData{Title: "Servers", Data: data})
+	a.Render(w, r, http.StatusOK, "servers", PageData{Title: "nav.servers", Data: data})
 }
 
 // closePanel finishes a change that has nothing left to show.
@@ -95,7 +96,7 @@ func (a *App) handleServerTable(w http.ResponseWriter, r *http.Request) {
 		a.internalError(w, "cannot load the servers", err)
 		return
 	}
-	a.RenderPartial(w, http.StatusOK, "server-tables", data)
+	a.RenderPartial(w, r, http.StatusOK, "server-tables", data)
 }
 
 func (a *App) serversPageData(r *http.Request) (serversPageData, error) {
@@ -177,13 +178,13 @@ func (a *App) handleServerForm(w http.ResponseWriter, r *http.Request) {
 		}
 		data = serverFormData{Server: record}
 	}
-	a.RenderPartial(w, http.StatusOK, "server-form", data)
+	a.RenderPartial(w, r, http.StatusOK, "server-form", data)
 }
 
 func (a *App) handleServerCreate(w http.ResponseWriter, r *http.Request) {
 	record, err := serverFromForm(r)
 	if err != nil {
-		a.RenderPartial(w, http.StatusUnprocessableEntity, "server-form",
+		a.RenderPartial(w, r, http.StatusUnprocessableEntity, "server-form",
 			serverFormData{Server: record, IsNew: true, Problem: err.Error()})
 		return
 	}
@@ -193,17 +194,17 @@ func (a *App) handleServerCreate(w http.ResponseWriter, r *http.Request) {
 		PrivateKey: strings.TrimSpace(r.PostFormValue("private_key")),
 	})
 	if err != nil {
-		a.RenderPartial(w, formStatus(err), "server-form",
-			serverFormData{Server: record, IsNew: true, Problem: userMessage(err)})
+		a.RenderPartial(w, r, formStatus(err), "server-form",
+			serverFormData{Server: record, IsNew: true, Problem: userMessage(a.catalog(r), err)})
 		return
 	}
 
-	SetToast(w, ToastSuccess, "Server "+created.Name+" added.")
+	SetToast(w, ToastSuccess, a.catalog(r).Tf("toast.server_added", created.Name))
 
 	// The panel keeps the public key on screen, so the new row arrives through
 	// the reload event instead.
 	SetTrigger(w, "servers-changed", nil)
-	a.RenderPartial(w, http.StatusOK, "server-key", keyPanelData{Server: created, Key: pair})
+	a.RenderPartial(w, r, http.StatusOK, "server-key", keyPanelData{Server: created, Key: pair})
 }
 
 func (a *App) handleServerUpdate(w http.ResponseWriter, r *http.Request) {
@@ -215,19 +216,19 @@ func (a *App) handleServerUpdate(w http.ResponseWriter, r *http.Request) {
 	record, err := serverFromForm(r)
 	if err != nil {
 		record.ID = id
-		a.RenderPartial(w, http.StatusUnprocessableEntity, "server-form",
+		a.RenderPartial(w, r, http.StatusUnprocessableEntity, "server-form",
 			serverFormData{Server: record, Problem: err.Error()})
 		return
 	}
 	record.ID = id
 
 	if err := a.Servers.Update(r.Context(), a.actor(r), record); err != nil {
-		a.RenderPartial(w, formStatus(err), "server-form",
-			serverFormData{Server: record, Problem: userMessage(err)})
+		a.RenderPartial(w, r, formStatus(err), "server-form",
+			serverFormData{Server: record, Problem: userMessage(a.catalog(r), err)})
 		return
 	}
 
-	SetToast(w, ToastSuccess, "Server "+record.Name+" updated.")
+	SetToast(w, ToastSuccess, a.catalog(r).Tf("toast.server_updated", record.Name))
 	a.closePanel(w)
 }
 
@@ -242,7 +243,7 @@ func (a *App) handleServerDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	SetToast(w, ToastSuccess, "Server deleted.")
+	SetToast(w, ToastSuccess, a.catalog(r).T("toast.server_deleted"))
 	a.closePanel(w)
 }
 
@@ -262,7 +263,7 @@ func (a *App) handleServerKey(w http.ResponseWriter, r *http.Request) {
 		a.internalError(w, "cannot read the public key", err)
 		return
 	}
-	a.RenderPartial(w, http.StatusOK, "server-key", keyPanelData{Server: record, Key: pair})
+	a.RenderPartial(w, r, http.StatusOK, "server-key", keyPanelData{Server: record, Key: pair})
 }
 
 func (a *App) handleServerTest(w http.ResponseWriter, r *http.Request) {
@@ -287,17 +288,17 @@ func (a *App) handleServerTest(w http.ResponseWriter, r *http.Request) {
 	// the operator, and the panel body says so.
 	switch {
 	case result.OK:
-		SetToast(w, ToastSuccess, "Connection to "+record.Name+" works.")
+		SetToast(w, ToastSuccess, a.catalog(r).Tf("toast.connection_ok", record.Name))
 	case result.HostKeyChanged:
-		SetToast(w, ToastError, record.Name+" offers a different host key than the approved one.")
+		SetToast(w, ToastError, a.catalog(r).Tf("toast.host_key_changed", record.Name))
 	case result.HostKey == nil:
-		SetToast(w, ToastError, "Connection to "+record.Name+" failed.")
+		SetToast(w, ToastError, a.catalog(r).Tf("toast.connection_failed", record.Name))
 	}
 
 	// The test records the outcome on the record, so the row behind the panel
 	// is now out of date.
 	SetTrigger(w, "servers-changed", nil)
-	a.RenderPartial(w, http.StatusOK, "server-test", testResultData{Server: record, Result: result})
+	a.RenderPartial(w, r, http.StatusOK, "server-test", testResultData{Server: record, Result: result})
 }
 
 func (a *App) handleServerTrust(w http.ResponseWriter, r *http.Request) {
@@ -308,18 +309,18 @@ func (a *App) handleServerTrust(w http.ResponseWriter, r *http.Request) {
 
 	fingerprint := strings.TrimSpace(r.PostFormValue("fingerprint"))
 	if fingerprint == "" {
-		a.RenderPartial(w, http.StatusUnprocessableEntity, "alert",
+		a.RenderPartial(w, r, http.StatusUnprocessableEntity, "alert",
 			&Alert{Severity: ToastError, Message: "No fingerprint was submitted."})
 		return
 	}
 
 	if err := a.Servers.TrustHostKey(r.Context(), a.actor(r), id, fingerprint); err != nil {
-		a.RenderPartial(w, formStatus(err), "alert",
-			&Alert{Severity: ToastError, Message: userMessage(err)})
+		a.RenderPartial(w, r, formStatus(err), "alert",
+			&Alert{Severity: ToastError, Message: userMessage(a.catalog(r), err)})
 		return
 	}
 
-	SetToast(w, ToastSuccess, "Host key approved.")
+	SetToast(w, ToastSuccess, a.catalog(r).T("toast.host_key_approved"))
 	a.handleServerTest(w, r)
 }
 
@@ -351,7 +352,7 @@ func (a *App) handleGroupForm(w http.ResponseWriter, r *http.Request) {
 			data.Chosen[memberID] = true
 		}
 	}
-	a.RenderPartial(w, http.StatusOK, "group-form", data)
+	a.RenderPartial(w, r, http.StatusOK, "group-form", data)
 }
 
 func (a *App) handleGroupCreate(w http.ResponseWriter, r *http.Request) {
@@ -363,7 +364,7 @@ func (a *App) handleGroupCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	SetToast(w, ToastSuccess, "Group "+created.Name+" added.")
+	SetToast(w, ToastSuccess, a.catalog(r).Tf("toast.group_added", created.Name))
 	a.closePanel(w)
 }
 
@@ -381,7 +382,7 @@ func (a *App) handleGroupUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	SetToast(w, ToastSuccess, "Group "+group.Name+" updated.")
+	SetToast(w, ToastSuccess, a.catalog(r).Tf("toast.group_updated", group.Name))
 	a.closePanel(w)
 }
 
@@ -396,7 +397,7 @@ func (a *App) handleGroupDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	SetToast(w, ToastSuccess, "Group deleted.")
+	SetToast(w, ToastSuccess, a.catalog(r).T("toast.group_deleted"))
 	a.closePanel(w)
 }
 
@@ -415,12 +416,12 @@ func (a *App) renderGroupProblem(w http.ResponseWriter, r *http.Request,
 		chosen[id] = true
 	}
 
-	a.RenderPartial(w, formStatus(cause), "group-form", groupFormData{
+	a.RenderPartial(w, r, formStatus(cause), "group-form", groupFormData{
 		Group:   group,
 		Servers: servers,
 		Chosen:  chosen,
 		IsNew:   isNew,
-		Problem: userMessage(cause),
+		Problem: userMessage(a.catalog(r), cause),
 	})
 }
 
@@ -517,19 +518,22 @@ func formStatus(err error) int {
 //
 // An internal fault gets a flat message, because its text may name a path or a
 // command the reader has no business seeing.
-func userMessage(err error) string {
+// The validation text itself stays in the language of the package that raised
+// it. It names a field of a record and travels to the audit trail as well,
+// where a machine reads it.
+func userMessage(catalog *i18n.Catalog, err error) string {
 	switch {
 	case errors.Is(err, server.ErrValidation):
 		return strings.TrimPrefix(err.Error(), "invalid input: ")
 	case errors.Is(err, server.ErrNameTaken):
-		return "That name is already in use."
+		return catalog.T("error.name_taken")
 	case errors.Is(err, store.ErrNotFound):
-		return "That record no longer exists."
+		return catalog.T("error.not_found")
 	case errors.Is(err, transport.ErrHostKeyMismatch):
-		return "The server offers a different host key than the approved one."
+		return catalog.T("error.host_key_mismatch")
 	default:
 		slog.Error("server operation failed", "error", err)
-		return "The panel could not complete the request."
+		return catalog.T("error.generic")
 	}
 }
 

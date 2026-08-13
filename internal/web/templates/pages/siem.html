@@ -1,7 +1,7 @@
 {{define "content"}}
 <div class="d-flex flex-wrap align-items-center justify-content-between mb-3">
-  <h5 class="mb-0">SIEM Config</h5>
+  <h5 class="mb-0">{{t "nav.siem_config"}}</h5>
 </div>
 
-<div id="siem-panel">{{template "siem-panel" .Data}}</div>
+<div id="siem-panel" aria-live="polite">{{template "siem-panel" .Data}}</div>
 {{end}}

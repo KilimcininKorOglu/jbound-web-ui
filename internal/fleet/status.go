@@ -1,7 +1,5 @@
 package fleet
 
-import "fmt"
-
 // ServerStatus is where one server stands right now.
 type ServerStatus struct {
 	ServerID int64
@@ -57,19 +55,32 @@ func (s Status) Pending() bool {
 }
 
 // Summary is the sentence the status bar shows.
-func (s Status) Summary() string {
+//
+// The catalogue is a parameter rather than a package level default, because
+// the sentence is read by a person and the panel speaks more than one
+// language.
+func (s Status) Summary(catalog Catalog) string {
 	pending, total := s.Counts()
 
 	switch {
 	case total == 0:
-		return "There is no enabled server in this target."
+		return catalog.T("status.no_enabled_server")
 	case pending == 0:
-		return "Every server has loaded its current file."
+		return catalog.T("status.all_loaded")
 	case total == 1:
-		return "This server has unapplied changes."
+		return catalog.T("status.one_pending")
 	default:
-		return fmt.Sprintf("%d of %d servers have unapplied changes.", pending, total)
+		return catalog.Tf("status.some_pending", pending, total)
 	}
+}
+
+// Catalog is the part of the message catalogue this package needs.
+//
+// An interface rather than the catalogue type, so the fleet does not depend on
+// the package that holds the interface texts.
+type Catalog interface {
+	T(key string) string
+	Tf(key string, args ...any) string
 }
 
 // Stale names the servers whose cache is old, so the status bar can say that

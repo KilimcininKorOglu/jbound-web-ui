@@ -121,6 +121,47 @@
   background: #1B8A4E !important;
 }
 
+/* --- Buttons that look like links ---------------------------------------- */
+
+/* The menu toggle and the logout entry run a script and navigate nowhere. A
+   link that goes nowhere is announced as one that does, so they are buttons
+   and take the shape of the menu entries around them. */
+button.menu-link,
+button.layout-menu-toggle {
+  width: 100%;
+  background: none;
+  border: none;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+button.layout-menu-toggle {
+  width: auto;
+}
+
+/* --- Skip link ----------------------------------------------------------- */
+
+/* The first focusable element of the page. It stays out of the way until it
+   is focused, which is the only time it is useful. */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 10000;
+  padding: 0.75rem 1rem;
+  background: #1B8A4E;
+  color: #FFFFFF;
+  border-radius: 0 0 0.375rem 0;
+  text-decoration: none;
+}
+
+.skip-link:focus {
+  left: 0;
+  color: #FFFFFF;
+}
+
 /* --- Layout details ----------------------------------------------------- */
 
 .navbar-logo {

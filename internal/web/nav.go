@@ -4,6 +4,8 @@ import "unbound-web/internal/auth"
 
 // MenuItem is one navigation entry.
 type MenuItem struct {
+	// Label is a catalogue key rather than a text. The layout looks it up, so
+	// one menu serves every language.
 	Label string
 	Path  string
 	Icon  string
@@ -26,25 +28,25 @@ type MenuSection struct {
 // panel manages a fleet.
 var menu = []MenuSection{
 	{
-		Title: "DNS",
+		Title: "nav.section.dns",
 		Items: []MenuItem{
-			{Label: "DNS Records", Path: "/dns", Icon: "bx-server"},
-			{Label: "Record Diff", Path: "/diff", Icon: "bx-git-compare"},
+			{Label: "nav.dns_records", Path: "/dns", Icon: "bx-server"},
+			{Label: "nav.record_diff", Path: "/diff", Icon: "bx-git-compare"},
 		},
 	},
 	{
-		Title: "Infrastructure",
+		Title: "nav.section.infrastructure",
 		Items: []MenuItem{
-			{Label: "Servers", Path: "/servers", Icon: "bx-network-chart", AdminOnly: true},
+			{Label: "nav.servers", Path: "/servers", Icon: "bx-network-chart", AdminOnly: true},
 		},
 	},
 	{
-		Title: "System",
+		Title: "nav.section.system",
 		Items: []MenuItem{
-			{Label: "Audit Logs", Path: "/logs", Icon: "bx-list-ul"},
-			{Label: "SIEM Config", Path: "/siem", Icon: "bx-transfer", AdminOnly: true},
-			{Label: "Settings", Path: "/settings", Icon: "bx-cog", AdminOnly: true},
-			{Label: "System Info", Path: "/system", Icon: "bx-info-circle"},
+			{Label: "nav.audit_logs", Path: "/logs", Icon: "bx-list-ul"},
+			{Label: "nav.siem_config", Path: "/siem", Icon: "bx-transfer", AdminOnly: true},
+			{Label: "nav.settings", Path: "/settings", Icon: "bx-cog", AdminOnly: true},
+			{Label: "nav.system_info", Path: "/system", Icon: "bx-info-circle"},
 		},
 	},
 }

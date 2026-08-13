@@ -2,11 +2,11 @@ package web
 
 import (
 	"net/http"
-	"strconv"
 	"strings"
 
 	"unbound-web/internal/dnsfile"
 	"unbound-web/internal/fleet"
+	"unbound-web/internal/i18n"
 	"unbound-web/internal/server"
 )
 
@@ -39,7 +39,7 @@ func (a *App) handleDiffPage(w http.ResponseWriter, r *http.Request) {
 		a.dnsError(w, "cannot compare the servers", err)
 		return
 	}
-	a.Render(w, r, http.StatusOK, "diff", PageData{Title: "Record Diff", Data: data})
+	a.Render(w, r, http.StatusOK, "diff", PageData{Title: "nav.record_diff", Data: data})
 }
 
 // handleDiffTable re-renders the table, which is what the filter and every
@@ -50,10 +50,12 @@ func (a *App) handleDiffTable(w http.ResponseWriter, r *http.Request) {
 		a.dnsError(w, "cannot compare the servers", err)
 		return
 	}
-	a.RenderPartial(w, http.StatusOK, "diff-table", data)
+	a.RenderPartial(w, r, http.StatusOK, "diff-table", data)
 }
 
 func (a *App) diffPageData(r *http.Request) (diffPageData, error) {
+	catalog := a.catalog(r)
+
 	if err := r.ParseForm(); err != nil {
 		return diffPageData{}, err
 	}
@@ -87,61 +89,65 @@ func (a *App) diffPageData(r *http.Request) (diffPageData, error) {
 		Groups:         groups,
 		Servers:        servers,
 		OnlyMismatches: only,
-		Summary:        diffSummary(diff),
-		StaleNote:      diffStaleNote(diff),
+		Summary:        diffSummary(catalog, diff),
+		StaleNote:      diffStaleNote(catalog, diff),
 		Columns:        len(diff.Servers) + 4,
 	}, nil
 }
 
 // diffSummary says how much of the target disagrees.
-func diffSummary(diff fleet.Diff) string {
+func diffSummary(catalog *i18n.Catalog, diff fleet.Diff) string {
 	switch {
 	case len(diff.Servers) < 2:
-		return "Choose a group to compare its servers."
+		return catalog.T("diff.choose_group")
 	case len(diff.Rows) == 0 && diff.OnlyMismatches:
-		return "The servers hold the same records."
+		return catalog.T("diff.same")
 	case len(diff.Rows) == 0:
-		return "There is nothing cached for these servers yet."
+		return catalog.T("diff.nothing_cached")
 	case diff.OnlyMismatches:
-		return plural(len(diff.Rows), "record") + " differ across " +
-			plural(len(diff.Servers), "server") + "."
+		return catalog.Tf("diff.differ_only",
+			plural(catalog, "record", len(diff.Rows)),
+			plural(catalog, "server", len(diff.Servers)))
 	default:
-		return plural(diff.Mismatches(), "record") + " of " +
-			plural(len(diff.Rows), "record") + " differ across " +
-			plural(len(diff.Servers), "server") + "."
+		return catalog.Tf("diff.differ",
+			plural(catalog, "record", diff.Mismatches()),
+			plural(catalog, "record", len(diff.Rows)),
+			plural(catalog, "server", len(diff.Servers)))
 	}
 }
 
 // plural writes a count with its noun, so a summary reads as a sentence
 // rather than as a number with an s bolted on.
-func plural(count int, noun string) string {
+//
+// The two forms are separate keys, because a language decides for itself where
+// the plural sits and whether it exists at all.
+func plural(catalog *i18n.Catalog, noun string, count int) string {
 	if count == 1 {
-		return "1 " + noun
+		return catalog.T("diff.count." + noun + ".one")
 	}
-	return strconv.Itoa(count) + " " + noun + "s"
+	return catalog.Tf("diff.count."+noun+".many", count)
 }
 
 // diffStaleNote warns that a difference may be read from an old cache.
-func diffStaleNote(diff fleet.Diff) string {
+func diffStaleNote(catalog *i18n.Catalog, diff fleet.Diff) string {
 	stale := diff.Stale()
 	if len(stale) == 0 {
 		return ""
 	}
-	return "The panel has not read " + strings.Join(stale, ", ") +
-		" recently, so a difference shown for it may already be gone."
+	return catalog.Tf("diff.stale_note_long", strings.Join(stale, ", "))
 }
 
 // handleDiffRepair writes one record to every server that lacks it or holds a
 // different value.
 func (a *App) handleDiffRepair(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		a.reportProblem(w, "The form could not be read.", http.StatusBadRequest)
+		a.reportProblem(w, r, a.catalog(r).T("error.form_unreadable"), http.StatusBadRequest)
 		return
 	}
 
 	target, err := targetFromValues(r.Form)
 	if err != nil {
-		a.reportProblem(w, recordMessage(err), http.StatusBadRequest)
+		a.reportProblem(w, r, recordMessage(a.catalog(r), err), http.StatusBadRequest)
 		return
 	}
 
@@ -152,20 +158,20 @@ func (a *App) handleDiffRepair(w http.ResponseWriter, r *http.Request) {
 
 	report, err := a.Records.Repair(r.Context(), a.actor(r), target, want)
 	if err != nil {
-		a.reportProblem(w, recordMessage(err), dnsStatus(err))
+		a.reportProblem(w, r, recordMessage(a.catalog(r), err), dnsStatus(err))
 		return
 	}
 
-	a.renderReport(w, report, repairReport)
+	a.renderReport(w, r, report, repairReport)
 }
 
 var repairReport = reportKind{
-	Title:   "Repair",
-	OK:      "Every server now holds the record.",
-	Partial: "Some servers took the record and others did not. The ones that failed still differ.",
-	None:    "No server took the record.",
+	Title:   "report.repair.title",
+	OK:      "report.repair.ok",
+	Partial: "report.repair.partial",
+	None:    "report.repair.none",
 
-	ToastOK:      "The servers agree about the record now.",
-	ToastPartial: "Some servers still differ.",
-	ToastNone:    "The repair reached no server.",
+	ToastOK:      "report.repair.toast_ok",
+	ToastPartial: "report.repair.toast_partial",
+	ToastNone:    "report.repair.toast_none",
 }

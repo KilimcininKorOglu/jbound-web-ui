@@ -3,27 +3,28 @@
 {{define "record-report"}}
 <div class="card">
   <div class="card-header">
-    <h6 class="mb-0">{{.Kind.Title}}</h6>
+    <h6 class="mb-0">{{t .Kind.Title}}</h6>
   </div>
   <div class="card-body">
     {{if .Problem}}
       {{template "alert" (alert "error" .Problem)}}
     {{else}}
       {{if .Report.OK}}
-        {{template "alert" (alert "success" .Kind.OK)}}
+        {{template "alert" (alert "success" (t .Kind.OK))}}
       {{else if .Report.Partial}}
-        {{template "alert" (alert "warning" .Kind.Partial)}}
+        {{template "alert" (alert "warning" (t .Kind.Partial))}}
       {{else}}
-        {{template "alert" (alert "error" .Kind.None)}}
+        {{template "alert" (alert "error" (t .Kind.None))}}
       {{end}}
 
       <div class="table-responsive">
         <table class="table table-sm">
+          <caption class="visually-hidden">{{t "report.caption"}}</caption>
           <thead>
             <tr>
-              <th>Server</th>
-              <th>Status</th>
-              <th>Message</th>
+              <th scope="col">{{t "common.server"}}</th>
+              <th scope="col">{{t "report.status"}}</th>
+              <th scope="col">{{t "report.message"}}</th>
             </tr>
           </thead>
           <tbody>
@@ -32,11 +33,11 @@
               <td><strong>{{.ServerName}}</strong></td>
               <td>
                 {{if eq .Status "success"}}
-                <span class="badge bg-label-success" data-field="status">success</span>
+                <span class="badge bg-label-success" data-field="status">{{t "report.success"}}</span>
                 {{else if eq .Status "skipped"}}
-                <span class="badge bg-label-secondary" data-field="status">skipped</span>
+                <span class="badge bg-label-secondary" data-field="status">{{t "report.skipped"}}</span>
                 {{else}}
-                <span class="badge bg-label-danger" data-field="status">failed</span>
+                <span class="badge bg-label-danger" data-field="status">{{t "report.failed"}}</span>
                 {{end}}
               </td>
               <td class="text-muted">{{.Message}}</td>
@@ -50,7 +51,7 @@
     <div class="dns-toolbar">
       <button class="btn btn-outline-secondary btn-sm" type="button"
               data-action="close-record-panel">
-        Close
+        {{t "report.close"}}
       </button>
     </div>
   </div>

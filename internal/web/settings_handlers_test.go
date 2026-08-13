@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"unbound-web/internal/i18n"
 	"unbound-web/internal/settings"
 )
 
@@ -92,8 +93,31 @@ func TestTheSettingsPageShowsEverySetting(t *testing.T) {
 		if !strings.Contains(body, `data-field="`+definition.Key+`"`) {
 			t.Errorf("the page has no control for %s", definition.Key)
 		}
-		if !strings.Contains(body, definition.Label) {
+		label := env.app.Catalogs.Catalog(i18n.Default).T("setting." + definition.Key + ".label")
+		if !strings.Contains(body, label) {
 			t.Errorf("the page does not label %s", definition.Key)
+		}
+	}
+}
+
+// A choice list that reads "en" and "system" asks the operator to know the
+// stored values. The names come from the same keys the layout controls use.
+func TestTheChoicesOfASettingAreNamed(t *testing.T) {
+	env := newTestEnv(t)
+	cookie := env.adminCookie(t)
+
+	body := env.do(t, httptest.NewRequest(http.MethodGet, "/settings", nil), cookie).Body.String()
+
+	for _, raw := range []string{">en</option>", ">system</option>"} {
+		if strings.Contains(body, raw) {
+			t.Errorf("a choice reads %s rather than its name", raw)
+		}
+	}
+
+	catalog := env.app.Catalogs.Catalog(i18n.Default)
+	for _, key := range []string{"layout.language.en", "layout.theme.system"} {
+		if !strings.Contains(body, ">"+catalog.T(key)+"</option>") {
+			t.Errorf("the page does not name %s", key)
 		}
 	}
 }

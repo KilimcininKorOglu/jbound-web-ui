@@ -1,6 +1,6 @@
 # Hot reload configuration for the development container.
-# The panel binary is rebuilt whenever a Go source, template or static asset
-# changes. Production builds go through the Makefile instead.
+# The panel binary is rebuilt whenever a Go source, template, static asset or
+# language file changes. Production builds go through the Makefile instead.
 
 root = "."
 tmp_dir = "tmp"
@@ -8,7 +8,7 @@ tmp_dir = "tmp"
 [build]
   cmd = "go build -o ./tmp/unbound-web ./cmd/unbound-web"
   bin = "./tmp/unbound-web"
-  include_ext = ["go", "html", "css", "js", "sql"]
+  include_ext = ["go", "html", "css", "js", "sql", "json"]
   exclude_dir = ["tmp", "dist", "docker", "deploy", "scripts", "helper-projects", ".git"]
   exclude_regex = ["_test\\.go"]
   delay = 500

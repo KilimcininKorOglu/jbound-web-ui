@@ -6,7 +6,7 @@
 {{$query := .Query}}
 <div class="card">
   <div class="card-header">
-    <h6 class="mb-0">Query a name</h6>
+    <h6 class="mb-0">{{t "query.title"}}</h6>
   </div>
   <div class="card-body">
     <form hx-post="/dns/query" hx-target="#record-panel" hx-swap="innerHTML">
@@ -15,16 +15,16 @@
 
       <div class="row g-3">
         <div class="col-md-5">
-          <label class="form-label" for="domain">Name</label>
+          <label class="form-label" for="domain">{{t "common.name"}}</label>
           <input class="form-control" id="domain" name="domain" value="{{.Domain}}"
                  placeholder="www.example.net" autocapitalize="none"
                  spellcheck="false" required>
         </div>
 
         <div class="col-md-3">
-          <label class="form-label" for="query_type">Type</label>
+          <label class="form-label" for="query_type">{{t "common.type"}}</label>
           <select class="form-select" id="query_type" name="query_type">
-            <option value="">Any</option>
+            <option value="">{{t "query.any"}}</option>
             {{$type := .Type}}
             {{range .Types}}
             <option value="{{.}}" {{if eq $type .}}selected{{end}}>{{.}}</option>
@@ -33,13 +33,13 @@
         </div>
 
         <div class="col-md-4">
-          <label class="form-label" for="query_target">Ask</label>
+          <label class="form-label" for="query_target">{{t "query.ask_label"}}</label>
           <select class="form-select" id="query_target" name="target">
             <option value="all:0" {{if eq $query.Scope "all"}}selected{{end}}>
-              Every server
+              {{t "common.every_server"}}
             </option>
             {{if .Groups}}
-            <optgroup label="Groups">
+            <optgroup label="{{t "common.groups"}}">
               {{range .Groups}}
               <option value="group:{{.ID}}"
                       {{if and (eq $query.Scope "group") (eq $query.GroupID .ID)}}selected{{end}}>
@@ -49,7 +49,7 @@
             </optgroup>
             {{end}}
             {{if .Servers}}
-            <optgroup label="Servers">
+            <optgroup label="{{t "common.servers"}}">
               {{range .Servers}}
               <option value="server:{{.ID}}"
                       {{if and (eq $query.Scope "server") (eq $query.ServerID .ID)}}selected{{end}}>
@@ -63,9 +63,9 @@
       </div>
 
       <div class="dns-toolbar mt-4">
-        <button class="btn btn-primary" type="submit">Ask</button>
+        <button class="btn btn-primary" type="submit">{{t "query.submit"}}</button>
         <button class="btn btn-outline-secondary" type="button" data-action="close-record-panel">
-          Close
+          {{t "query.close"}}
         </button>
       </div>
     </form>
@@ -73,17 +73,18 @@
     {{if .Asked}}
     <hr>
     {{if .Report.Agree}}
-      {{template "alert" (alert "success" "Every server that answered gave the same answer.")}}
+      {{template "alert" (alert "success" (t "query.agree"))}}
     {{else}}
-      {{template "alert" (alert "warning" "The servers do not agree. Compare the answers below.")}}
+      {{template "alert" (alert "warning" (t "query.disagree"))}}
     {{end}}
 
     <div class="table-responsive">
       <table class="table table-sm">
+        <caption class="visually-hidden">{{t "query.caption"}}</caption>
         <thead>
           <tr>
-            <th>Server</th>
-            <th>Answer</th>
+            <th scope="col">{{t "common.server"}}</th>
+            <th scope="col">{{t "query.answer"}}</th>
           </tr>
         </thead>
         <tbody>
@@ -95,11 +96,11 @@
             </td>
             <td>
               {{if .Skipped}}
-              <span class="text-muted">skipped, the server is disabled</span>
+              <span class="text-muted">{{t "query.skipped"}}</span>
               {{else if .Err}}
               <span class="text-danger" data-field="query-error">{{.Err}}</span>
               {{else if not .Records}}
-              <span class="text-muted" data-field="query-empty">no answer</span>
+              <span class="text-muted" data-field="query-empty">{{t "query.no_answer"}}</span>
               {{else}}
               <pre class="mb-0" data-field="query-answer">{{range .Records}}{{.}}
 {{end}}</pre>

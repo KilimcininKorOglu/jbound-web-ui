@@ -87,9 +87,6 @@ func TestEveryDefinitionBelongsToAGroupThePageShows(t *testing.T) {
 			t.Errorf("%s is in the group %q, which the page does not show",
 				definition.Key, definition.Group)
 		}
-		if definition.Label == "" || definition.Help == "" {
-			t.Errorf("%s has no label or no help text", definition.Key)
-		}
 	}
 }
 

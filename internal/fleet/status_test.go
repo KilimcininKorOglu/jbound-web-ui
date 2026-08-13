@@ -1,6 +1,22 @@
 package fleet
 
-import "testing"
+import (
+	"testing"
+
+	"unbound-web/internal/i18n"
+)
+
+// englishCatalog is the source language of the panel, which is what these
+// sentences are written in.
+func englishCatalog(t *testing.T) Catalog {
+	t.Helper()
+
+	catalogs, err := i18n.Load()
+	if err != nil {
+		t.Fatalf("cannot load the catalogues: %v", err)
+	}
+	return catalogs.Catalog(i18n.Default)
+}
 
 func statusOf(entries ...ServerStatus) Status {
 	return Status{Servers: entries, CanApply: true}
@@ -13,7 +29,7 @@ func TestTheSummaryNamesHowManyServersLagBehind(t *testing.T) {
 		ServerStatus{Name: "dns3", Enabled: true},
 	)
 
-	if got := status.Summary(); got != "2 of 3 servers have unapplied changes." {
+	if got := status.Summary(englishCatalog(t)); got != "2 of 3 servers have unapplied changes." {
 		t.Errorf("summary = %q", got)
 	}
 	if !status.Pending() {
@@ -32,7 +48,7 @@ func TestADisabledServerIsLeftOutOfTheCount(t *testing.T) {
 	if pending != 1 || total != 1 {
 		t.Fatalf("counts = %d of %d", pending, total)
 	}
-	if got := status.Summary(); got != "This server has unapplied changes." {
+	if got := status.Summary(englishCatalog(t)); got != "This server has unapplied changes." {
 		t.Errorf("summary = %q", got)
 	}
 }
@@ -46,13 +62,13 @@ func TestASettledTargetSaysSo(t *testing.T) {
 	if status.Pending() {
 		t.Error("a settled target reads as pending")
 	}
-	if got := status.Summary(); got != "Every server has loaded its current file." {
+	if got := status.Summary(englishCatalog(t)); got != "Every server has loaded its current file." {
 		t.Errorf("summary = %q", got)
 	}
 }
 
 func TestAnEmptyTargetSaysSo(t *testing.T) {
-	if got := statusOf().Summary(); got != "There is no enabled server in this target." {
+	if got := statusOf().Summary(englishCatalog(t)); got != "There is no enabled server in this target." {
 		t.Errorf("summary = %q", got)
 	}
 }

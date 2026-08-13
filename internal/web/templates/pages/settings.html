@@ -1,7 +1,7 @@
 {{define "content"}}
 <div class="d-flex flex-wrap align-items-center justify-content-between mb-3">
-  <h5 class="mb-0">Settings</h5>
+  <h5 class="mb-0">{{t "nav.settings"}}</h5>
 </div>
 
-<div id="settings-panel">{{template "settings-panel" .Data}}</div>
+<div id="settings-panel" aria-live="polite">{{template "settings-panel" .Data}}</div>
 {{end}}

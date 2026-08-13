@@ -5,27 +5,43 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"unbound-web/internal/i18n"
 )
 
 func TestEveryPageParsesWithItsLayout(t *testing.T) {
 	// A page whose layout is missing, or a layout that no page uses, would
 	// otherwise only surface when someone opens that one route.
-	set, err := parseTemplates()
+	catalogs, err := i18n.Load()
+	if err != nil {
+		t.Fatalf("cannot load the catalogues: %v", err)
+	}
+
+	sets, err := parseTemplates(catalogs)
 	if err != nil {
 		t.Fatalf("parseTemplates returned an error: %v", err)
 	}
 
-	for name := range pageLayouts {
-		tmpl, ok := set.pages[name]
+	// Every language parses every page. A text helper that is missing in one
+	// catalogue would otherwise only surface when somebody switches to it.
+	for _, language := range catalogs.Languages() {
+		set, ok := sets[language]
 		if !ok {
-			t.Errorf("page %s was not parsed", name)
-			continue
+			t.Fatalf("%s was not parsed", language)
 		}
-		if tmpl.Lookup("layout") == nil {
-			t.Errorf("page %s has no layout template", name)
-		}
-		if tmpl.Lookup("content") == nil {
-			t.Errorf("page %s defines no content template", name)
+
+		for name := range pageLayouts {
+			tmpl, ok := set.pages[name]
+			if !ok {
+				t.Errorf("%s: page %s was not parsed", language, name)
+				continue
+			}
+			if tmpl.Lookup("layout") == nil {
+				t.Errorf("%s: page %s has no layout template", language, name)
+			}
+			if tmpl.Lookup("content") == nil {
+				t.Errorf("%s: page %s defines no content template", language, name)
+			}
 		}
 	}
 }

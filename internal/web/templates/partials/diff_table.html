@@ -15,20 +15,21 @@
 
   <div class="table-responsive">
     <table class="table table-hover">
+      <caption class="visually-hidden">{{t "diff.caption"}}</caption>
       <thead>
         <tr>
-          <th>Name</th>
-          <th>Type</th>
-          <th>Value</th>
+          <th scope="col">{{t "common.name"}}</th>
+          <th scope="col">{{t "common.type"}}</th>
+          <th scope="col">{{t "common.value"}}</th>
           {{range .Diff.Servers}}
-          <th>
+          <th scope="col">
             {{.Name}}
             {{if .Stale}}
-            <span class="badge bg-label-warning ms-1" data-field="stale">stale</span>
+            <span class="badge bg-label-warning ms-1" data-field="stale">{{t "diff.stale"}}</span>
             {{end}}
           </th>
           {{end}}
-          <th class="text-end">Actions</th>
+          <th scope="col" class="text-end">{{t "common.actions"}}</th>
         </tr>
       </thead>
       <tbody>
@@ -43,12 +44,12 @@
           {{range .Cells}}
           <td>
             {{if eq .State "present"}}
-            <span class="badge bg-label-success" data-field="cell">present</span>
+            <span class="badge bg-label-success" data-field="cell">{{t "diff.present"}}</span>
             {{else if eq .State "different"}}
-            <span class="badge bg-label-danger" title="This server holds {{.Value}}"
-                  data-field="cell">different</span>
+            <span class="badge bg-label-danger" title="{{tf "diff.different_title" .Value}}"
+                  data-field="cell">{{t "diff.different"}}</span>
             {{else}}
-            <span class="badge bg-label-secondary" data-field="cell">missing</span>
+            <span class="badge bg-label-secondary" data-field="cell">{{t "diff.missing"}}</span>
             {{end}}
           </td>
           {{end}}
@@ -60,9 +61,9 @@
                     hx-post="/diff/repair" hx-include="#diff-controls"
                     hx-vals='{"fqdn": "{{.FQDN}}", "type": "{{.Type}}", "value": "{{.Value}}", "priority": "{{.Priority}}"}'
                     hx-target="#record-panel" hx-swap="innerHTML"
-                    hx-confirm="Write {{.Type}} {{.FQDN}} to every server that differs?"
-                    data-confirm-title="Repair record">
-              Repair
+                    hx-confirm="{{tf "diff.repair_question" .Type .FQDN}}"
+                    data-confirm-title="{{t "diff.repair_title"}}">
+              {{t "diff.repair"}}
             </button>
             {{end}}
           </td>

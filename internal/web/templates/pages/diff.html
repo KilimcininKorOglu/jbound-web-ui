@@ -1,6 +1,6 @@
 {{define "content"}}
 <div class="d-flex flex-wrap align-items-center justify-content-between mb-3">
-  <h5 class="mb-0">Record Diff</h5>
+  <h5 class="mb-0">{{t "nav.record_diff"}}</h5>
 </div>
 
 {{/* The comparison is between the servers of one group. A single server has
@@ -12,14 +12,14 @@
           hx-trigger="change from:(#diff-controls select), change from:(#diff-controls input)">
 
       <div class="col-md-5">
-        <label class="form-label" for="diff_target">Compare</label>
+        <label class="form-label" for="diff_target">{{t "diff.compare"}}</label>
         <select class="form-select" id="diff_target" name="target">
           <option value="all:0" {{if eq .Data.Query.Scope "all"}}selected{{end}}>
-            Every server
+            {{t "common.every_server"}}
           </option>
           {{$query := .Data.Query}}
           {{if .Data.Groups}}
-          <optgroup label="Groups">
+          <optgroup label="{{t "common.groups"}}">
             {{range .Data.Groups}}
             <option value="group:{{.ID}}"
                     {{if and (eq $query.Scope "group") (eq $query.GroupID .ID)}}selected{{end}}>
@@ -32,9 +32,9 @@
       </div>
 
       <div class="col-md-4">
-        <label class="form-label" for="diff_search">Search</label>
+        <label class="form-label" for="diff_search">{{t "common.search"}}</label>
         <input class="form-control" id="diff_search" name="search" type="search"
-               value="{{.Data.Query.Search}}" placeholder="name or value"
+               value="{{.Data.Query.Search}}" placeholder="{{t "common.search_placeholder"}}"
                autocapitalize="none" spellcheck="false">
       </div>
 
@@ -44,7 +44,7 @@
                  name="only_mismatches" value="1"
                  {{if .Data.OnlyMismatches}}checked{{end}}>
           <label class="form-check-label" for="only_mismatches">
-            Only show differences
+            {{t "diff.only_differences"}}
           </label>
         </div>
       </div>
@@ -60,7 +60,7 @@
   </div>
 </div>
 
-<div id="record-panel" class="mb-4"></div>
+<div id="record-panel" class="mb-4" aria-live="polite"></div>
 
 <div id="diff-table"
      hx-get="/diff/table" hx-include="#diff-controls"

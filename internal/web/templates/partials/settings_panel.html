@@ -9,10 +9,10 @@
     <div class="col-lg-6">
       <div class="card h-100">
         <div class="card-header">
-          <h6 class="mb-0">{{.Title}}</h6>
+          <h6 class="mb-0">{{t .Title}}</h6>
         </div>
         <div class="card-body">
-          <p class="form-text mt-0 mb-4">{{.Help}}</p>
+          <p class="form-text mt-0 mb-4">{{t .Help}}</p>
 
           {{range .Fields}}
           {{if eq .Kind "bool"}}
@@ -21,43 +21,45 @@
                    id="{{.Key}}" name="{{.Key}}"
                    aria-describedby="{{.Key}}-help"
                    {{if .Checked}}checked{{end}} data-field="{{.Key}}">
-            <label class="form-check-label" for="{{.Key}}">{{.Label}}</label>
-            <div class="form-text" id="{{.Key}}-help">{{.Help}}</div>
+            <label class="form-check-label" for="{{.Key}}">{{t (print "setting." .Key ".label")}}</label>
+            <div class="form-text" id="{{.Key}}-help">{{t (print "setting." .Key ".help")}}</div>
           </div>
 
           {{else if eq .Kind "enum"}}
           <div class="mb-4">
-            <label class="form-label" for="{{.Key}}">{{.Label}}</label>
+            <label class="form-label" for="{{.Key}}">{{t (print "setting." .Key ".label")}}</label>
             <select class="form-select" id="{{.Key}}" name="{{.Key}}"
                     aria-describedby="{{.Key}}-help" data-field="{{.Key}}">
-              {{$current := .Value}}
+              {{$field := .}}
               {{range .Options}}
-              <option value="{{.}}" {{if eq . $current}}selected{{end}}>{{.}}</option>
+              <option value="{{.}}" {{if eq . $field.Value}}selected{{end}}>{{t ($field.OptionLabel .)}}</option>
               {{end}}
             </select>
-            <div class="form-text" id="{{.Key}}-help">{{.Help}}</div>
+            <div class="form-text" id="{{.Key}}-help">{{t (print "setting." .Key ".help")}}</div>
           </div>
 
           {{else if eq .Kind "int"}}
           <div class="mb-4">
-            <label class="form-label" for="{{.Key}}">{{.Label}}</label>
+            <label class="form-label" for="{{.Key}}">{{t (print "setting." .Key ".label")}}</label>
             <input class="form-control" type="number" inputmode="numeric"
                    id="{{.Key}}" name="{{.Key}}" value="{{.Value}}"
                    min="{{.MinInt}}" max="{{.MaxInt}}"
                    aria-describedby="{{.Key}}-help" data-field="{{.Key}}">
             <div class="form-text" id="{{.Key}}-help">
-              {{.Help}} Between {{.MinInt}} and {{.MaxInt}}.
+              {{t (print "setting." .Key ".help")}}
+              {{tf "settings.between" .MinInt .MaxInt}}
             </div>
           </div>
 
           {{else}}
           <div class="mb-4">
-            <label class="form-label" for="{{.Key}}">{{.Label}}</label>
+            <label class="form-label" for="{{.Key}}">{{t (print "setting." .Key ".label")}}</label>
             <input class="form-control" type="text" id="{{.Key}}" name="{{.Key}}"
                    value="{{.Value}}" spellcheck="false" autocapitalize="none"
                    aria-describedby="{{.Key}}-help" data-field="{{.Key}}">
             <div class="form-text" id="{{.Key}}-help">
-              {{.Help}} Between {{duration .Min}} and {{duration .Max}}.
+              {{t (print "setting." .Key ".help")}}
+              {{tf "settings.between" (duration .Min) (duration .Max)}}
             </div>
           </div>
           {{end}}
@@ -70,7 +72,7 @@
 
   <div class="dns-toolbar mt-4">
     <button class="btn btn-primary" type="submit" data-field="save-settings">
-      Save settings
+      {{t "settings.save"}}
     </button>
   </div>
 </form>

@@ -2,7 +2,7 @@
      and never shows this, so it only carries what a client without htmx needs
      to continue. The phase gate reads the role out of it. */}}
 {{define "loggedin"}}
-<p>Signed in as <span data-field="username">{{.Username}}</span>
-   with the role <span data-field="role">{{.Role}}</span>.</p>
-<p><a href="/dns">Continue to the panel</a></p>
+<p>{{t "loggedin.signed_in"}} <span data-field="username">{{.Username}}</span>
+   {{t "loggedin.with_role"}} <span data-field="role">{{.Role}}</span>.</p>
+<p><a href="/dns">{{t "loggedin.continue"}}</a></p>
 {{end}}

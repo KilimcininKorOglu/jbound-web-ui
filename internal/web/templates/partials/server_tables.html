@@ -3,18 +3,19 @@
 {{define "server-tables"}}
 <div class="card mb-4">
   <div class="card-header">
-    <h5 class="mb-0">Managed servers</h5>
+    <h5 class="mb-0">{{t "servers.managed"}}</h5>
   </div>
   <div class="table-responsive">
     <table class="table table-hover">
+      <caption class="visually-hidden">{{t "servers.caption"}}</caption>
       <thead>
         <tr>
-          <th>Name</th>
-          <th>Endpoint</th>
-          <th>Status</th>
-          <th>Records</th>
-          <th>Last contact</th>
-          <th class="text-end">Actions</th>
+          <th scope="col">{{t "common.name"}}</th>
+          <th scope="col">{{t "servers.endpoint"}}</th>
+          <th scope="col">{{t "servers.status"}}</th>
+          <th scope="col">{{t "servers.records"}}</th>
+          <th scope="col">{{t "servers.last_contact"}}</th>
+          <th scope="col" class="text-end">{{t "common.actions"}}</th>
         </tr>
       </thead>
       <tbody>
@@ -26,40 +27,40 @@
             {{template "server-status" .}}
             {{if .Pending}}
             <span class="badge bg-label-warning ms-1" data-field="pending"
-                  title="The file on this server carries changes its resolver has not loaded.">
-              unapplied changes
+                  title="{{t "servers.pending_title"}}">
+              {{t "servers.pending"}}
             </span>
             {{end}}
           </td>
           <td class="text-muted">{{.Records}}</td>
           <td class="text-muted">
-            {{if .LastSeenAt}}{{localTimePtr .LastSeenAt}}{{else}}never{{end}}
+            {{if .LastSeenAt}}{{localTimePtr .LastSeenAt}}{{else}}{{t "servers.never"}}{{end}}
           </td>
           <td class="text-end">
             <button class="btn btn-sm btn-outline-primary" type="button"
                     hx-post="/servers/{{.ID}}/test" hx-target="#server-panel" hx-swap="innerHTML">
-              Test
+              {{t "servers.test"}}
             </button>
             <button class="btn btn-sm btn-outline-primary" type="button"
                     hx-get="/servers/{{.ID}}/key" hx-target="#server-panel" hx-swap="innerHTML">
-              Key
+              {{t "servers.key"}}
             </button>
             <button class="btn btn-sm btn-outline-primary" type="button"
                     hx-get="/servers/{{.ID}}/edit" hx-target="#server-panel" hx-swap="innerHTML">
-              Edit
+              {{t "common.edit"}}
             </button>
             <button class="btn btn-sm btn-outline-danger" type="button"
                     hx-delete="/servers/{{.ID}}" hx-target="#server-panel" hx-swap="innerHTML"
-                    hx-confirm="Deleting {{.Name}} also removes its private key and its group membership."
-                    data-confirm-title="Delete server">
-              Delete
+                    hx-confirm="{{tf "servers.delete_question" .Name}}"
+                    data-confirm-title="{{t "servers.delete_title"}}">
+              {{t "common.delete"}}
             </button>
           </td>
         </tr>
         {{else}}
         <tr>
           <td colspan="6" class="text-center text-muted py-4">
-            No servers yet. Add the first one to start managing records.
+            {{t "servers.none"}}
           </td>
         </tr>
         {{end}}
@@ -70,20 +71,21 @@
 
 <div class="card">
   <div class="card-header d-flex align-items-center justify-content-between">
-    <h5 class="mb-0">Groups</h5>
+    <h5 class="mb-0">{{t "servers.groups"}}</h5>
     <button class="btn btn-primary btn-sm" type="button"
             hx-get="/groups/new" hx-target="#server-panel" hx-swap="innerHTML">
-      <i class="bx bx-plus"></i> Add group
+      <i class="bx bx-plus" aria-hidden="true"></i> {{t "servers.add_group"}}
     </button>
   </div>
   <div class="table-responsive">
     <table class="table table-hover">
+      <caption class="visually-hidden">{{t "servers.groups_caption"}}</caption>
       <thead>
         <tr>
-          <th>Name</th>
-          <th>Description</th>
-          <th>Members</th>
-          <th class="text-end">Actions</th>
+          <th scope="col">{{t "common.name"}}</th>
+          <th scope="col">{{t "servers.description"}}</th>
+          <th scope="col">{{t "servers.members"}}</th>
+          <th scope="col" class="text-end">{{t "common.actions"}}</th>
         </tr>
       </thead>
       <tbody>
@@ -93,25 +95,25 @@
           <td class="text-muted">{{.Description}}</td>
           <td>
             {{range .Members}}<span class="badge bg-label-primary me-1">{{.Name}}</span>{{end}}
-            {{if not .Members}}<span class="text-muted">empty</span>{{end}}
+            {{if not .Members}}<span class="text-muted">{{t "servers.empty_group"}}</span>{{end}}
           </td>
           <td class="text-end">
             <button class="btn btn-sm btn-outline-primary" type="button"
                     hx-get="/groups/{{.ID}}/edit" hx-target="#server-panel" hx-swap="innerHTML">
-              Edit
+              {{t "common.edit"}}
             </button>
             <button class="btn btn-sm btn-outline-danger" type="button"
                     hx-delete="/groups/{{.ID}}" hx-target="#server-panel" hx-swap="innerHTML"
-                    hx-confirm="Deleting {{.Name}} leaves its servers in place."
-                    data-confirm-title="Delete group">
-              Delete
+                    hx-confirm="{{tf "servers.group_delete_question" .Name}}"
+                    data-confirm-title="{{t "servers.group_delete_title"}}">
+              {{t "common.delete"}}
             </button>
           </td>
         </tr>
         {{else}}
         <tr>
           <td colspan="4" class="text-center text-muted py-4">
-            No groups yet. A group targets several servers with one change.
+            {{t "servers.no_groups"}}
           </td>
         </tr>
         {{end}}
@@ -125,14 +127,14 @@
      for the failure and the operator has an action for it. */}}
 {{define "server-status"}}
 {{if eq .Status "ok"}}
-  <span class="status-indicator"><span class="dot green"></span> reachable</span>
+  <span class="status-indicator"><span class="dot green"></span> {{t "servers.state.reachable"}}</span>
 {{else if eq .Status "untrusted"}}
-  <span class="status-indicator"><span class="dot orange"></span> host key not approved</span>
+  <span class="status-indicator"><span class="dot orange"></span> {{t "servers.state.untrusted"}}</span>
 {{else if eq .Status "failing"}}
-  <span class="status-indicator" title="{{.LastError}}"><span class="dot red"></span> failing</span>
+  <span class="status-indicator" title="{{.LastError}}"><span class="dot red"></span> {{t "servers.state.failing"}}</span>
 {{else if eq .Status "disabled"}}
-  <span class="status-indicator"><span class="dot"></span> disabled</span>
+  <span class="status-indicator"><span class="dot"></span> {{t "servers.state.disabled"}}</span>
 {{else}}
-  <span class="status-indicator"><span class="dot orange"></span> not tested</span>
+  <span class="status-indicator"><span class="dot orange"></span> {{t "servers.state.untested"}}</span>
 {{end}}
 {{end}}

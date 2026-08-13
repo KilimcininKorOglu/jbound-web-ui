@@ -1,35 +1,35 @@
 {{define "content"}}
 <div class="d-flex flex-wrap align-items-center justify-content-between mb-3">
-  <h5 class="mb-0">System Info</h5>
+  <h5 class="mb-0">{{t "nav.system_info"}}</h5>
 </div>
 
 <div class="row g-4 mb-4">
   <div class="col-lg-4">
     <div class="card h-100">
       <div class="card-header">
-        <h6 class="mb-0">Session</h6>
+        <h6 class="mb-0">{{t "system.session"}}</h6>
       </div>
       <div class="card-body">
         <dl class="row mb-0">
-          <dt class="col-5">User</dt>
+          <dt class="col-5">{{t "system.user"}}</dt>
           <dd class="col-7" data-field="username">{{.Data.Session.Username}}</dd>
 
-          <dt class="col-5">UID</dt>
+          <dt class="col-5">{{t "system.uid"}}</dt>
           <dd class="col-7" data-field="uid">{{.Data.Session.UID}}</dd>
 
-          <dt class="col-5">Role</dt>
+          <dt class="col-5">{{t "system.role"}}</dt>
           <dd class="col-7">
             {{if eq .Data.Session.Role "admin"}}
-            <span class="badge bg-label-primary" data-field="role">admin</span>
+            <span class="badge bg-label-primary" data-field="role">{{t "system.role.admin"}}</span>
             {{else}}
             <span class="badge bg-label-info" data-field="role">{{.Data.Session.Role}}</span>
             {{end}}
           </dd>
 
-          <dt class="col-5">Signed in</dt>
+          <dt class="col-5">{{t "system.signed_in"}}</dt>
           <dd class="col-7" data-field="signed-in">{{localTime .Data.Session.StartedAt}}</dd>
 
-          <dt class="col-5">Last action</dt>
+          <dt class="col-5">{{t "system.last_action"}}</dt>
           <dd class="col-7 mb-0" data-field="last-active">{{localTime .Data.Session.LastActive}}</dd>
         </dl>
       </div>
@@ -39,20 +39,20 @@
   <div class="col-lg-4">
     <div class="card h-100">
       <div class="card-header">
-        <h6 class="mb-0">Panel</h6>
+        <h6 class="mb-0">{{t "system.panel"}}</h6>
       </div>
       <div class="card-body">
         <dl class="row mb-0">
-          <dt class="col-5">Host</dt>
+          <dt class="col-5">{{t "system.host"}}</dt>
           <dd class="col-7" data-field="hostname">{{.Data.Panel.Hostname}}</dd>
 
-          <dt class="col-5">Version</dt>
+          <dt class="col-5">{{t "system.version"}}</dt>
           <dd class="col-7" data-field="version">{{.Data.Panel.Version}}</dd>
 
-          <dt class="col-5">Uptime</dt>
+          <dt class="col-5">{{t "system.uptime"}}</dt>
           <dd class="col-7" data-field="uptime">{{.Data.Panel.Uptime}}</dd>
 
-          <dt class="col-5">Database</dt>
+          <dt class="col-5">{{t "system.database"}}</dt>
           <dd class="col-7 mb-0" data-field="db-size">{{.Data.Panel.DatabaseSize}}</dd>
         </dl>
       </div>
@@ -62,7 +62,7 @@
   <div class="col-lg-4">
     <div class="card h-100">
       <div class="card-header">
-        <h6 class="mb-0">Syslog</h6>
+        <h6 class="mb-0">{{t "system.syslog"}}</h6>
       </div>
       <div class="card-body">
         {{if .Data.Syslog.Problem}}
@@ -70,28 +70,28 @@
         {{end}}
 
         <dl class="row mb-0">
-          <dt class="col-5">rsyslog</dt>
+          <dt class="col-5">{{t "system.rsyslog"}}</dt>
           <dd class="col-7">
             {{if eq .Data.Syslog.Status "active"}}
-            <span class="badge bg-label-success" data-field="rsyslog">active</span>
+            <span class="badge bg-label-success" data-field="rsyslog">{{t "system.rsyslog_active"}}</span>
             {{else}}
             <span class="badge bg-label-danger" data-field="rsyslog">{{.Data.Syslog.Status}}</span>
             {{end}}
           </dd>
 
-          <dt class="col-5">Forwarding</dt>
+          <dt class="col-5">{{t "system.forwarding"}}</dt>
           <dd class="col-7">
             {{if .Data.Syslog.Forwarding}}
-            <span class="badge bg-label-success" data-field="forwarding">on</span>
+            <span class="badge bg-label-success" data-field="forwarding">{{t "system.on"}}</span>
             {{else}}
-            <span class="badge bg-label-secondary" data-field="forwarding">off</span>
+            <span class="badge bg-label-secondary" data-field="forwarding">{{t "system.off"}}</span>
             {{end}}
           </dd>
 
-          <dt class="col-5">Facility</dt>
+          <dt class="col-5">{{t "system.facility"}}</dt>
           <dd class="col-7"><code data-field="facility">{{.Data.Syslog.Facility}}</code></dd>
 
-          <dt class="col-5">Log file</dt>
+          <dt class="col-5">{{t "system.log_file"}}</dt>
           <dd class="col-7 mb-0 text-break">
             <code data-field="log-file">{{.Data.Syslog.LogFile}}</code>
           </dd>
@@ -104,7 +104,7 @@
 {{/* The card is rendered here and replaced on a timer. Rendering it with the
      page rather than on a load trigger keeps the first paint complete, and the
      fragment behind the timer is the same one either way. */}}
-<div id="system-status"
+<div id="system-status" aria-live="polite"
      hx-get="/system/status" hx-trigger="every 30s"
      hx-swap="innerHTML">{{template "system-status" .Data.Status}}</div>
 {{end}}

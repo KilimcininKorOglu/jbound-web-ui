@@ -12,6 +12,7 @@ import (
 
 	"unbound-web/internal/dnsfile"
 	"unbound-web/internal/fleet"
+	"unbound-web/internal/i18n"
 	"unbound-web/internal/server"
 	"unbound-web/internal/siem"
 	"unbound-web/internal/store"
@@ -226,9 +227,15 @@ func TestAFailureIsReportedWithoutNamingTheInternals(t *testing.T) {
 		},
 	}
 
+	catalogs, err := i18n.Load()
+	if err != nil {
+		t.Fatalf("cannot load the catalogues: %v", err)
+	}
+	catalog := catalogs.Catalog(i18n.Default)
+
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			if got := userMessage(testCase.err); got != testCase.message {
+			if got := userMessage(catalog, testCase.err); got != testCase.message {
 				t.Errorf("message = %q, want %q", got, testCase.message)
 			}
 			if got := formStatus(testCase.err); got != testCase.status {
@@ -327,9 +334,15 @@ func TestARefusedRecordCarriesItsOwnReason(t *testing.T) {
 		},
 	}
 
+	catalogs, err := i18n.Load()
+	if err != nil {
+		t.Fatalf("cannot load the catalogues: %v", err)
+	}
+	catalog := catalogs.Catalog(i18n.Default)
+
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			if got := recordMessage(testCase.err); got != testCase.message {
+			if got := recordMessage(catalog, testCase.err); got != testCase.message {
 				t.Errorf("message = %q, want %q", got, testCase.message)
 			}
 			if got := dnsStatus(testCase.err); got != testCase.status {
@@ -366,9 +379,15 @@ func TestARefusedRuleIsReportedByItsKind(t *testing.T) {
 		},
 	}
 
+	catalogs, err := i18n.Load()
+	if err != nil {
+		t.Fatalf("cannot load the catalogues: %v", err)
+	}
+	catalog := catalogs.Catalog(i18n.Default)
+
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			if got := siemMessage(testCase.err); got != testCase.message {
+			if got := siemMessage(catalog, testCase.err); got != testCase.message {
 				t.Errorf("message = %q, want %q", got, testCase.message)
 			}
 			if got := siemStatus(testCase.err); got != testCase.status {

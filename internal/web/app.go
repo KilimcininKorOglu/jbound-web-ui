@@ -12,6 +12,7 @@ import (
 	"unbound-web/internal/auth"
 	"unbound-web/internal/config"
 	"unbound-web/internal/fleet"
+	"unbound-web/internal/i18n"
 	"unbound-web/internal/server"
 	"unbound-web/internal/settings"
 	"unbound-web/internal/siem"
@@ -51,12 +52,21 @@ type Deps struct {
 // App holds everything the handlers need.
 type App struct {
 	Deps
-	tmpl *templateSet
+
+	// Catalogs holds the interface texts of every language the panel was built
+	// with, and tmpl holds one parsed template set per language.
+	Catalogs *i18n.Catalogs
+	tmpl     map[string]*templateSet
 }
 
 // NewApp parses the templates and returns the application.
 func NewApp(deps Deps) (*App, error) {
-	tmpl, err := parseTemplates()
+	catalogs, err := i18n.Load()
+	if err != nil {
+		return nil, err
+	}
+
+	tmpl, err := parseTemplates(catalogs)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +84,7 @@ func NewApp(deps Deps) (*App, error) {
 		deps.Hostname = name
 	}
 
-	return &App{Deps: deps, tmpl: tmpl}, nil
+	return &App{Deps: deps, Catalogs: catalogs, tmpl: tmpl}, nil
 }
 
 // Router builds the panel handler.
@@ -96,7 +106,8 @@ func (a *App) Router() http.Handler {
 	// Records are open to every signed in user. Which machines they land on is
 	// admin territory, which the map below covers.
 	records := map[string]http.HandlerFunc{
-		"POST /theme": a.handleThemeChange,
+		"POST /theme":    a.handleThemeChange,
+		"POST /language": a.handleLanguageChange,
 
 		"GET /system":        a.handleSystemPage,
 		"GET /system/status": a.handleSystemStatus,

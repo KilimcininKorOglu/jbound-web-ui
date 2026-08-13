@@ -9,6 +9,7 @@ import (
 
 	"unbound-web/internal/build"
 	"unbound-web/internal/fleet"
+	"unbound-web/internal/i18n"
 	"unbound-web/internal/server"
 )
 
@@ -97,7 +98,7 @@ func (a *App) handleSystemPage(w http.ResponseWriter, r *http.Request) {
 		a.internalError(w, "cannot read the system information", err)
 		return
 	}
-	a.Render(w, r, http.StatusOK, "system", PageData{Title: "System Info", Data: data})
+	a.Render(w, r, http.StatusOK, "system", PageData{Title: "nav.system_info", Data: data})
 }
 
 // handleSystemStatus re-renders the server card, which the page polls.
@@ -107,7 +108,7 @@ func (a *App) handleSystemStatus(w http.ResponseWriter, r *http.Request) {
 		a.internalError(w, "cannot read the fleet status", err)
 		return
 	}
-	a.RenderPartial(w, http.StatusOK, "system-status", status)
+	a.RenderPartial(w, r, http.StatusOK, "system-status", status)
 }
 
 func (a *App) systemPageData(r *http.Request) (systemPageData, error) {
@@ -137,6 +138,8 @@ func (a *App) systemPageData(r *http.Request) (systemPageData, error) {
 // The page opens no connection. What it shows is what the refresher last saw,
 // which is why every row carries the moment it was read.
 func (a *App) systemStatus(r *http.Request) (systemStatus, error) {
+	catalog := a.catalog(r)
+
 	servers, err := a.Servers.List(r.Context())
 	if err != nil {
 		return systemStatus{}, err
@@ -161,7 +164,7 @@ func (a *App) systemStatus(r *http.Request) (systemStatus, error) {
 		})
 	}
 
-	return systemStatus{Servers: rows, Summary: systemSummary(rows)}, nil
+	return systemStatus{Servers: rows, Summary: systemSummary(catalog, rows)}, nil
 }
 
 // systemState classifies one server for the status card.
@@ -183,7 +186,7 @@ func systemState(record server.Server, state fleet.State) string {
 }
 
 // systemSummary is the sentence above the server table.
-func systemSummary(rows []systemRow) string {
+func systemSummary(catalog *i18n.Catalog, rows []systemRow) string {
 	var enabled, healthy int
 	for _, row := range rows {
 		if !row.Enabled {
@@ -197,12 +200,11 @@ func systemSummary(rows []systemRow) string {
 
 	switch {
 	case enabled == 0:
-		return "No server is enabled."
+		return catalog.T("system.summary.none")
 	case healthy == enabled:
-		return fmt.Sprintf("All %d enabled servers answered the last read.", enabled)
+		return catalog.Tf("system.summary.all", enabled)
 	default:
-		return fmt.Sprintf("%d of %d enabled servers answered the last read.",
-			healthy, enabled)
+		return catalog.Tf("system.summary.some", healthy, enabled)
 	}
 }
 
@@ -218,7 +220,7 @@ func (a *App) panelCard() panelCard {
 func (a *App) syslogCard(r *http.Request) syslogCard {
 	settings, err := a.SIEM.Settings(r.Context())
 	if err != nil {
-		return syslogCard{Status: "unknown", Problem: userMessage(err)}
+		return syslogCard{Status: "unknown", Problem: userMessage(a.catalog(r), err)}
 	}
 
 	return syslogCard{

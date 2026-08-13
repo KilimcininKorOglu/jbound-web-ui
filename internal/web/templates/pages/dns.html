@@ -1,21 +1,21 @@
 {{define "content"}}
 <div class="d-flex flex-wrap align-items-center justify-content-between mb-3">
-  <h5 class="mb-0">DNS Records</h5>
+  <h5 class="mb-0">{{t "nav.dns_records"}}</h5>
   <div class="dns-toolbar">
     <button class="btn btn-outline-secondary btn-sm" type="button"
             hx-post="/dns/refresh" hx-include="#record-controls"
             hx-target="#record-table" hx-swap="innerHTML">
-      <i class="bx bx-refresh"></i> Refresh
+      <i class="bx bx-refresh" aria-hidden="true"></i> {{t "dns.refresh"}}
     </button>
     <button class="btn btn-outline-secondary btn-sm" type="button"
             hx-get="/dns/query" hx-include="#record-controls"
             hx-target="#record-panel" hx-swap="innerHTML">
-      <i class="bx bx-search"></i> Query
+      <i class="bx bx-search" aria-hidden="true"></i> {{t "dns.query"}}
     </button>
     <button class="btn btn-primary btn-sm" type="button"
             hx-get="/dns/records/new" hx-include="#record-controls"
             hx-target="#record-panel" hx-swap="innerHTML">
-      <i class="bx bx-plus"></i> Add record
+      <i class="bx bx-plus" aria-hidden="true"></i> {{t "dns.add_record"}}
     </button>
   </div>
 </div>
@@ -29,14 +29,14 @@
           hx-trigger="change from:(#record-controls select), keyup changed delay:400ms from:(#record-controls input[name='search'])">
 
       <div class="col-md-4">
-        <label class="form-label" for="target">Target</label>
+        <label class="form-label" for="target">{{t "common.target"}}</label>
         <select class="form-select" id="target" name="target">
           <option value="all:0" {{if eq .Data.Query.Scope "all"}}selected{{end}}>
-            Every server
+            {{t "common.every_server"}}
           </option>
           {{$query := .Data.Query}}
           {{if .Data.Groups}}
-          <optgroup label="Groups">
+          <optgroup label="{{t "common.groups"}}">
             {{range .Data.Groups}}
             <option value="group:{{.ID}}"
                     {{if and (eq $query.Scope "group") (eq $query.GroupID .ID)}}selected{{end}}>
@@ -46,7 +46,7 @@
           </optgroup>
           {{end}}
           {{if .Data.Servers}}
-          <optgroup label="Servers">
+          <optgroup label="{{t "common.servers"}}">
             {{range .Data.Servers}}
             <option value="server:{{.ID}}"
                     {{if and (eq $query.Scope "server") (eq $query.ServerID .ID)}}selected{{end}}>
@@ -59,16 +59,16 @@
       </div>
 
       <div class="col-md-4">
-        <label class="form-label" for="search">Search</label>
+        <label class="form-label" for="search">{{t "common.search"}}</label>
         <input class="form-control" id="search" name="search" type="search"
-               value="{{.Data.Query.Search}}" placeholder="name or value"
+               value="{{.Data.Query.Search}}" placeholder="{{t "common.search_placeholder"}}"
                autocapitalize="none" spellcheck="false">
       </div>
 
       <div class="col-md-2">
-        <label class="form-label" for="type">Type</label>
+        <label class="form-label" for="type">{{t "common.type"}}</label>
         <select class="form-select" id="type" name="type">
-          <option value="">All types</option>
+          <option value="">{{t "common.all_types"}}</option>
           {{range .Data.Types}}
           <option value="{{.}}" {{if eq $query.Type .}}selected{{end}}>{{.}}</option>
           {{end}}
@@ -76,7 +76,7 @@
       </div>
 
       <div class="col-md-2">
-        <label class="form-label" for="per_page">Per page</label>
+        <label class="form-label" for="per_page">{{t "common.per_page"}}</label>
         <select class="form-select" id="per_page" name="per_page">
           <option value="10" {{if eq $query.PerPage 10}}selected{{end}}>10</option>
           <option value="25" {{if eq $query.PerPage 25}}selected{{end}}>25</option>
@@ -96,9 +96,9 @@
   </div>
 </div>
 
-<div id="record-status" class="mb-4">{{template "record-status" .Data}}</div>
+<div id="record-status" class="mb-4" aria-live="polite">{{template "record-status" .Data}}</div>
 
-<div id="record-panel" class="mb-4"></div>
+<div id="record-panel" class="mb-4" aria-live="polite"></div>
 
 {{/* A change swaps the panel, so the table reloads itself on the event
      rather than being swapped in from three different places. */}}

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"unbound-web/internal/fleet"
+	"unbound-web/internal/i18n"
 	"unbound-web/internal/server"
 )
 
@@ -266,9 +267,15 @@ func TestTheSummaryCountsOnlyTheEnabledServers(t *testing.T) {
 		},
 	}
 
+	catalogs, err := i18n.Load()
+	if err != nil {
+		t.Fatalf("cannot load the catalogues: %v", err)
+	}
+	catalog := catalogs.Catalog(i18n.Default)
+
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			if got := systemSummary(testCase.rows); got != testCase.want {
+			if got := systemSummary(catalog, testCase.rows); got != testCase.want {
 				t.Errorf("summary = %q, want %q", got, testCase.want)
 			}
 		})

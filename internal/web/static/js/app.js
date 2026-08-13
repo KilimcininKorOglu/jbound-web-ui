@@ -141,29 +141,6 @@
     }
   });
 
-  /* The target selector shows one list of servers and groups, while the
-     server reads a scope and an identifier. This splits the choice back
-     into the two fields the request carries. */
-  document.addEventListener('change', function (event) {
-    const select = event.target.closest('[data-action="choose-target"]');
-    if (!select) {
-      return;
-    }
-
-    const parts = String(select.value).split(':');
-    const form = select.form;
-    if (!form) {
-      return;
-    }
-
-    setField(form, 'scope', parts[0]);
-    setField(form, 'server_id', parts[0] === 'server' ? parts[1] : '0');
-    setField(form, 'group_id', parts[0] === 'group' ? parts[1] : '0');
-
-    /* A new target means the old page number points nowhere. */
-    setField(form, 'page', '1');
-  });
-
   /* The preference belongs to MX alone, so the field appears with it. */
   document.addEventListener('change', function (event) {
     const select = event.target.closest('[data-action="record-type"]');
@@ -182,13 +159,6 @@
     const panel = document.getElementById(id);
     if (panel) {
       panel.innerHTML = '';
-    }
-  }
-
-  function setField(form, name, value) {
-    const field = form.querySelector('[name="' + name + '"]');
-    if (field) {
-      field.value = value;
     }
   }
 

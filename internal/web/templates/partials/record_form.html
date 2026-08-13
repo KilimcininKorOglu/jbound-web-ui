@@ -52,8 +52,7 @@
 
         <div class="col-md-6">
           <label class="form-label" for="form_target">Apply to</label>
-          <select class="form-select" id="form_target" name="target"
-                  data-action="choose-target" data-target-form="1">
+          <select class="form-select" id="form_target" name="target">
             {{if .Groups}}
             <optgroup label="Groups">
               {{range .Groups}}
@@ -80,12 +79,6 @@
           </div>
         </div>
       </div>
-
-      {{/* The target of the change, split the way the server reads it. */}}
-      <input type="hidden" name="scope"
-             value="{{if eq $query.Scope "all"}}group{{else}}{{$query.Scope}}{{end}}">
-      <input type="hidden" name="server_id" value="{{$query.ServerID}}">
-      <input type="hidden" name="group_id" value="{{$query.GroupID}}">
 
       {{if not .IsNew}}
       {{/* The record being replaced. The file is the source of truth and a

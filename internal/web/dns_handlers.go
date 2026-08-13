@@ -134,7 +134,12 @@ func (a *App) handleDNSRecords(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) dnsPageData(r *http.Request) (dnsPageData, error) {
-	query := queryFromRequest(r)
+	// The controls arrive in the query string of a listing and in the body of
+	// a refresh, so both are read the same way.
+	if err := r.ParseForm(); err != nil {
+		return dnsPageData{}, err
+	}
+	query := listingFrom(r.Form)
 
 	page, err := a.records.Page(r.Context(), query)
 	if err != nil {
@@ -177,11 +182,6 @@ func staleNote(status fleet.Status) string {
 	return "The panel has not read " + strings.Join(stale, ", ") + " recently."
 }
 
-// queryFromRequest reads the listing controls out of the query string.
-func queryFromRequest(r *http.Request) fleet.Query {
-	return listingFrom(r.URL.Query())
-}
-
 // listingFrom reads the listing controls out of a form or a query string.
 //
 // Anything unreadable falls back to the default rather than failing. These are
@@ -195,6 +195,18 @@ func listingFrom(values valueSource) fleet.Query {
 		Type:     values.Get("type"),
 		Page:     parseInt(values.Get("page")),
 		PerPage:  parseInt(values.Get("per_page")),
+	}
+
+	// The selector offers servers and groups in one list, so it travels as one
+	// field and is split here. It wins over the separate fields, which carry
+	// the target the page was drawn with.
+	if chosen, ok := splitTarget(values.Get("target")); ok {
+		if chosen != scopeOf(query) {
+			// The selector moved, so the page number points nowhere.
+			query.Page = 1
+		}
+		query.Scope, query.ServerID, query.GroupID =
+			chosen.Scope, chosen.ServerID, chosen.GroupID
 	}
 
 	// A scope without its identifier would list the whole fleet under a label
@@ -259,7 +271,11 @@ func pageWindow(page fleet.Page) []pageLink {
 }
 
 func (a *App) handleRecordForm(w http.ResponseWriter, r *http.Request) {
-	query := queryFromRequest(r)
+	if err := r.ParseForm(); err != nil {
+		a.dnsError(w, "cannot read the form", err)
+		return
+	}
+	query := listingFrom(r.Form)
 
 	data := recordFormData{
 		Query: query,
@@ -532,12 +548,49 @@ func oldRecordFromValues(values valueSource) dnsfile.Record {
 	}
 }
 
+// splitTarget reads the combined selector value, which is how the interface
+// offers servers and groups in one list.
+//
+// The split happens here rather than in the browser. A script that rewrites
+// hidden fields on change races with the request that reads them, and the
+// loser of that race is a change aimed at the wrong servers.
+func splitTarget(raw string) (fleet.Target, bool) {
+	scope, rest, found := strings.Cut(raw, ":")
+	if !found {
+		return fleet.Target{}, false
+	}
+
+	id := parseID(rest)
+	switch scope {
+	case fleet.ScopeServer:
+		return fleet.Target{Scope: scope, ServerID: id}, true
+	case fleet.ScopeGroup:
+		return fleet.Target{Scope: scope, GroupID: id}, true
+	case fleet.ScopeAll:
+		return fleet.Target{Scope: scope}, true
+	default:
+		return fleet.Target{}, false
+	}
+}
+
+// scopeOf is the target a listing currently covers.
+func scopeOf(query fleet.Query) fleet.Target {
+	return fleet.Target{
+		Scope:    query.Scope,
+		ServerID: query.ServerID,
+		GroupID:  query.GroupID,
+	}
+}
+
 // targetFromValues reads which servers a change is meant for.
 func targetFromValues(values valueSource) (fleet.Target, error) {
 	target := fleet.Target{
 		Scope:    values.Get("scope"),
 		ServerID: parseID(values.Get("server_id")),
 		GroupID:  parseID(values.Get("group_id")),
+	}
+	if chosen, ok := splitTarget(values.Get("target")); ok {
+		target = chosen
 	}
 
 	switch target.Scope {
@@ -562,7 +615,7 @@ func (a *App) recordProblem(w http.ResponseWriter, r *http.Request,
 
 	data := recordFormData{
 		Record:  recordFromValues(r.Form),
-		Query:   queryFromRequest(r),
+		Query:   listingFrom(r.Form),
 		Types:   dnsfile.Types,
 		IsNew:   kind == fleet.OpAdd,
 		Problem: problem,

@@ -806,3 +806,47 @@ func TestTheQueryFormNeedsASession(t *testing.T) {
 		t.Fatalf("status = %d, want a redirect to the login page", recorder.Code)
 	}
 }
+
+func TestTheTargetSelectorDecidesTheScope(t *testing.T) {
+	// The selector offers servers and groups in one list. Splitting it in the
+	// browser would race with the request that reads the split fields, and the
+	// loser of that race is a change aimed at the wrong servers.
+	env := newFleetEnv(t)
+
+	// The controls still carry the target the page was drawn with.
+	body := env.table(t, "target=group%3A1&scope=all&server_id=0&group_id=0")
+	if !strings.Contains(body, "3 of 3 servers have unapplied changes.") {
+		t.Errorf("the status bar did not follow the selector:\n%s", body)
+	}
+	if strings.Contains(body, "Choose a single server or a group") {
+		t.Errorf("the chosen group was read as the whole fleet:\n%s", body)
+	}
+}
+
+func TestChangingTheTargetGoesBackToTheFirstPage(t *testing.T) {
+	env := newFleetEnv(t)
+
+	body := env.table(t, "target=server%3A1&scope=group&group_id=1&page=3&per_page=10")
+	if !strings.Contains(body, "(Page 1/1)") {
+		t.Errorf("the page number survived a change of target:\n%s", body)
+	}
+}
+
+func TestAChangeFollowsTheSelectorRatherThanTheHiddenFields(t *testing.T) {
+	env := newFleetEnv(t)
+
+	recorder := env.adminForm(t, http.MethodPost, "/dns/records", env.cookie, url.Values{
+		"target": {"server:1"},
+		"scope":  {"group"}, "group_id": {"1"},
+		"fqdn": {"new.example.local"}, "type": {"A"}, "value": {"10.0.0.50"},
+	})
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200:\n%s", recorder.Code, recorder.Body.String())
+	}
+	if strings.Count(recorder.Body.String(), `data-field="status">success<`) != 1 {
+		t.Errorf("the change did not go to the one chosen server:\n%s", recorder.Body.String())
+	}
+	if strings.Contains(env.target(2).file(), "new.example.local") {
+		t.Error("the change reached a server the selector did not name")
+	}
+}

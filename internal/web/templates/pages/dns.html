@@ -30,8 +30,7 @@
 
       <div class="col-md-4">
         <label class="form-label" for="target">Target</label>
-        <select class="form-select" id="target" name="target"
-                data-action="choose-target">
+        <select class="form-select" id="target" name="target">
           <option value="all:0" {{if eq .Data.Query.Scope "all"}}selected{{end}}>
             Every server
           </option>
@@ -86,8 +85,9 @@
         </select>
       </div>
 
-      {{/* The scope travels as two fields, because the server sees them
-           separately and the selector joins them for the operator. */}}
+      {{/* The target the page was drawn with. The selector carries the new
+           one, and the two together tell the server that it moved, which is
+           what resets the page number. */}}
       <input type="hidden" name="scope" value="{{.Data.Query.Scope}}">
       <input type="hidden" name="server_id" value="{{.Data.Query.ServerID}}">
       <input type="hidden" name="group_id" value="{{.Data.Query.GroupID}}">

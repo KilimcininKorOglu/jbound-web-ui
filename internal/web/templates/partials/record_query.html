@@ -34,8 +34,7 @@
 
         <div class="col-md-4">
           <label class="form-label" for="query_target">Ask</label>
-          <select class="form-select" id="query_target" name="target"
-                  data-action="choose-target">
+          <select class="form-select" id="query_target" name="target">
             <option value="all:0" {{if eq $query.Scope "all"}}selected{{end}}>
               Every server
             </option>
@@ -62,10 +61,6 @@
           </select>
         </div>
       </div>
-
-      <input type="hidden" name="scope" value="{{$query.Scope}}">
-      <input type="hidden" name="server_id" value="{{$query.ServerID}}">
-      <input type="hidden" name="group_id" value="{{$query.GroupID}}">
 
       <div class="dns-toolbar mt-4">
         <button class="btn btn-primary" type="submit">Ask</button>

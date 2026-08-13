@@ -13,8 +13,7 @@
 
       <div class="col-md-5">
         <label class="form-label" for="diff_target">Compare</label>
-        <select class="form-select" id="diff_target" name="target"
-                data-action="choose-target">
+        <select class="form-select" id="diff_target" name="target">
           <option value="all:0" {{if eq .Data.Query.Scope "all"}}selected{{end}}>
             Every server
           </option>

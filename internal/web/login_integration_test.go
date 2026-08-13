@@ -30,6 +30,7 @@ import (
 	"unbound-web/internal/auth"
 	"unbound-web/internal/config"
 	"unbound-web/internal/database"
+	"unbound-web/internal/fleet"
 	"unbound-web/internal/preflight"
 	"unbound-web/internal/server"
 	"unbound-web/internal/store"
@@ -114,6 +115,23 @@ func newLiveApp(t *testing.T) *App {
 	pool := transport.NewPool(context.Background(), cfg.SSHIdleTimeout)
 	t.Cleanup(pool.Close)
 
+	timeouts := server.Timeouts{
+		Connect: cfg.SSHConnectTimeout,
+		Command: cfg.SSHCommandTimeout,
+	}
+	serverStore := store.NewServers(db.DB)
+	servers := server.NewService(serverStore, store.NewGroups(db.DB), keys, pool,
+		auditLog, dataDir, timeouts)
+
+	recordStore := store.NewRecords(db.DB)
+	stateStore := store.NewStates(db.DB)
+	refresher := fleet.NewRefresher(serverStore, recordStore, stateStore, pool,
+		dataDir, timeouts, cfg.FleetMaxConcurrent)
+	records := fleet.NewService(recordStore, stateStore,
+		fleet.NewWriter(serverStore, servers, pool, refresher, auditLog,
+			dataDir, timeouts, cfg.FleetMaxConcurrent),
+		refresher, cfg.CacheStaleAfter)
+
 	app, err := NewApp(cfg,
 		auth.NewService(authenticator, auth.Policy{
 			MinUID:       cfg.MinUID,
@@ -123,12 +141,7 @@ func newLiveApp(t *testing.T) *App {
 		auth.NewSessionManager(store.NewSessions(db.DB), cfg.SessionTimeout, cfg.CookieSecure),
 		auth.NewRateLimiter(store.NewLoginAttempts(db.DB),
 			auth.DefaultRateWindow, auth.DefaultRateMaxTries),
-		auditLog,
-		server.NewService(store.NewServers(db.DB), store.NewGroups(db.DB), keys, pool,
-			auditLog, dataDir, server.Timeouts{
-				Connect: cfg.SSHConnectTimeout,
-				Command: cfg.SSHCommandTimeout,
-			}),
+		auditLog, servers, records,
 	)
 	if err != nil {
 		t.Fatalf("cannot build the application: %v", err)

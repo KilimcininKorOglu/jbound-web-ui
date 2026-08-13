@@ -396,12 +396,13 @@ func (w *Writer) writeAudit(ctx context.Context, actor server.Actor,
 
 	serverID := record.ID
 	_ = w.audit.Write(ctx, audit.Entry{
-		UID:       actor.UID,
-		Username:  actor.Username,
-		ServerID:  &serverID,
-		Action:    op.auditAction(),
-		Details:   details,
-		IPAddress: actor.IPAddress,
+		UID:        actor.UID,
+		Username:   actor.Username,
+		ServerID:   &serverID,
+		ServerName: record.Name,
+		Action:     op.auditAction(),
+		Details:    details,
+		IPAddress:  actor.IPAddress,
 	})
 }
 

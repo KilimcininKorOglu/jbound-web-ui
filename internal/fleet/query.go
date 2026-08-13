@@ -158,24 +158,28 @@ func (s *Service) auditQuery(ctx context.Context, actor server.Actor, target Tar
 		details += " " + report.Type
 	}
 
-	var serverID *int64
+	var (
+		serverID   *int64
+		serverName string
+	)
 	switch {
 	case report.GroupName != "":
 		details += " (group " + report.GroupName + ")"
 	case target.Scope == ScopeServer && len(members) == 1:
 		details += " on " + members[0].Name
 		id := members[0].ID
-		serverID = &id
+		serverID, serverName = &id, members[0].Name
 	default:
 		details += " on every server"
 	}
 
 	_ = s.audit.Write(ctx, audit.Entry{
-		UID:       actor.UID,
-		Username:  actor.Username,
-		ServerID:  serverID,
-		Action:    audit.ActionDNSQuery,
-		Details:   details,
-		IPAddress: actor.IPAddress,
+		UID:        actor.UID,
+		Username:   actor.Username,
+		ServerID:   serverID,
+		ServerName: serverName,
+		Action:     audit.ActionDNSQuery,
+		Details:    details,
+		IPAddress:  actor.IPAddress,
 	})
 }

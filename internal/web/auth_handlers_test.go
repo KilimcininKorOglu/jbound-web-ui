@@ -86,7 +86,7 @@ func newTestEnv(t *testing.T) *testEnv {
 		AdminGroup:     "sudo",
 	}
 	sessions := store.NewSessions(db.DB)
-	auditLog := audit.NewLogger(store.NewAuditLogs(db.DB))
+	auditLog := audit.NewLogger(store.NewAuditLogs(db.DB), nil)
 
 	dataDir := t.TempDir()
 	keys, err := server.NewKeyStore(dataDir)
@@ -417,19 +417,25 @@ func TestLoginSucceedsAndRecordsAnAuditRow(t *testing.T) {
 	}
 }
 
-func TestFailedLoginIsNotAudited(t *testing.T) {
-	// A failed login says nothing about a panel user, so it belongs in the
-	// system log rather than in the audit trail.
+func TestAFailedLoginIsAudited(t *testing.T) {
+	// A failed login is what a break-in attempt looks like from here, so it is
+	// recorded and forwarded like any other event.
 	env := newTestEnv(t)
 
 	env.do(t, postForm("/login", "username=dnsadmin&password=wrong"))
 
-	var count int
-	if err := env.db.QueryRow("SELECT COUNT(*) FROM audit_logs").Scan(&count); err != nil {
+	var action, username, ip, details string
+	row := env.db.QueryRow(
+		"SELECT action, username, ip_address, details FROM audit_logs ORDER BY id DESC LIMIT 1")
+	if err := row.Scan(&action, &username, &ip, &details); err != nil {
 		t.Fatalf("cannot read the audit table: %v", err)
 	}
-	if count != 0 {
-		t.Errorf("%d audit rows, want none", count)
+
+	if action != "login_failed" || username != "dnsadmin" || ip != "192.0.2.1" {
+		t.Errorf("got %s by %s from %s", action, username, ip)
+	}
+	if strings.Contains(details, "wrong") {
+		t.Errorf("the submitted password reached the audit trail: %q", details)
 	}
 }
 

@@ -130,7 +130,7 @@ func (s *Service) Create(ctx context.Context, actor Actor, input CreateInput) (S
 		return Server{}, KeyPair{}, err
 	}
 
-	s.write(ctx, actor, audit.ActionServerCreate, &stored.ID, fmt.Sprintf(
+	s.writeFor(ctx, actor, audit.ActionServerCreate, &stored.ID, stored.Name, fmt.Sprintf(
 		"Created server: %s (%s@%s:%d)", stored.Name, stored.SSHUser, stored.Host, stored.SSHPort))
 
 	return stored, pair, nil
@@ -182,7 +182,7 @@ func (s *Service) Update(ctx context.Context, actor Actor, record Server) error 
 	// to go even when nothing about it changed.
 	s.pool.Remove(record.ID)
 
-	s.write(ctx, actor, audit.ActionServerUpdate, &record.ID,
+	s.writeFor(ctx, actor, audit.ActionServerUpdate, &record.ID, record.Name,
 		fmt.Sprintf("Updated server #%d: %s", record.ID, record.Name))
 	return nil
 }
@@ -202,12 +202,12 @@ func (s *Service) Delete(ctx context.Context, actor Actor, id int64) error {
 	if err := s.keys.Remove(record.SSHKeyPath); err != nil {
 		// The record is gone either way. The stray key is worth reporting but
 		// not worth failing the request over.
-		s.write(ctx, actor, audit.ActionServerDelete, nil, fmt.Sprintf(
+		s.writeFor(ctx, actor, audit.ActionServerDelete, nil, record.Name, fmt.Sprintf(
 			"Deleted server: %s (the key file could not be removed: %v)", record.Name, err))
 		return nil
 	}
 
-	s.write(ctx, actor, audit.ActionServerDelete, nil,
+	s.writeFor(ctx, actor, audit.ActionServerDelete, nil, record.Name,
 		"Deleted server: "+record.Name)
 	return nil
 }
@@ -288,7 +288,7 @@ func (s *Service) TrustHostKey(ctx context.Context, actor Actor, id int64, finge
 	// The pooled connection still carries the previous policy.
 	s.pool.Remove(id)
 
-	s.write(ctx, actor, audit.ActionServerTrust, &id, fmt.Sprintf(
+	s.writeFor(ctx, actor, audit.ActionServerTrust, &id, record.Name, fmt.Sprintf(
 		"Trusted host key for %s: %s", record.Name, offer.Fingerprint))
 	return nil
 }
@@ -362,13 +362,26 @@ func (s *Service) TestConnection(ctx context.Context, id int64) (TestResult, err
 // A failure is logged by the audit package and does not stop the operation.
 // The change is already made, and refusing to report it would leave the
 // operator unsure whether it happened.
-func (s *Service) write(ctx context.Context, actor Actor, action string, serverID *int64, details string) {
+func (s *Service) write(ctx context.Context, actor Actor, action string,
+	serverID *int64, details string) {
+
+	s.writeFor(ctx, actor, action, serverID, "", details)
+}
+
+// writeFor records one action against a named server.
+//
+// The name travels with the entry, because the forwarded event names the
+// target and a receiver reads a name more easily than a row identifier.
+func (s *Service) writeFor(ctx context.Context, actor Actor, action string,
+	serverID *int64, serverName, details string) {
+
 	_ = s.audit.Write(ctx, audit.Entry{
-		UID:       actor.UID,
-		Username:  actor.Username,
-		ServerID:  serverID,
-		Action:    action,
-		Details:   details,
-		IPAddress: actor.IPAddress,
+		UID:        actor.UID,
+		Username:   actor.Username,
+		ServerID:   serverID,
+		ServerName: serverName,
+		Action:     action,
+		Details:    details,
+		IPAddress:  actor.IPAddress,
 	})
 }

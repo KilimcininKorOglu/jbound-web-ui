@@ -197,7 +197,7 @@ func newWriteHarness(t *testing.T, count int) *writeHarness {
 	pool := &writableConnector{byHost: writable}
 	refresher := NewRefresher(servers, records, states, pool, "/data", timeouts, 2)
 	harness.writer = NewWriter(servers, groups, pool, refresher,
-		audit.NewLogger(auditRepo), "/data", timeouts, 2)
+		audit.NewLogger(auditRepo, nil), "/data", timeouts, 2)
 
 	return harness
 }

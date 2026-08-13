@@ -238,7 +238,7 @@ func newHarness(t *testing.T) *harness {
 
 	return &harness{
 		service: NewService(servers, groups, keys, connector,
-			audit.NewLogger(auditRepo), dataDir,
+			audit.NewLogger(auditRepo, nil), dataDir,
 			Timeouts{Connect: time.Second, Command: time.Second}),
 		servers:   servers,
 		groups:    groups,

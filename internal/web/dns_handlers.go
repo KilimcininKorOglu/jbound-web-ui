@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"unbound-web/internal/audit"
 	"unbound-web/internal/dnsfile"
 	"unbound-web/internal/fleet"
 	"unbound-web/internal/server"
@@ -508,6 +509,11 @@ func (a *App) handleRecordRefresh(w http.ResponseWriter, r *http.Request) {
 			failed++
 		}
 	}
+
+	// Only a refresh somebody asked for is recorded. The timer runs every few
+	// minutes, and a row for each pass would bury the changes the log is for.
+	a.auditRefresh(r, len(results)-failed, len(results))
+
 	switch {
 	case len(results) == 0:
 		SetToast(w, ToastInfo, "There is no enabled server to read.")
@@ -519,6 +525,24 @@ func (a *App) handleRecordRefresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a.handleDNSRecords(w, r)
+}
+
+// auditRefresh records a refresh the operator asked for.
+func (a *App) auditRefresh(r *http.Request, read, total int) {
+	if total == 0 {
+		return
+	}
+
+	details := fmt.Sprintf("Refreshed the record cache: %d of %d servers read", read, total)
+	actor := a.actor(r)
+
+	_ = a.audit.Write(r.Context(), audit.Entry{
+		UID:       actor.UID,
+		Username:  actor.Username,
+		Action:    audit.ActionCacheRefresh,
+		Details:   details,
+		IPAddress: actor.IPAddress,
+	})
 }
 
 // --- Helpers ---------------------------------------------------------------

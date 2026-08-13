@@ -15,8 +15,9 @@ import (
 // Actions written by the panel. They are constants so a typo cannot create a
 // second spelling that the log filters then miss.
 const (
-	ActionLogin  = "login"
-	ActionLogout = "logout"
+	ActionLogin       = "login"
+	ActionLogout      = "logout"
+	ActionLoginFailed = "login_failed"
 
 	ActionServerCreate = "server_create"
 	ActionServerUpdate = "server_update"
@@ -33,7 +34,11 @@ const (
 	ActionDNSRestart = "dns_restart"
 	ActionDNSQuery   = "dns_query"
 
-	ActionDiffRepair = "diff_repair"
+	ActionDiffRepair   = "diff_repair"
+	ActionCacheRefresh = "cache_refresh"
+
+	ActionSIEMConfig = "siem_config"
+	ActionSIEMTest   = "siem_test"
 )
 
 // Entry is one audit row. ServerID stays nil for actions that target no
@@ -45,6 +50,25 @@ type Entry struct {
 	Action    string
 	Details   string
 	IPAddress string
+
+	// ServerName is not stored. It travels with the entry so the forwarded
+	// event can name the target, which a receiver reads more easily than a row
+	// identifier out of the panel database.
+	ServerName string
+}
+
+// Defaults fill the two fields that may be missing.
+//
+// An action the panel takes on its own has no session, and a request may
+// arrive without a readable address. Both read better as a word than as an
+// empty column.
+func (e *Entry) Defaults() {
+	if e.Username == "" {
+		e.Username = "system"
+	}
+	if e.IPAddress == "" {
+		e.IPAddress = "unknown"
+	}
 }
 
 // Repository stores audit entries.
@@ -52,30 +76,52 @@ type Repository interface {
 	Write(ctx context.Context, entry Entry, at time.Time) error
 }
 
+// Forwarder mirrors an entry to a system outside the panel.
+type Forwarder interface {
+	Forward(entry Entry) error
+}
+
 // Logger writes audit entries.
 type Logger struct {
-	repo Repository
-	now  func() time.Time
+	repo      Repository
+	forwarder Forwarder
+	now       func() time.Time
 }
 
-// NewLogger builds the audit logger.
-func NewLogger(repo Repository) *Logger {
-	return &Logger{repo: repo, now: time.Now}
+// NewLogger builds the audit logger. A nil forwarder keeps the database as the
+// only record, which is what a panel without a SIEM runs with.
+func NewLogger(repo Repository, forwarder Forwarder) *Logger {
+	return &Logger{repo: repo, forwarder: forwarder, now: time.Now}
 }
 
-// Write stores one entry.
+// Write stores one entry and mirrors it.
 //
-// A failure is returned rather than swallowed. An action that cannot be
-// recorded is an action nobody can account for later, so the caller decides
+// A database failure is returned rather than swallowed. An action that cannot
+// be recorded is an action nobody can account for later, so the caller decides
 // whether to continue.
+//
+// The mirror runs either way. It sits off the panel host, which is exactly
+// where a record is worth having when the panel database is the thing that
+// went wrong.
 func (l *Logger) Write(ctx context.Context, entry Entry) error {
 	if entry.Action == "" {
 		return fmt.Errorf("audit entry has no action")
 	}
-	if err := l.repo.Write(ctx, entry, l.now().UTC()); err != nil {
+	entry.Defaults()
+
+	err := l.repo.Write(ctx, entry, l.now().UTC())
+	if err != nil {
 		slog.Error("cannot write the audit entry",
 			"action", entry.Action, "username", entry.Username, "error", err)
-		return err
 	}
-	return nil
+
+	if l.forwarder != nil {
+		if forwardErr := l.forwarder.Forward(entry); forwardErr != nil {
+			// The entry is in the database. Failing the action over a syslog
+			// socket would be worse than reporting that the mirror is down.
+			slog.Error("cannot forward the audit entry",
+				"action", entry.Action, "error", forwardErr)
+		}
+	}
+	return err
 }

@@ -60,7 +60,7 @@ func newHarness(t *testing.T) *harness {
 	servers := store.NewServers(db.DB)
 	return &harness{
 		service: server.NewService(servers, store.NewGroups(db.DB), keys, pool,
-			audit.NewLogger(store.NewAuditLogs(db.DB)), dataDir,
+			audit.NewLogger(store.NewAuditLogs(db.DB), nil), dataDir,
 			server.Timeouts{Connect: 10 * time.Second, Command: 30 * time.Second}),
 		servers: servers,
 		dataDir: dataDir,

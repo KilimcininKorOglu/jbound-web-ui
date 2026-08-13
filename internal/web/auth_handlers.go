@@ -95,8 +95,18 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 			a.loginFailure(w, r, http.StatusInternalServerError, msgInternalError)
 			return
 		}
-		// No audit row. A failed login says nothing about a panel user, and a
-		// mistyped password is not an event worth keeping.
+		// A failed login is what a break-in attempt looks like from here, so it
+		// is recorded and forwarded like any other event. The submitted name is
+		// stored; the password never is.
+		if auditErr := a.audit.Write(r.Context(), audit.Entry{
+			Username:  username,
+			Action:    audit.ActionLoginFailed,
+			Details:   fmt.Sprintf("Failed login attempt for '%s' from %s", username, ip),
+			IPAddress: ip,
+		}); auditErr != nil {
+			slog.Error("failed login was not audited", "error", auditErr)
+		}
+
 		slog.Warn("login_failed", "username", username, "ip", ip)
 		a.loginFailure(w, r, http.StatusUnauthorized, msgLoginFailed)
 		return

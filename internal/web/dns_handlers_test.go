@@ -850,3 +850,26 @@ func TestAChangeFollowsTheSelectorRatherThanTheHiddenFields(t *testing.T) {
 		t.Error("the change reached a server the selector did not name")
 	}
 }
+
+func TestARefreshTheOperatorAskedForIsAudited(t *testing.T) {
+	// The timer runs every few minutes, and a row for each pass would bury the
+	// changes the log exists for, so only this one is recorded.
+	env := newFleetEnv(t)
+
+	env.adminForm(t, http.MethodPost, "/dns/refresh", env.cookie, url.Values{})
+
+	var count int
+	var details string
+	row := env.db.QueryRow(
+		"SELECT COUNT(*), COALESCE(MAX(details), '') FROM audit_logs WHERE action = 'cache_refresh'")
+	if err := row.Scan(&count, &details); err != nil {
+		t.Fatalf("cannot read the audit table: %v", err)
+	}
+
+	if count != 1 {
+		t.Fatalf("got %d audit rows, want 1", count)
+	}
+	if !strings.Contains(details, "3 of 3 servers read") {
+		t.Errorf("details = %q", details)
+	}
+}

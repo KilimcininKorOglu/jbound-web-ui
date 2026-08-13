@@ -354,11 +354,12 @@ func (w *Writer) writeRepairAudit(ctx context.Context, actor server.Actor,
 
 	serverID := record.ID
 	_ = w.audit.Write(ctx, audit.Entry{
-		UID:       actor.UID,
-		Username:  actor.Username,
-		ServerID:  &serverID,
-		Action:    audit.ActionDiffRepair,
-		Details:   details,
-		IPAddress: actor.IPAddress,
+		UID:        actor.UID,
+		Username:   actor.Username,
+		ServerID:   &serverID,
+		ServerName: record.Name,
+		Action:     audit.ActionDiffRepair,
+		Details:    details,
+		IPAddress:  actor.IPAddress,
 	})
 }

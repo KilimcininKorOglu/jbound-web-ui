@@ -20,6 +20,7 @@ import (
 	"unbound-web/internal/fleet"
 	"unbound-web/internal/preflight"
 	"unbound-web/internal/server"
+	"unbound-web/internal/siem"
 	"unbound-web/internal/store"
 	"unbound-web/internal/transport"
 	"unbound-web/internal/web"
@@ -94,7 +95,16 @@ func run() error {
 		store.NewSessions(db.DB), cfg.SessionTimeout, cfg.CookieSecure)
 	limiter := auth.NewRateLimiter(
 		store.NewLoginAttempts(db.DB), auth.DefaultRateWindow, auth.DefaultRateMaxTries)
-	auditLog := audit.NewLogger(store.NewAuditLogs(db.DB))
+	// The panel host name travels with every forwarded event, so a receiver
+	// collecting several panels can tell them apart.
+	panelHost, err := os.Hostname()
+	if err != nil {
+		return fmt.Errorf("cannot read the host name: %w", err)
+	}
+	forwarder := siem.NewForwarder(panelHost)
+	defer forwarder.Close()
+
+	auditLog := audit.NewLogger(store.NewAuditLogs(db.DB), forwarder)
 
 	keys, err := server.NewKeyStore(cfg.DataDir)
 	if err != nil {

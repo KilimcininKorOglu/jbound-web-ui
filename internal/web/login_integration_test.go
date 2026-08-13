@@ -104,7 +104,7 @@ func newLiveApp(t *testing.T) *App {
 		t.Fatalf("cannot build the authenticator: %v", err)
 	}
 
-	auditLog := audit.NewLogger(store.NewAuditLogs(db.DB))
+	auditLog := audit.NewLogger(store.NewAuditLogs(db.DB), nil)
 
 	// The login path does not reach a managed server, so the service is here
 	// only because the application needs one to build.

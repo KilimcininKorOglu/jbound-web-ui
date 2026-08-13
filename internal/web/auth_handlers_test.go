@@ -14,7 +14,9 @@ import (
 	"unbound-web/internal/auth"
 	"unbound-web/internal/config"
 	"unbound-web/internal/database"
+	"unbound-web/internal/server"
 	"unbound-web/internal/store"
+	"unbound-web/internal/transport"
 )
 
 const (
@@ -42,6 +44,11 @@ type testEnv struct {
 	app      *App
 	db       *sql.DB
 	sessions *store.Sessions
+	servers  *server.Service
+	dataDir  string
+	keyDir   string
+	// transport lets a test choose what a managed server answers.
+	transport *stubTransport
 }
 
 func newTestEnv(t *testing.T) *testEnv {
@@ -68,6 +75,19 @@ func newTestEnv(t *testing.T) *testEnv {
 		AdminGroup:     "sudo",
 	}
 	sessions := store.NewSessions(db.DB)
+	auditLog := audit.NewLogger(store.NewAuditLogs(db.DB))
+
+	dataDir := t.TempDir()
+	keys, err := server.NewKeyStore(dataDir)
+	if err != nil {
+		t.Fatalf("cannot create the key store: %v", err)
+	}
+
+	remote := &stubTransport{}
+	servers := server.NewService(
+		store.NewServers(db.DB), store.NewGroups(db.DB), keys,
+		&stubConnector{transport: remote}, auditLog, dataDir,
+		server.Timeouts{Connect: time.Second, Command: time.Second})
 
 	app, err := NewApp(cfg,
 		auth.NewService(authenticator, auth.Policy{
@@ -76,14 +96,47 @@ func newTestEnv(t *testing.T) *testEnv {
 		auth.NewSessionManager(sessions, cfg.SessionTimeout, cfg.CookieSecure),
 		auth.NewRateLimiter(store.NewLoginAttempts(db.DB),
 			auth.DefaultRateWindow, auth.DefaultRateMaxTries),
-		audit.NewLogger(store.NewAuditLogs(db.DB)),
+		auditLog, servers,
 	)
 	if err != nil {
 		t.Fatalf("cannot build the application: %v", err)
 	}
 
-	return &testEnv{app: app, db: db.DB, sessions: sessions}
+	return &testEnv{
+		app:       app,
+		db:        db.DB,
+		sessions:  sessions,
+		servers:   servers,
+		dataDir:   dataDir,
+		keyDir:    keys.Dir(),
+		transport: remote,
+	}
 }
+
+// stubTransport stands in for a managed server. The transport itself is
+// covered by its own integration tests against the development targets.
+type stubTransport struct {
+	probeErr error
+}
+
+func (s *stubTransport) ReadHostEntries(context.Context) ([]byte, string, error) {
+	return nil, "", nil
+}
+func (s *stubTransport) WriteHostEntries(context.Context, []byte, string) error { return nil }
+func (s *stubTransport) Reload(context.Context) (string, error)                 { return "", nil }
+func (s *stubTransport) ServiceStatus(context.Context) (bool, string, error)    { return true, "", nil }
+func (s *stubTransport) Probe(context.Context) error                            { return s.probeErr }
+func (s *stubTransport) Close() error                                           { return nil }
+
+type stubConnector struct {
+	transport *stubTransport
+}
+
+func (s *stubConnector) Get(transport.Config) (transport.Transport, error) {
+	return s.transport, nil
+}
+
+func (s *stubConnector) Remove(int64) {}
 
 // do serves one request and returns the recorder.
 func (e *testEnv) do(t *testing.T, r *http.Request, cookies ...*http.Cookie) *httptest.ResponseRecorder {

@@ -11,9 +11,6 @@ import (
 	"unbound-web/internal/server"
 )
 
-// ErrNameTaken is returned when a name that has to be unique is already used.
-var ErrNameTaken = errors.New("the name is already in use")
-
 // Servers stores the managed DNS servers.
 type Servers struct {
 	db *sql.DB
@@ -48,7 +45,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	)
 	if err != nil {
 		if isUniqueViolation(err) {
-			return server.Server{}, fmt.Errorf("%w: %s", ErrNameTaken, record.Name)
+			return server.Server{}, fmt.Errorf("%w: %s", server.ErrNameTaken, record.Name)
 		}
 		return server.Server{}, fmt.Errorf("cannot insert the server: %w", err)
 	}
@@ -81,11 +78,24 @@ UPDATE servers
 	)
 	if err != nil {
 		if isUniqueViolation(err) {
-			return fmt.Errorf("%w: %s", ErrNameTaken, record.Name)
+			return fmt.Errorf("%w: %s", server.ErrNameTaken, record.Name)
 		}
 		return fmt.Errorf("cannot update the server: %w", err)
 	}
 	return requireOneRow(result, "server", fmt.Sprint(record.ID))
+}
+
+// SetKeyPath records where the private key of a server lives.
+//
+// It is its own statement because the key file is named after the row, so the
+// path is only known once the row exists.
+func (s *Servers) SetKeyPath(ctx context.Context, id int64, relPath string) error {
+	result, err := s.db.ExecContext(ctx,
+		"UPDATE servers SET ssh_key_path = ? WHERE id = ?", relPath, id)
+	if err != nil {
+		return fmt.Errorf("cannot store the key path: %w", err)
+	}
+	return requireOneRow(result, "server", fmt.Sprint(id))
 }
 
 // SetHostKey records an approved host key.

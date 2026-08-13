@@ -17,7 +17,9 @@ import (
 	"unbound-web/internal/config"
 	"unbound-web/internal/database"
 	"unbound-web/internal/preflight"
+	"unbound-web/internal/server"
 	"unbound-web/internal/store"
+	"unbound-web/internal/transport"
 	"unbound-web/internal/web"
 )
 
@@ -92,7 +94,23 @@ func run() error {
 		store.NewLoginAttempts(db.DB), auth.DefaultRateWindow, auth.DefaultRateMaxTries)
 	auditLog := audit.NewLogger(store.NewAuditLogs(db.DB))
 
-	app, err := web.NewApp(cfg, authService, sessions, limiter, auditLog)
+	keys, err := server.NewKeyStore(cfg.DataDir)
+	if err != nil {
+		return err
+	}
+	// The pool closes with the process, which is what releases every SSH
+	// connection on shutdown.
+	pool := transport.NewPool(ctx, cfg.SSHIdleTimeout)
+	defer pool.Close()
+
+	serverService := server.NewService(
+		store.NewServers(db.DB), store.NewGroups(db.DB), keys, pool, auditLog,
+		cfg.DataDir, server.Timeouts{
+			Connect: cfg.SSHConnectTimeout,
+			Command: cfg.SSHCommandTimeout,
+		})
+
+	app, err := web.NewApp(cfg, authService, sessions, limiter, auditLog, serverService)
 	if err != nil {
 		return err
 	}

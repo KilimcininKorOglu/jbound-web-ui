@@ -97,12 +97,30 @@ func (s *Server) ApplyDefaults() {
 	}
 }
 
-// Validate reports every problem in one pass.
+// Validate reports every problem of a complete record in one pass.
+func (s Server) Validate() error {
+	problems := s.inputProblems()
+
+	if s.SSHKeyPath == "" {
+		problems = append(problems, "ssh key path is empty")
+	}
+	return joinProblems(problems)
+}
+
+// ValidateInput reports every problem of the operator supplied fields.
+//
+// The key path is not among them. It is named after the row identifier, so it
+// is assigned once the record exists and never comes from a form.
+func (s Server) ValidateInput() error {
+	return joinProblems(s.inputProblems())
+}
+
+// inputProblems collects what is wrong with the fields a person can type.
 //
 // The command and path fields go through the same metacharacter check the
 // transport applies, so a record that would inject a second command is refused
 // where the operator can still see the form.
-func (s Server) Validate() error {
+func (s Server) inputProblems() []string {
 	var problems []string
 
 	if !namePattern.MatchString(s.Name) {
@@ -117,9 +135,6 @@ func (s Server) Validate() error {
 	}
 	if s.Transport != TransportSSH {
 		problems = append(problems, "transport must be "+TransportSSH)
-	}
-	if s.SSHKeyPath == "" {
-		problems = append(problems, "ssh key path is empty")
 	}
 	if filepath.IsAbs(s.SSHKeyPath) || strings.Contains(s.SSHKeyPath, "..") {
 		// The stored path is joined onto the data directory. An absolute path
@@ -145,7 +160,10 @@ func (s Server) Validate() error {
 	if err := probe.Validate(); err != nil {
 		problems = append(problems, strings.TrimPrefix(err.Error(), "invalid server configuration: "))
 	}
+	return problems
+}
 
+func joinProblems(problems []string) error {
 	if len(problems) > 0 {
 		return fmt.Errorf("%s", strings.Join(problems, "; "))
 	}

@@ -89,7 +89,7 @@ func TestServerNameIsUnique(t *testing.T) {
 	f.mustCreate(t, "dns1")
 
 	_, err := f.servers.Create(context.Background(), sampleServer("dns1"))
-	if !errors.Is(err, store.ErrNameTaken) {
+	if !errors.Is(err, server.ErrNameTaken) {
 		t.Fatalf("got %v, want ErrNameTaken", err)
 	}
 }
@@ -322,7 +322,7 @@ func TestGroupNameIsUnique(t *testing.T) {
 		t.Fatalf("Create returned an error: %v", err)
 	}
 	_, err := f.groups.Create(ctx, server.Group{Name: "resolvers"})
-	if !errors.Is(err, store.ErrNameTaken) {
+	if !errors.Is(err, server.ErrNameTaken) {
 		t.Fatalf("got %v, want ErrNameTaken", err)
 	}
 }

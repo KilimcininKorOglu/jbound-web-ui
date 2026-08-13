@@ -1,0 +1,122 @@
+{{define "server-form"}}
+<form hx-post="{{if .IsNew}}/servers{{else}}/servers/{{.Server.ID}}{{end}}"
+      hx-target="#server-panel" hx-swap="innerHTML">
+
+  {{if .Problem}}{{template "alert" (alert "error" .Problem)}}{{end}}
+
+  <div class="row g-3">
+    <div class="col-md-4">
+      <label class="form-label" for="name">Name</label>
+      <input class="form-control" id="name" name="name" value="{{.Server.Name}}"
+             placeholder="dns1" autocapitalize="none" spellcheck="false" required>
+      {{if not .IsNew}}
+      <div class="form-text">
+        Renaming is safe. The key and the group membership follow the record, not the name.
+      </div>
+      {{end}}
+    </div>
+    <div class="col-md-5">
+      <label class="form-label" for="host">Host</label>
+      <input class="form-control" id="host" name="host" value="{{.Server.Host}}"
+             placeholder="dns1.example.net" autocapitalize="none" spellcheck="false" required>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label" for="ssh_port">SSH port</label>
+      <input class="form-control" id="ssh_port" name="ssh_port" type="number"
+             min="1" max="65535" value="{{.Server.SSHPort}}">
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label" for="ssh_user">SSH user</label>
+      <input class="form-control" id="ssh_user" name="ssh_user" value="{{.Server.SSHUser}}"
+             placeholder="dnsops" autocapitalize="none" spellcheck="false" required>
+    </div>
+    <div class="col-md-8">
+      <label class="form-label" for="host_entries_path">Host entries file</label>
+      <input class="form-control" id="host_entries_path" name="host_entries_path"
+             value="{{.Server.HostEntriesPath}}" spellcheck="false">
+      <div class="form-text">
+        The sudoers rules on the target are written for this path. Re-run the setup
+        script there after you change it.
+      </div>
+    </div>
+
+    <div class="col-md-6">
+      <label class="form-label" for="reload_cmd">Reload command</label>
+      <input class="form-control" id="reload_cmd" name="reload_cmd"
+             value="{{.Server.ReloadCmd}}" spellcheck="false">
+    </div>
+    <div class="col-md-6">
+      <label class="form-label" for="status_cmd">Status command</label>
+      <input class="form-control" id="status_cmd" name="status_cmd"
+             value="{{.Server.StatusCmd}}" spellcheck="false">
+    </div>
+
+    <div class="col-12">
+      <details>
+        <summary class="mb-2">Tool paths</summary>
+        <div class="row g-3">
+          <div class="col-md-3">
+            <label class="form-label" for="base64_path">base64</label>
+            <input class="form-control" id="base64_path" name="base64_path"
+                   value="{{.Server.Base64Path}}" spellcheck="false">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label" for="tee_path">tee</label>
+            <input class="form-control" id="tee_path" name="tee_path"
+                   value="{{.Server.TeePath}}" spellcheck="false">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label" for="mv_path">mv</label>
+            <input class="form-control" id="mv_path" name="mv_path"
+                   value="{{.Server.MvPath}}" spellcheck="false">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label" for="sha256_path">sha256sum</label>
+            <input class="form-control" id="sha256_path" name="sha256_path"
+                   value="{{.Server.Sha256Path}}" spellcheck="false">
+          </div>
+        </div>
+        <div class="form-text mt-2">
+          Distributions disagree about these. The setup script prints the values it
+          found on the target.
+        </div>
+      </details>
+    </div>
+
+    {{if .IsNew}}
+    <div class="col-12">
+      <details>
+        <summary class="mb-2">Use an existing private key</summary>
+        <label class="form-label" for="private_key">Private key</label>
+        <textarea class="form-control" id="private_key" name="private_key" rows="6"
+                  spellcheck="false"
+                  placeholder="Leave this empty and the panel generates an ed25519 key."></textarea>
+        <div class="form-text">
+          A pasted key is stored and never shown again.
+        </div>
+      </details>
+    </div>
+    {{end}}
+
+    <div class="col-12">
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" id="enabled" name="enabled"
+               value="1" {{if .Server.Enabled}}checked{{end}}>
+        <label class="form-check-label" for="enabled">
+          Enabled. A disabled server is skipped by group operations.
+        </label>
+      </div>
+    </div>
+
+    <div class="col-12 dns-toolbar">
+      <button class="btn btn-primary" type="submit">
+        {{if .IsNew}}Add server{{else}}Save changes{{end}}
+      </button>
+      <button class="btn btn-outline-secondary" type="button" data-action="close-panel">
+        Cancel
+      </button>
+    </div>
+  </div>
+</form>
+{{end}}

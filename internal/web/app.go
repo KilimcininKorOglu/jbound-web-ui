@@ -8,6 +8,7 @@ import (
 	"unbound-web/internal/audit"
 	"unbound-web/internal/auth"
 	"unbound-web/internal/config"
+	"unbound-web/internal/server"
 )
 
 //go:embed templates
@@ -20,13 +21,14 @@ type App struct {
 	sessions *auth.SessionManager
 	limiter  *auth.RateLimiter
 	audit    *audit.Logger
+	servers  *server.Service
 	tmpl     *templateSet
 }
 
 // NewApp parses the templates and returns the application.
 func NewApp(cfg *config.Config, authService *auth.Service,
 	sessions *auth.SessionManager, limiter *auth.RateLimiter,
-	auditLog *audit.Logger) (*App, error) {
+	auditLog *audit.Logger, servers *server.Service) (*App, error) {
 
 	tmpl, err := parseTemplates()
 	if err != nil {
@@ -39,6 +41,7 @@ func NewApp(cfg *config.Config, authService *auth.Service,
 		sessions: sessions,
 		limiter:  limiter,
 		audit:    auditLog,
+		servers:  servers,
 		tmpl:     tmpl,
 	}, nil
 }
@@ -56,8 +59,6 @@ var pending = map[string]pendingPage{
 		"Record management across the fleet arrives with the record phase."},
 	"diff": {"Record Diff",
 		"The drift view across servers arrives with the diff phase."},
-	"servers": {"Servers",
-		"Server and group management arrives with the server phase."},
 	"logs": {"Audit Logs",
 		"The audit log view arrives with the log phase."},
 	"siem": {"SIEM Config",
@@ -85,10 +86,30 @@ func (a *App) Router() http.Handler {
 	for _, path := range []string{"/dns", "/diff", "/logs", "/system"} {
 		mux.Handle("GET "+path, a.requireAuth(a.pendingHandler(path)))
 	}
-	// Fleet configuration and log forwarding are admin territory. A plain user
-	// may manage records but not the machines they land on.
-	for _, path := range []string{"/servers", "/siem"} {
-		mux.Handle("GET "+path, a.requireAuth(a.requireAdmin(a.pendingHandler(path))))
+	mux.Handle("GET /siem", a.requireAuth(a.requireAdmin(a.pendingHandler("/siem"))))
+
+	// Fleet configuration is admin territory. A plain user may manage records
+	// but not the machines they land on.
+	admin := map[string]http.HandlerFunc{
+		"GET /servers":             a.handleServersPage,
+		"GET /servers/table":       a.handleServerTable,
+		"GET /servers/new":         a.handleServerForm,
+		"POST /servers":            a.handleServerCreate,
+		"GET /servers/{id}/edit":   a.handleServerForm,
+		"POST /servers/{id}":       a.handleServerUpdate,
+		"DELETE /servers/{id}":     a.handleServerDelete,
+		"GET /servers/{id}/key":    a.handleServerKey,
+		"POST /servers/{id}/test":  a.handleServerTest,
+		"POST /servers/{id}/trust": a.handleServerTrust,
+
+		"GET /groups/new":       a.handleGroupForm,
+		"POST /groups":          a.handleGroupCreate,
+		"GET /groups/{id}/edit": a.handleGroupForm,
+		"POST /groups/{id}":     a.handleGroupUpdate,
+		"DELETE /groups/{id}":   a.handleGroupDelete,
+	}
+	for pattern, handler := range admin {
+		mux.Handle(pattern, a.requireAuth(a.requireAdmin(a.requireCSRF(handler))))
 	}
 
 	return requestLog(securityHeaders(mux))

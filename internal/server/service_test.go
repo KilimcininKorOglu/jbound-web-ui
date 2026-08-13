@@ -46,6 +46,16 @@ func (f *fakeRepo) Update(_ context.Context, record Server) error {
 	return nil
 }
 
+func (f *fakeRepo) SetKeyPath(_ context.Context, id int64, relPath string) error {
+	record, ok := f.records[id]
+	if !ok {
+		return errors.New("not found")
+	}
+	record.SSHKeyPath = relPath
+	f.records[id] = record
+	return nil
+}
+
 func (f *fakeRepo) SetHostKey(_ context.Context, id int64, hostKey string) error {
 	record, ok := f.records[id]
 	if !ok {
@@ -216,7 +226,7 @@ func newHarness(t *testing.T) *harness {
 	t.Helper()
 
 	dataDir := t.TempDir()
-	keys, err := NewKeyStore(filepath.Join(dataDir, "keys"))
+	keys, err := NewKeyStore(dataDir)
 	if err != nil {
 		t.Fatalf("cannot create the key store: %v", err)
 	}
@@ -259,8 +269,11 @@ func TestCreateGeneratesAKeyAndRecordsTheAction(t *testing.T) {
 		t.Fatalf("Create returned an error: %v", err)
 	}
 
-	if record.SSHKeyPath != "dns1.key" {
-		t.Errorf("key path = %q", record.SSHKeyPath)
+	if record.SSHKeyPath != KeyRelPath(record.ID) {
+		t.Errorf("key path = %q, want it named after the record", record.SSHKeyPath)
+	}
+	if _, err := os.Stat(filepath.Join(h.dataDir, record.SSHKeyPath)); err != nil {
+		t.Errorf("the key file is missing: %v", err)
 	}
 	if !strings.HasPrefix(pair.PublicKey, "ssh-ed25519 ") {
 		t.Errorf("public key = %q", pair.PublicKey)
@@ -277,21 +290,53 @@ func TestCreateGeneratesAKeyAndRecordsTheAction(t *testing.T) {
 	}
 }
 
-func TestCreateRemovesTheKeyWhenTheRecordIsRefused(t *testing.T) {
-	// A key left behind would block the next attempt with the same name.
+func TestCreateWritesNoKeyWhenTheRecordIsRefused(t *testing.T) {
+	// The record is written first, so a refused name never reaches the key
+	// store and the key of the existing server stays untouched.
 	h := newHarness(t)
 	ctx := context.Background()
 
-	if _, _, err := h.service.Create(ctx, testActor(), newServerInput("dns1")); err != nil {
+	existing, _, err := h.service.Create(ctx, testActor(), newServerInput("dns1"))
+	if err != nil {
 		t.Fatalf("the first Create failed: %v", err)
 	}
 	if _, _, err := h.service.Create(ctx, testActor(), newServerInput("dns1")); err == nil {
 		t.Fatal("Create accepted a duplicate name")
 	}
 
-	// The first key must still be there and no second one written.
-	if _, err := os.Stat(filepath.Join(h.keys.Dir(), "dns1.key")); err != nil {
+	entries, err := os.ReadDir(h.keys.Dir())
+	if err != nil {
+		t.Fatalf("cannot read the key directory: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("got %d key files, want only the one of the existing server", len(entries))
+	}
+	if _, err := os.Stat(filepath.Join(h.dataDir, existing.SSHKeyPath)); err != nil {
 		t.Errorf("the key of the existing server is gone: %v", err)
+	}
+}
+
+func TestCreateRemovesTheRecordWhenTheKeyIsRefused(t *testing.T) {
+	// A server without a key can reach nothing, so a half finished creation
+	// must not survive as a row the operator has to notice and clean up.
+	h := newHarness(t)
+
+	input := newServerInput("dns1")
+	input.PrivateKey = "this is not a key"
+
+	if _, _, err := h.service.Create(context.Background(), testActor(), input); !errors.Is(err, ErrValidation) {
+		t.Fatalf("got %v, want ErrValidation", err)
+	}
+
+	records, err := h.servers.List(context.Background())
+	if err != nil {
+		t.Fatalf("List returned an error: %v", err)
+	}
+	if len(records) != 0 {
+		t.Errorf("%d records survived a refused key", len(records))
+	}
+	if got := h.auditLog.actions(); len(got) != 0 {
+		t.Errorf("audit actions = %v, want none for a creation that did not finish", got)
 	}
 }
 
@@ -351,7 +396,7 @@ func TestUpdateKeepsTheKeyPathAndTheHostKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get returned an error: %v", err)
 	}
-	if stored.SSHKeyPath != "dns1.key" {
+	if stored.SSHKeyPath != record.SSHKeyPath {
 		t.Errorf("key path = %q, want the original", stored.SSHKeyPath)
 	}
 	if stored.HostKey != "ssh-ed25519 AAAAapproved" {

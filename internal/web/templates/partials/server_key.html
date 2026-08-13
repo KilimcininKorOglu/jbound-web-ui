@@ -1,0 +1,24 @@
+{{/* The public half of the server key. The private half never reaches a
+     response, so this is the only key material the interface ever shows. */}}
+{{define "server-key"}}
+<div class="mb-3">
+  <h6>Install this key on {{.Server.Name}}</h6>
+  <p class="text-muted mb-2">
+    Append the line below to <code>~{{.Server.SSHUser}}/.ssh/authorized_keys</code> on the
+    target, then run the connection test.
+  </p>
+  <pre class="border rounded p-3 mb-2" data-field="public-key">{{.Key.PublicKey}}</pre>
+  <p class="text-muted small mb-3">Fingerprint: <code>{{.Key.Fingerprint}}</code></p>
+
+  <div class="dns-toolbar">
+    <button class="btn btn-primary" type="button"
+            hx-post="/servers/{{.Server.ID}}/test"
+            hx-target="#server-panel" hx-swap="innerHTML">
+      Test connection
+    </button>
+    <button class="btn btn-outline-secondary" type="button" data-action="close-panel">
+      Close
+    </button>
+  </div>
+</div>
+{{end}}

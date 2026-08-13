@@ -31,7 +31,9 @@ import (
 	"unbound-web/internal/config"
 	"unbound-web/internal/database"
 	"unbound-web/internal/preflight"
+	"unbound-web/internal/server"
 	"unbound-web/internal/store"
+	"unbound-web/internal/transport"
 )
 
 // roleField reads the role out of the login response.
@@ -100,6 +102,18 @@ func newLiveApp(t *testing.T) *App {
 		t.Fatalf("cannot build the authenticator: %v", err)
 	}
 
+	auditLog := audit.NewLogger(store.NewAuditLogs(db.DB))
+
+	// The login path does not reach a managed server, so the service is here
+	// only because the application needs one to build.
+	dataDir := t.TempDir()
+	keys, err := server.NewKeyStore(dataDir)
+	if err != nil {
+		t.Fatalf("cannot create the key store: %v", err)
+	}
+	pool := transport.NewPool(context.Background(), cfg.SSHIdleTimeout)
+	t.Cleanup(pool.Close)
+
 	app, err := NewApp(cfg,
 		auth.NewService(authenticator, auth.Policy{
 			MinUID:       cfg.MinUID,
@@ -109,7 +123,12 @@ func newLiveApp(t *testing.T) *App {
 		auth.NewSessionManager(store.NewSessions(db.DB), cfg.SessionTimeout, cfg.CookieSecure),
 		auth.NewRateLimiter(store.NewLoginAttempts(db.DB),
 			auth.DefaultRateWindow, auth.DefaultRateMaxTries),
-		audit.NewLogger(store.NewAuditLogs(db.DB)),
+		auditLog,
+		server.NewService(store.NewServers(db.DB), store.NewGroups(db.DB), keys, pool,
+			auditLog, dataDir, server.Timeouts{
+				Connect: cfg.SSHConnectTimeout,
+				Command: cfg.SSHCommandTimeout,
+			}),
 	)
 	if err != nil {
 		t.Fatalf("cannot build the application: %v", err)

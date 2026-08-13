@@ -30,7 +30,7 @@ func (g *Groups) Create(ctx context.Context, group server.Group) (server.Group, 
 		group.Name, group.Description)
 	if err != nil {
 		if isUniqueViolation(err) {
-			return server.Group{}, fmt.Errorf("%w: %s", ErrNameTaken, group.Name)
+			return server.Group{}, fmt.Errorf("%w: %s", server.ErrNameTaken, group.Name)
 		}
 		return server.Group{}, fmt.Errorf("cannot insert the group: %w", err)
 	}
@@ -65,7 +65,7 @@ func (g *Groups) Update(ctx context.Context, group server.Group) error {
 		group.Name, group.Description, group.ID)
 	if err != nil {
 		if isUniqueViolation(err) {
-			return fmt.Errorf("%w: %s", ErrNameTaken, group.Name)
+			return fmt.Errorf("%w: %s", server.ErrNameTaken, group.Name)
 		}
 		return fmt.Errorf("cannot update the group: %w", err)
 	}

@@ -1,0 +1,46 @@
+{{define "group-form"}}
+<form hx-post="{{if .IsNew}}/groups{{else}}/groups/{{.Group.ID}}{{end}}"
+      hx-target="#server-tables" hx-swap="innerHTML">
+
+  {{if .Problem}}{{template "alert" (alert "error" .Problem)}}{{end}}
+
+  <div class="row g-3">
+    <div class="col-md-4">
+      <label class="form-label" for="group_name">Name</label>
+      <input class="form-control" id="group_name" name="name" value="{{.Group.Name}}"
+             placeholder="resolvers" autocapitalize="none" spellcheck="false" required>
+    </div>
+    <div class="col-md-8">
+      <label class="form-label" for="group_description">Description</label>
+      <input class="form-control" id="group_description" name="description"
+             value="{{.Group.Description}}" maxlength="255">
+    </div>
+
+    <div class="col-12">
+      <label class="form-label">Members</label>
+      {{range .Servers}}
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" id="member-{{.ID}}"
+               name="server_ids" value="{{.ID}}"
+               {{if index $.Chosen .ID}}checked{{end}}>
+        <label class="form-check-label" for="member-{{.ID}}">
+          {{.Name}} <span class="text-muted">({{.SSHUser}}@{{.Host}})</span>
+          {{if not .Enabled}}<span class="badge bg-label-info ms-1">disabled</span>{{end}}
+        </label>
+      </div>
+      {{else}}
+      <p class="text-muted mb-0">Add a server first. A group with no member cannot be targeted.</p>
+      {{end}}
+    </div>
+
+    <div class="col-12 dns-toolbar">
+      <button class="btn btn-primary" type="submit">
+        {{if .IsNew}}Add group{{else}}Save changes{{end}}
+      </button>
+      <button class="btn btn-outline-secondary" type="button" data-action="close-panel">
+        Cancel
+      </button>
+    </div>
+  </div>
+</form>
+{{end}}

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"strings"
 	"time"
 
 	"unbound-web/internal/audit"
@@ -14,6 +16,7 @@ import (
 type Repository interface {
 	Create(ctx context.Context, record Server) (Server, error)
 	Update(ctx context.Context, record Server) error
+	SetKeyPath(ctx context.Context, id int64, relPath string) error
 	SetHostKey(ctx context.Context, id int64, hostKey string) error
 	SetReachability(ctx context.Context, id int64, at time.Time, failure string) error
 	Get(ctx context.Context, id int64) (Server, error)
@@ -47,6 +50,12 @@ type Actor struct {
 // ErrValidation marks a rejected input, which the handler answers with 422
 // rather than 500.
 var ErrValidation = errors.New("invalid input")
+
+// ErrNameTaken marks a name that is already in use.
+//
+// It lives here rather than in the store, because both servers and groups are
+// named and the operator has to read the same refusal either way.
+var ErrNameTaken = errors.New("the name is already in use")
 
 // Service holds the server and group operations.
 type Service struct {
@@ -92,40 +101,32 @@ type CreateInput struct {
 }
 
 // Create stores a new server and prepares its key.
+//
+// The record is written first, because the key file is named after the row
+// identifier the database issues. A failure after that point removes the record
+// again, so a server never survives without the key it needs to reach anything.
 func (s *Service) Create(ctx context.Context, actor Actor, input CreateInput) (Server, KeyPair, error) {
 	record := input.Server
 	record.ApplyDefaults()
 
-	// The name is validated before the key is written, because the file is
-	// named after it.
-	if !namePattern.MatchString(record.Name) {
-		return Server{}, KeyPair{}, fmt.Errorf("%w: name is not valid", ErrValidation)
-	}
-
-	var (
-		pair KeyPair
-		err  error
-	)
-	if input.PrivateKey == "" {
-		pair, err = s.keys.Generate(record.Name)
-	} else {
-		pair, err = s.keys.Import(record.Name, input.PrivateKey)
-	}
-	if err != nil {
-		return Server{}, KeyPair{}, err
-	}
-
-	record.SSHKeyPath = pair.RelPath
-	if err := record.Validate(); err != nil {
-		s.keys.Remove(pair.RelPath)
+	if err := record.ValidateInput(); err != nil {
 		return Server{}, KeyPair{}, fmt.Errorf("%w: %v", ErrValidation, err)
 	}
 
 	stored, err := s.servers.Create(ctx, record)
 	if err != nil {
-		// The record was refused, so the key belongs to nothing. Leaving it
-		// would block the next attempt with the same name.
-		s.keys.Remove(pair.RelPath)
+		return Server{}, KeyPair{}, err
+	}
+
+	pair, err := s.makeKey(stored.ID, input.PrivateKey)
+	if err != nil {
+		s.discard(ctx, stored.ID, pair.RelPath)
+		return Server{}, KeyPair{}, err
+	}
+
+	stored.SSHKeyPath = pair.RelPath
+	if err := s.servers.SetKeyPath(ctx, stored.ID, pair.RelPath); err != nil {
+		s.discard(ctx, stored.ID, pair.RelPath)
 		return Server{}, KeyPair{}, err
 	}
 
@@ -133,6 +134,27 @@ func (s *Service) Create(ctx context.Context, actor Actor, input CreateInput) (S
 		"Created server: %s (%s@%s:%d)", stored.Name, stored.SSHUser, stored.Host, stored.SSHPort))
 
 	return stored, pair, nil
+}
+
+// makeKey generates a key or stores the one the operator supplied.
+func (s *Service) makeKey(id int64, private string) (KeyPair, error) {
+	if strings.TrimSpace(private) == "" {
+		return s.keys.Generate(id)
+	}
+	return s.keys.Import(id, private)
+}
+
+// discard undoes a half finished creation.
+//
+// Both failures are reported rather than swallowed, because a record without a
+// key and a key without a record are each worth knowing about.
+func (s *Service) discard(ctx context.Context, id int64, relPath string) {
+	if err := s.keys.Remove(relPath); err != nil {
+		slog.Error("cannot remove the key of a refused server", "server", id, "error", err)
+	}
+	if err := s.servers.Delete(ctx, id); err != nil {
+		slog.Error("cannot remove a server that could not be finished", "server", id, "error", err)
+	}
 }
 
 // Update writes the editable fields of a server.
@@ -280,8 +302,14 @@ type TestResult struct {
 	Step    transport.ProbeStep
 	Message string
 
-	// HostKey carries the offer when the server has not been approved yet.
+	// HostKey carries the offer when the panel will not talk to the server
+	// until an operator has looked at the fingerprint.
 	HostKey *HostKeyOffer
+
+	// HostKeyChanged separates a server nobody has approved yet from one that
+	// now offers a different key than the approved one. The second is what a
+	// man in the middle looks like, so it is not shown as a first contact.
+	HostKeyChanged bool
 }
 
 // TestConnection walks the whole path the panel depends on.
@@ -311,8 +339,13 @@ func (s *Service) TestConnection(ctx context.Context, id int64) (TestResult, err
 	}
 
 	// An unapproved host key is not a fault. The operator has to see the
-	// fingerprint and approve it, so the offer travels back with the result.
-	if errors.Is(probeErr, transport.ErrHostKeyUnknown) {
+	// fingerprint and approve it, so the offer travels back with the result. A
+	// changed key is a fault, but the operator still needs the new fingerprint
+	// to tell a reinstalled server from an impostor.
+	unknown := errors.Is(probeErr, transport.ErrHostKeyUnknown)
+	changed := errors.Is(probeErr, transport.ErrHostKeyMismatch)
+	if unknown || changed {
+		result.HostKeyChanged = changed
 		if offer, scanErr := s.ScanHostKey(ctx, id); scanErr == nil {
 			result.HostKey = &offer
 		}

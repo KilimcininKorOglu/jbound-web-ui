@@ -59,6 +59,19 @@ var funcs = template.FuncMap{
 		}
 		return t.Local().Format("2006-01-02 15:04:05")
 	},
+	// localTimePtr renders an optional timestamp, such as the last contact
+	// with a server nobody has reached yet.
+	"localTimePtr": func(t *time.Time) string {
+		if t == nil || t.IsZero() {
+			return ""
+		}
+		return t.Local().Format("2006-01-02 15:04:05")
+	},
+	// alert builds the value the alert partial expects, so a template can
+	// raise one without the handler assembling it first.
+	"alert": func(severity, message string) *Alert {
+		return &Alert{Severity: severity, Message: message}
+	},
 }
 
 // parseTemplates builds one set per page plus the partial set.

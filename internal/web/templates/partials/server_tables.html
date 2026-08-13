@@ -1,0 +1,128 @@
+{{/* Both tables re-render together, because a change to one can move rows in
+     the other: deleting a server also removes it from every group. */}}
+{{define "server-tables"}}
+<div class="card mb-4">
+  <div class="card-header">
+    <h5 class="mb-0">Managed servers</h5>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Endpoint</th>
+          <th>Status</th>
+          <th>Last contact</th>
+          <th class="text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Servers}}
+        <tr>
+          <td><strong>{{.Name}}</strong></td>
+          <td class="text-muted">{{.SSHUser}}@{{.Host}}:{{.SSHPort}}</td>
+          <td>{{template "server-status" .}}</td>
+          <td class="text-muted">
+            {{if .LastSeenAt}}{{localTimePtr .LastSeenAt}}{{else}}never{{end}}
+          </td>
+          <td class="text-end">
+            <button class="btn btn-sm btn-outline-primary" type="button"
+                    hx-post="/servers/{{.ID}}/test" hx-target="#server-panel" hx-swap="innerHTML">
+              Test
+            </button>
+            <button class="btn btn-sm btn-outline-primary" type="button"
+                    hx-get="/servers/{{.ID}}/key" hx-target="#server-panel" hx-swap="innerHTML">
+              Key
+            </button>
+            <button class="btn btn-sm btn-outline-primary" type="button"
+                    hx-get="/servers/{{.ID}}/edit" hx-target="#server-panel" hx-swap="innerHTML">
+              Edit
+            </button>
+            <button class="btn btn-sm btn-outline-danger" type="button"
+                    hx-delete="/servers/{{.ID}}" hx-target="#server-panel" hx-swap="innerHTML"
+                    hx-confirm="Deleting {{.Name}} also removes its private key and its group membership."
+                    data-confirm-title="Delete server">
+              Delete
+            </button>
+          </td>
+        </tr>
+        {{else}}
+        <tr>
+          <td colspan="5" class="text-center text-muted py-4">
+            No servers yet. Add the first one to start managing records.
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header d-flex align-items-center justify-content-between">
+    <h5 class="mb-0">Groups</h5>
+    <button class="btn btn-primary btn-sm" type="button"
+            hx-get="/groups/new" hx-target="#server-panel" hx-swap="innerHTML">
+      <i class="bx bx-plus"></i> Add group
+    </button>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Description</th>
+          <th>Members</th>
+          <th class="text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Groups}}
+        <tr>
+          <td><strong>{{.Name}}</strong></td>
+          <td class="text-muted">{{.Description}}</td>
+          <td>
+            {{range .Members}}<span class="badge bg-label-primary me-1">{{.Name}}</span>{{end}}
+            {{if not .Members}}<span class="text-muted">empty</span>{{end}}
+          </td>
+          <td class="text-end">
+            <button class="btn btn-sm btn-outline-primary" type="button"
+                    hx-get="/groups/{{.ID}}/edit" hx-target="#server-panel" hx-swap="innerHTML">
+              Edit
+            </button>
+            <button class="btn btn-sm btn-outline-danger" type="button"
+                    hx-delete="/groups/{{.ID}}" hx-target="#server-panel" hx-swap="innerHTML"
+                    hx-confirm="Deleting {{.Name}} leaves its servers in place."
+                    data-confirm-title="Delete group">
+              Delete
+            </button>
+          </td>
+        </tr>
+        {{else}}
+        <tr>
+          <td colspan="4" class="text-center text-muted py-4">
+            No groups yet. A group targets several servers with one change.
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+{{end}}
+
+{{/* An unapproved host key comes before a failure, because it is the reason
+     for the failure and the operator has an action for it. */}}
+{{define "server-status"}}
+{{if eq .Status "ok"}}
+  <span class="status-indicator"><span class="dot green"></span> reachable</span>
+{{else if eq .Status "untrusted"}}
+  <span class="status-indicator"><span class="dot orange"></span> host key not approved</span>
+{{else if eq .Status "failing"}}
+  <span class="status-indicator" title="{{.LastError}}"><span class="dot red"></span> failing</span>
+{{else if eq .Status "disabled"}}
+  <span class="status-indicator"><span class="dot"></span> disabled</span>
+{{else}}
+  <span class="status-indicator"><span class="dot orange"></span> not tested</span>
+{{end}}
+{{end}}

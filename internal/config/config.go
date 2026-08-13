@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"unbound-web/internal/server"
 )
 
 // Config holds every runtime setting of the panel.
@@ -73,7 +75,7 @@ func Load() (*Config, error) {
 	cfg.ListenAddr = env("LISTEN_ADDR", "127.0.0.1:8080")
 	cfg.DataDir = env("DATA_DIR", "/var/lib/unbound-web")
 	cfg.DBPath = env("DB_PATH", filepath.Join(cfg.DataDir, "unbound.db"))
-	cfg.KeyDir = filepath.Join(cfg.DataDir, "keys")
+	cfg.KeyDir = filepath.Join(cfg.DataDir, server.KeySubdir)
 
 	cfg.AuthHelperPath = env("AUTH_HELPER_PATH", "/usr/local/libexec/unbound-web-authhelper")
 	cfg.PAMService = env("PAM_SERVICE", "unbound-web")

@@ -1,0 +1,84 @@
+{{/* The outcome of a connection test. The failed step is named, because it
+     tells the operator whether to look at the network, the key, the file or
+     the sudoers rules. */}}
+{{define "server-test"}}
+<div>
+  <h6>Connection test: {{.Server.Name}}</h6>
+
+  {{if .Result.OK}}
+    {{template "alert" (alert "success" "Every step passed. The server is ready.")}}
+
+    <ul class="text-muted small">
+      <li>Connected and the host key matched the approved one.</li>
+      <li>Read the host entries file.</li>
+      <li>Wrote it back through sudo without changing it.</li>
+      <li>Ran the status command.</li>
+    </ul>
+
+  {{else if .Result.HostKey}}
+    {{if .Result.HostKeyChanged}}
+      {{template "alert" (alert "error" "The connection was refused: this server offers a different host key than the approved one.")}}
+
+      <p class="mb-2">
+        A reinstalled server looks exactly like an impostor from here. Approve the new
+        fingerprint only after you have read it on the server itself, not over the same
+        connection.
+      </p>
+    {{else}}
+      {{template "alert" (alert "warning" "This server has no approved host key yet.")}}
+    {{end}}
+
+    <p class="mb-2">
+      Compare the fingerprint below against the target. Run
+      <code>ssh-keyscan -t ed25519 {{.Server.Host}}</code> there, or read it from the
+      server console.
+    </p>
+    <pre class="border rounded p-3 mb-3" data-field="fingerprint">{{.Result.HostKey.Fingerprint}}</pre>
+
+    <form hx-post="/servers/{{.Server.ID}}/trust"
+          hx-target="#server-panel" hx-swap="innerHTML"
+          hx-confirm="{{if .Result.HostKeyChanged}}Replace the approved host key of {{.Server.Name}} with this one?{{else}}Approve this fingerprint for {{.Server.Name}}?{{end}}"
+          data-confirm-title="{{if .Result.HostKeyChanged}}Replace host key{{else}}Approve host key{{end}}">
+      <input type="hidden" name="fingerprint" value="{{.Result.HostKey.Fingerprint}}">
+      <button class="btn btn-primary" type="submit" data-action-name="trust">
+        {{if .Result.HostKeyChanged}}Replace the approved host key{{else}}Approve this host key{{end}}
+      </button>
+      <button class="btn btn-outline-secondary" type="button" data-action="close-panel">
+        Cancel
+      </button>
+    </form>
+
+  {{else}}
+    {{template "alert" (alert "error" "The connection test failed.")}}
+
+    {{if .Result.Step}}
+    <p class="mb-2">
+      Failed at the <strong data-field="step">{{.Result.Step}}</strong> step.
+      {{if eq .Result.Step "connect"}}
+        The panel could not reach the server or the key was refused.
+      {{else if eq .Result.Step "read"}}
+        The host entries file could not be read. Check the path and its permissions.
+      {{else if eq .Result.Step "write"}}
+        The write path was refused. The sudoers rules on the target most likely name a
+        different path than this record does.
+      {{else if eq .Result.Step "status"}}
+        The status command could not be run.
+      {{end}}
+    </p>
+    {{end}}
+
+    <pre class="border rounded p-3 mb-3" data-field="detail">{{.Result.Message}}</pre>
+
+    <div class="dns-toolbar">
+      <button class="btn btn-outline-primary" type="button"
+              hx-post="/servers/{{.Server.ID}}/test"
+              hx-target="#server-panel" hx-swap="innerHTML">
+        Try again
+      </button>
+      <button class="btn btn-outline-secondary" type="button" data-action="close-panel">
+        Close
+      </button>
+    </div>
+  {{end}}
+</div>
+{{end}}

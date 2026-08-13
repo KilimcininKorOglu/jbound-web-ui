@@ -1,1 +1,27 @@
-{{define "content"}}{{template "pending" .Data}}{{end}}
+{{define "content"}}
+<div class="row">
+  <div class="col-12 mb-4">
+    <div class="card">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <h5 class="mb-0">Servers</h5>
+        <button class="btn btn-primary btn-sm" type="button"
+                hx-get="/servers/new" hx-target="#server-panel" hx-swap="innerHTML">
+          <i class="bx bx-plus"></i> Add server
+        </button>
+      </div>
+      <div class="card-body">
+        <div id="server-panel"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12">
+    {{/* A connection test and a host key approval change the status of a row
+         but swap the panel, so the tables reload themselves on the event
+         those handlers raise. */}}
+    <div id="server-tables"
+         hx-get="/servers/table" hx-trigger="servers-changed from:body"
+         hx-swap="innerHTML">{{template "server-tables" .Data}}</div>
+  </div>
+</div>
+{{end}}

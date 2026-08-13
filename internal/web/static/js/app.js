@@ -124,6 +124,17 @@
     if (trigger.dataset.action === 'logout') {
       event.preventDefault();
       confirmLogout();
+      return;
+    }
+
+    /* Closing a panel is a client side concern. Asking the server for an
+       empty fragment would be a round trip for nothing. */
+    if (trigger.dataset.action === 'close-panel') {
+      event.preventDefault();
+      const panel = document.getElementById('server-panel');
+      if (panel) {
+        panel.innerHTML = '';
+      }
     }
   });
 

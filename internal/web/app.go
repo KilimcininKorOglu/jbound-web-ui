@@ -60,8 +60,6 @@ type pendingPage struct {
 // pending lists the pages that exist for their layout and access rules only.
 // Each entry disappears when its phase fills the page in.
 var pending = map[string]pendingPage{
-	"logs": {"Audit Logs",
-		"The audit log view arrives with the log phase."},
 	"siem": {"SIEM Config",
 		"The syslog forwarding settings arrive with the SIEM phase."},
 	"system": {"System Info",
@@ -84,7 +82,7 @@ func (a *App) Router() http.Handler {
 	mux.Handle("POST /logout", a.requireAuth(a.requireCSRF(
 		http.HandlerFunc(a.handleLogout))))
 
-	for _, path := range []string{"/logs", "/system"} {
+	for _, path := range []string{"/system"} {
 		mux.Handle("GET "+path, a.requireAuth(a.pendingHandler(path)))
 	}
 	mux.Handle("GET /siem", a.requireAuth(a.requireAdmin(a.pendingHandler("/siem"))))
@@ -103,6 +101,9 @@ func (a *App) Router() http.Handler {
 		"POST /dns/apply":       a.handleRecordApply,
 		"GET /dns/query":        a.handleQueryForm,
 		"POST /dns/query":       a.handleQuery,
+
+		"GET /logs":       a.handleLogsPage,
+		"GET /logs/table": a.handleLogsTable,
 
 		"GET /diff":         a.handleDiffPage,
 		"GET /diff/table":   a.handleDiffTable,

@@ -202,6 +202,11 @@ func (f *fakeAuditRepo) Write(_ context.Context, entry audit.Entry, _ time.Time)
 	return nil
 }
 
+// List satisfies the repository. The listing is covered where it is used.
+func (f *fakeAuditRepo) List(context.Context, audit.Query) (audit.Page, error) {
+	return audit.Page{}, nil
+}
+
 func (f *fakeAuditRepo) actions() []string {
 	var actions []string
 	for _, entry := range f.entries {

@@ -1,1 +1,61 @@
-{{define "content"}}{{template "pending" .Data}}{{end}}
+{{define "content"}}
+<div class="d-flex flex-wrap align-items-center justify-content-between mb-3">
+  <h5 class="mb-0">Audit Logs</h5>
+</div>
+
+{{/* Every control submits the whole set, so a filter and a page never
+     disagree about what is being listed. */}}
+<div class="card mb-4">
+  <div class="card-body">
+    <form id="log-controls" class="row g-3"
+          hx-get="/logs/table" hx-target="#log-table" hx-swap="innerHTML"
+          hx-trigger="change from:(#log-controls select), keyup changed delay:400ms from:(#log-controls input[name='search'])">
+
+      <div class="col-md-4">
+        <label class="form-label" for="search">Search</label>
+        <input class="form-control" id="search" name="search" type="search"
+               value="{{.Data.Query.Search}}" placeholder="user, detail or address"
+               autocapitalize="none" spellcheck="false">
+      </div>
+
+      <div class="col-md-3">
+        <label class="form-label" for="action">Action</label>
+        <select class="form-select" id="action" name="action">
+          <option value="">All actions</option>
+          {{$query := .Data.Query}}
+          {{range .Data.Actions}}
+          <option value="{{.}}" {{if eq $query.Action .}}selected{{end}}>{{.}}</option>
+          {{end}}
+        </select>
+      </div>
+
+      <div class="col-md-3">
+        <label class="form-label" for="server_id">Server</label>
+        <select class="form-select" id="server_id" name="server_id">
+          <option value="0">All servers</option>
+          {{range .Data.Servers}}
+          <option value="{{.ID}}" {{if eq $query.ServerID .ID}}selected{{end}}>{{.Name}}</option>
+          {{end}}
+        </select>
+      </div>
+
+      <div class="col-md-2">
+        <label class="form-label" for="per_page">Per page</label>
+        <select class="form-select" id="per_page" name="per_page">
+          <option value="10" {{if eq $query.PerPage 10}}selected{{end}}>10</option>
+          <option value="25" {{if eq $query.PerPage 25}}selected{{end}}>25</option>
+          <option value="50" {{if eq $query.PerPage 50}}selected{{end}}>50</option>
+          <option value="100" {{if eq $query.PerPage 100}}selected{{end}}>100</option>
+        </select>
+      </div>
+
+      <input type="hidden" name="page" value="{{.Data.Query.Page}}">
+    </form>
+  </div>
+</div>
+
+<div id="log-table"
+     hx-get="/logs/table" hx-include="#log-controls"
+     hx-trigger="records-changed from:body"
+     hx-swap="innerHTML">{{template "log-table" .Data}}</div>
+{{end}}

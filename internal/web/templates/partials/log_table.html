@@ -1,0 +1,77 @@
+{{/* The audit trail. It answers who changed what, from where and on which
+     server, which is the question an incident starts with. */}}
+{{define "log-table"}}
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-hover">
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>User</th>
+          <th>Action</th>
+          <th>Server</th>
+          <th>Details</th>
+          <th>Address</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Page.Rows}}
+        <tr>
+          <td class="text-muted text-nowrap">{{localTime .CreatedAt}}</td>
+          <td>
+            <strong>{{.Username}}</strong>
+            <div class="text-muted small">uid {{.UID}}</div>
+          </td>
+          <td>{{template "log-action" .Action}}</td>
+          <td class="text-muted">
+            {{if .ServerName}}{{.ServerName}}{{else}}<span class="text-body-secondary">panel</span>{{end}}
+          </td>
+          <td class="text-muted">{{.Details}}</td>
+          <td class="text-muted text-nowrap">{{.IPAddress}}</td>
+        </tr>
+        {{else}}
+        <tr>
+          <td colspan="6" class="text-center text-muted py-4">No entries found.</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card-footer d-flex flex-wrap align-items-center justify-content-between">
+    <span class="text-muted small" data-field="summary">{{.Summary}}</span>
+
+    {{if .Pages}}
+    <nav>
+      <ul class="pagination pagination-sm mb-0">
+        {{range .Pages}}
+        {{if .Gap}}
+        <li class="page-item disabled"><span class="page-link">&hellip;</span></li>
+        {{else}}
+        <li class="page-item {{if eq .Number $.Page.Page}}active{{end}}">
+          <button class="page-link" type="button"
+                  hx-get="/logs/table?page={{.Number}}" hx-include="#log-controls"
+                  hx-target="#log-table" hx-swap="innerHTML">{{.Number}}</button>
+        </li>
+        {{end}}
+        {{end}}
+      </ul>
+    </nav>
+    {{end}}
+  </div>
+</div>
+{{end}}
+
+{{/* A colour per severity class, so a reader finds the events that matter
+     without reading every row. */}}
+{{define "log-action"}}
+{{if or (eq . "login") (eq . "logout") (eq . "dns_query") (eq . "cache_refresh")}}
+<span class="badge bg-label-secondary" data-field="action">{{.}}</span>
+{{else if or (eq . "login_failed") (eq . "dns_delete") (eq . "server_delete") (eq . "server_trust")}}
+<span class="badge bg-label-danger" data-field="action">{{.}}</span>
+{{else if or (eq . "dns_restart") (eq . "server_create") (eq . "server_update")}}
+<span class="badge bg-label-warning" data-field="action">{{.}}</span>
+{{else}}
+<span class="badge bg-label-primary" data-field="action">{{.}}</span>
+{{end}}
+{{end}}

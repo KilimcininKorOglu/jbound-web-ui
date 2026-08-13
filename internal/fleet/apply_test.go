@@ -51,6 +51,11 @@ func (f *fakeAudit) Write(_ context.Context, entry audit.Entry, _ time.Time) err
 	return nil
 }
 
+// List satisfies the repository. The listing is covered where it is used.
+func (f *fakeAudit) List(context.Context, audit.Query) (audit.Page, error) {
+	return audit.Page{}, nil
+}
+
 func (f *fakeAudit) all() []audit.Entry {
 	f.mu.Lock()
 	defer f.mu.Unlock()

@@ -71,9 +71,10 @@ func (e *Entry) Defaults() {
 	}
 }
 
-// Repository stores audit entries.
+// Repository stores and reads audit entries.
 type Repository interface {
 	Write(ctx context.Context, entry Entry, at time.Time) error
+	List(ctx context.Context, query Query) (Page, error)
 }
 
 // Forwarder mirrors an entry to a system outside the panel.
@@ -124,4 +125,9 @@ func (l *Logger) Write(ctx context.Context, entry Entry) error {
 		}
 	}
 	return err
+}
+
+// List returns one page of the audit log.
+func (l *Logger) List(ctx context.Context, query Query) (Page, error) {
+	return l.repo.List(ctx, query)
 }

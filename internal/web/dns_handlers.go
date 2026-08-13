@@ -167,7 +167,7 @@ func (a *App) dnsPageData(r *http.Request) (dnsPageData, error) {
 		Groups:     groups,
 		Types:      dnsfile.Types,
 		ShowServer: query.Scope != fleet.ScopeServer,
-		Pages:      pageWindow(page),
+		Pages:      pageWindow(pageBounds{page.Page, page.TotalPages}),
 		Summary:    summary(page),
 		Status:     status,
 		StaleNote:  staleNote(status),
@@ -242,9 +242,15 @@ func summary(page fleet.Page) string {
 		len(page.Rows), page.Total, page.Page, page.TotalPages)
 }
 
+// pageBounds is what the pagination control needs from any page.
+type pageBounds struct {
+	Page       int
+	TotalPages int
+}
+
 // pageWindow builds the page links: the first page, the two neighbours of the
 // current one, the last page, and a gap marker where numbers were left out.
-func pageWindow(page fleet.Page) []pageLink {
+func pageWindow(page pageBounds) []pageLink {
 	if page.TotalPages <= 1 {
 		return nil
 	}

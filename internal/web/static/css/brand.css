@@ -36,7 +36,7 @@
 /* Badges */
 .bg-label-primary {
     background-color: #E8F5EE !important;
-    color: #1B8A4E !important;
+    color: #15703F !important;
 }
 .bg-primary {
     background-color: #1B8A4E !important;
@@ -125,7 +125,7 @@ a:hover {
 /* Badge color overrides for info type (used for User role) */
 .bg-label-info {
     background-color: #E0F4FF !important;
-    color: #0693CF !important;
+    color: #0A6C99 !important;
 }
 
 /* Status indicator */
@@ -158,4 +158,99 @@ a:hover {
 /* Scrollbar */
 .ps__thumb-y {
     background-color: #1B8A4E !important;
+}
+
+/* ─── Readable Status Colours ───────────────────────────────────────────── */
+
+/* The template writes a pale text on a pale tint. Its success alert is #71dd37
+   on #e8fadf, which reads at 1.9:1, well under the 4.5:1 that WCAG AA asks of
+   body text. Every pair below keeps the hue of the state and darkens the text
+   until it clears that threshold, so a message is still recognised by colour
+   before it is read.
+
+   Each rule repeats the background it was measured against. A text colour that
+   travels without its background is a contrast ratio nobody can check. */
+
+.alert-success {
+    background-color: #E8F5EE;
+    border-color: #C9E7D8;
+    color: #15703F;
+}
+.alert-success .alert-link {
+    color: #15703F;
+}
+
+.alert-info {
+    background-color: #E0F4FF;
+    border-color: #B3E3F7;
+    color: #0A6C99;
+}
+.alert-info .alert-link {
+    color: #0A6C99;
+}
+
+.alert-warning {
+    background-color: #FFF2D6;
+    border-color: #FFE0A6;
+    color: #8A5A00;
+}
+.alert-warning .alert-link {
+    color: #8A5A00;
+}
+
+.alert-danger {
+    background-color: #FFE0DB;
+    border-color: #FFC5BB;
+    color: #A32B12;
+}
+.alert-danger .alert-link {
+    color: #A32B12;
+}
+
+/* Apply Rules is a warning button, and the template writes white on amber at
+   1.9:1. Amber carries no dark shade that still reads as amber, so the text
+   turns dark instead, which is what Bootstrap itself does with this colour. */
+.btn-warning,
+.btn-warning:hover,
+.btn-warning:focus,
+.btn-warning:active {
+    color: #3D2800 !important;
+    background-color: #FFAB00 !important;
+    border-color: #FFAB00 !important;
+}
+
+/* The dismiss cross is drawn by the template as a tinted image, one data URI
+   per state. Darkening it here keeps the four images and still lifts the
+   control over the 3:1 that WCAG AA asks of a user interface element. */
+.alert .btn-close {
+    filter: brightness(0.6);
+}
+
+.bg-label-success {
+    background-color: #E8F5EE !important;
+    color: #15703F !important;
+}
+.bg-label-warning {
+    background-color: #FFF2D6 !important;
+    color: #8A5A00 !important;
+}
+.bg-label-danger {
+    background-color: #FFE0DB !important;
+    color: #A32B12 !important;
+}
+.bg-label-secondary {
+    background-color: #EBEEF0 !important;
+    color: #5A6570 !important;
+}
+
+/* Muted text carries the empty states and the table hints, so it is read as
+   often as anything else. #a1acb8 on white is 2.3:1. */
+.text-muted {
+    color: #6B7785 !important;
+}
+
+/* The hint under a field explains the syntax the field accepts, at 85% of the
+   body size and #b4bdc6, which is 1.9:1. */
+.form-text {
+    color: #6B7785;
 }

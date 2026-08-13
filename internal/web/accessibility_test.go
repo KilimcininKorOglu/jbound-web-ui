@@ -2,6 +2,8 @@ package web
 
 import (
 	"io/fs"
+	"net/http"
+	"net/http/httptest"
 	"regexp"
 	"strings"
 	"testing"
@@ -117,6 +119,32 @@ func TestMotionFollowsTheSystemPreference(t *testing.T) {
 	}
 }
 
+// Every page names itself once at the top. A page whose first heading is an h5
+// leaves a reader jumping by heading with nothing to jump to.
+func TestEveryPageCarriesOneTopHeading(t *testing.T) {
+	env := newTestEnv(t)
+	cookie := env.login(t, "dnsadmin")
+
+	paths := []string{"/dns", "/diff", "/servers", "/logs", "/siem", "/settings", "/system"}
+	heading := regexp.MustCompile(`<h1[\s>]`)
+
+	for _, path := range paths {
+		recorder := env.do(t, httptest.NewRequest(http.MethodGet, path, nil), cookie)
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("GET %s = %d, want 200", path, recorder.Code)
+		}
+
+		if got := len(heading.FindAllString(recorder.Body.String(), -1)); got != 1 {
+			t.Errorf("%s carries %d top headings, want 1", path, got)
+		}
+	}
+
+	login := env.do(t, httptest.NewRequest(http.MethodGet, "/", nil))
+	if got := len(heading.FindAllString(login.Body.String(), -1)); got != 1 {
+		t.Errorf("the login page carries %d top headings, want 1", got)
+	}
+}
+
 // An icon next to a word says the word twice to a screen reader, so it is
 // hidden from the accessibility tree.
 func TestEveryDecorativeIconIsHidden(t *testing.T) {
@@ -158,6 +186,18 @@ func TestNothingPretendsToBeALink(t *testing.T) {
 	for path, body := range templates(t) {
 		if strings.Contains(body, `href="#"`) {
 			t.Errorf("%s: a link goes nowhere and should be a button", path)
+		}
+	}
+}
+
+// A span with a role is not a button. A keyboard cannot press it with the space
+// bar, and nothing on the page teaches it to.
+func TestNothingImitatesAButton(t *testing.T) {
+	imitation := regexp.MustCompile(`<(?:span|div|a)\s[^>]*role="button"`)
+
+	for path, body := range templates(t) {
+		for _, tag := range imitation.FindAllString(body, -1) {
+			t.Errorf("%s: %s imitates a button and should be one", path, tag)
 		}
 	}
 }

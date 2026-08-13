@@ -6,7 +6,7 @@
 {{$query := .Query}}
 <div class="card">
   <div class="card-header">
-    <h6 class="mb-0">{{t "query.title"}}</h6>
+    <h2 class="h6 mb-0">{{t "query.title"}}</h2>
   </div>
   <div class="card-body">
     <form hx-post="/dns/query" hx-target="#record-panel" hx-swap="innerHTML">

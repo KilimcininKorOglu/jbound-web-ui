@@ -5,7 +5,7 @@
   <div class="col-lg-7">
     <div class="card mb-4">
       <div class="card-header d-flex flex-wrap align-items-center justify-content-between">
-        <h6 class="mb-0">{{t "siem.title_rules"}}</h6>
+        <h2 class="h6 mb-0">{{t "siem.title_rules"}}</h2>
         <div>
           {{if eq .Settings.Status "active"}}
           <span class="badge bg-label-success" data-field="rsyslog-status">{{t "siem.status_active"}}</span>
@@ -66,7 +66,7 @@
   <div class="col-lg-5">
     <div class="card mb-4">
       <div class="card-header">
-        <h6 class="mb-0">{{t "siem.how_title"}}</h6>
+        <h2 class="h6 mb-0">{{t "siem.how_title"}}</h2>
       </div>
       <div class="card-body">
         <p class="mb-2">
@@ -85,7 +85,7 @@
 
 <div class="card">
   <div class="card-header d-flex flex-wrap align-items-center justify-content-between">
-    <h6 class="mb-0">{{t "siem.recent"}}</h6>
+    <h2 class="h6 mb-0">{{t "siem.recent"}}</h2>
     <button class="btn btn-outline-secondary btn-sm" type="button"
             hx-get="/siem/panel" hx-target="#siem-panel" hx-swap="innerHTML">
       <i class="bx bx-refresh" aria-hidden="true"></i> {{t "common.refresh"}}

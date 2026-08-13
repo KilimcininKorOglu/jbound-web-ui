@@ -3,7 +3,7 @@
 {{define "server-tables"}}
 <div class="card mb-4">
   <div class="card-header">
-    <h5 class="mb-0">{{t "servers.managed"}}</h5>
+    <h2 class="h5 mb-0">{{t "servers.managed"}}</h2>
   </div>
   <div class="table-responsive">
     <table class="table table-hover">
@@ -71,7 +71,7 @@
 
 <div class="card">
   <div class="card-header d-flex align-items-center justify-content-between">
-    <h5 class="mb-0">{{t "servers.groups"}}</h5>
+    <h2 class="h5 mb-0">{{t "servers.groups"}}</h2>
     <button class="btn btn-primary btn-sm" type="button"
             hx-get="/groups/new" hx-target="#server-panel" hx-swap="innerHTML">
       <i class="bx bx-plus" aria-hidden="true"></i> {{t "servers.add_group"}}

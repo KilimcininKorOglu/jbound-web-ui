@@ -3,7 +3,7 @@
      the sudoers rules. */}}
 {{define "server-test"}}
 <div>
-  <h6>{{tf "servertest.title" .Server.Name}}</h6>
+  <h2 class="h6">{{tf "servertest.title" .Server.Name}}</h2>
 
   {{if .Result.OK}}
     {{template "alert" (alert "success" (t "servertest.ok"))}}

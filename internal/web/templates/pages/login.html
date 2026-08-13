@@ -2,7 +2,7 @@
 <div class="card">
   <div class="card-body">
     <div class="app-brand justify-content-center mb-4">
-      <span class="app-brand-text demo text-body fw-bolder brand-title">{{t "login.heading"}}</span>
+      <h1 class="app-brand-text demo text-body fw-bolder brand-title mb-0">{{t "login.heading"}}</h1>
     </div>
     <p class="mb-4 text-center">{{t "login.lead"}}</p>
 
@@ -24,11 +24,13 @@
           <input type="password" id="password" name="password" class="form-control"
                  placeholder="&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;"
                  autocomplete="current-password" required>
-          <span class="input-group-text cursor-pointer" data-action="toggle-password"
-                data-target="password" role="button" tabindex="0"
-                aria-label="{{t "login.password_toggle"}}">
+          {{/* A button rather than a span with a role, so a keyboard reaches it
+               the way it reaches every other control. */}}
+          <button type="button" class="input-group-text cursor-pointer"
+                  data-action="toggle-password" data-target="password"
+                  aria-label="{{t "login.password_toggle"}}">
             <i class="bx bx-hide" data-role="toggle-icon" aria-hidden="true"></i>
-          </span>
+          </button>
         </div>
       </div>
 

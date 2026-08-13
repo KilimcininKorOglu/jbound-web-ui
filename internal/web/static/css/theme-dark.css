@@ -67,9 +67,7 @@ html[data-color-scheme="dark"] {
         --panel-accent-strong: #6FD79A;
         --panel-accent-soft: rgba(78, 203, 132, 0.16);
 
-    /* The focus ring. Measured against the page and against a card, because a
-       ring that disappears on one of them is a ring nobody can follow. */
-    --panel-focus: #6FD79A;
+        --panel-focus: #6FD79A;
 
         --panel-success-bg: #16311F;
         --panel-success-text: #7DDCA0;
@@ -144,6 +142,16 @@ html[data-color-scheme="dark"] .text-muted,
 html[data-color-scheme="dark"] .form-text,
 html[data-color-scheme="dark"] .menu-header-text {
     color: var(--panel-text-muted) !important;
+}
+
+/* The refusal under a control. The vendor red is meant for a white card and
+   reads at 4:1 on this one, which is under what a sentence needs. */
+html[data-color-scheme="dark"] .invalid-feedback {
+    color: var(--panel-danger-text);
+}
+html[data-color-scheme="dark"] .form-control.is-invalid,
+html[data-color-scheme="dark"] .form-select.is-invalid {
+    border-color: var(--panel-danger-text);
 }
 
 html[data-color-scheme="dark"] a {
@@ -433,6 +441,14 @@ html[data-color-scheme="dark"] .log-viewer {
     html[data-color-scheme="system"] .form-text,
     html[data-color-scheme="system"] .menu-header-text {
         color: var(--panel-text-muted) !important;
+    }
+
+    html[data-color-scheme="system"] .invalid-feedback {
+        color: var(--panel-danger-text);
+    }
+    html[data-color-scheme="system"] .form-control.is-invalid,
+    html[data-color-scheme="system"] .form-select.is-invalid {
+        border-color: var(--panel-danger-text);
     }
 
     html[data-color-scheme="system"] a {

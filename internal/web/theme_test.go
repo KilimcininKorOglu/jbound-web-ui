@@ -64,6 +64,8 @@ func TestTheDarkPaletteIsReadable(t *testing.T) {
 		{"warning alert", "--panel-warning-text", "--panel-warning-bg"},
 		{"danger alert", "--panel-danger-text", "--panel-danger-bg"},
 		{"secondary badge", "--panel-secondary-text", "--panel-secondary-bg"},
+		// The refusal under a control sits on the card rather than on a tint.
+		{"refused field", "--panel-danger-text", "--panel-surface"},
 	}
 
 	for _, testCase := range cases {

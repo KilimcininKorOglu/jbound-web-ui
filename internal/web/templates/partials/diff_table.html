@@ -7,7 +7,7 @@
 {{$query := .Query}}
 <div class="card">
   <div class="card-body pb-0">
-    <span class="text-muted small" data-field="diff-summary">{{.Summary}}</span>
+    <span class="text-muted small" role="status" data-field="diff-summary">{{.Summary}}</span>
     {{if .StaleNote}}
     <div class="text-muted small" data-field="stale-note">{{.StaleNote}}</div>
     {{end}}

@@ -2,7 +2,7 @@
      response, so this is the only key material the interface ever shows. */}}
 {{define "server-key"}}
 <div class="mb-3">
-  <h6>{{tf "serverkey.title" .Server.Name}}</h6>
+  <h2 class="h6">{{tf "serverkey.title" .Server.Name}}</h2>
   <p class="text-muted mb-2">
     {{t "serverkey.lead_1"}}
     <code>~{{.Server.SSHUser}}/.ssh/authorized_keys</code>

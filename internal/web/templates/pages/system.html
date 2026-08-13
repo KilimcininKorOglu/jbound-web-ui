@@ -1,13 +1,13 @@
 {{define "content"}}
 <div class="d-flex flex-wrap align-items-center justify-content-between mb-3">
-  <h5 class="mb-0">{{t "nav.system_info"}}</h5>
+  <h1 class="h5 mb-0">{{t "nav.system_info"}}</h1>
 </div>
 
 <div class="row g-4 mb-4">
   <div class="col-lg-4">
     <div class="card h-100">
       <div class="card-header">
-        <h6 class="mb-0">{{t "system.session"}}</h6>
+        <h2 class="h6 mb-0">{{t "system.session"}}</h2>
       </div>
       <div class="card-body">
         <dl class="row mb-0">
@@ -39,7 +39,7 @@
   <div class="col-lg-4">
     <div class="card h-100">
       <div class="card-header">
-        <h6 class="mb-0">{{t "system.panel"}}</h6>
+        <h2 class="h6 mb-0">{{t "system.panel"}}</h2>
       </div>
       <div class="card-body">
         <dl class="row mb-0">
@@ -62,7 +62,7 @@
   <div class="col-lg-4">
     <div class="card h-100">
       <div class="card-header">
-        <h6 class="mb-0">{{t "system.syslog"}}</h6>
+        <h2 class="h6 mb-0">{{t "system.syslog"}}</h2>
       </div>
       <div class="card-body">
         {{if .Data.Syslog.Problem}}

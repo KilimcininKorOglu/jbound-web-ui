@@ -82,7 +82,11 @@ dev-itest: ## Run the integration tests inside the panel container
 	# As the service account, not as root. One of the gate checks is that the
 	# panel never runs with uid 0, and root would also mask the 4750 mode of
 	# the setuid helper.
-	$(COMPOSE) exec -T -u unbound-web app go test -tags=integration ./... $(GO_TEST_FLAGS)
+	#
+	# One package at a time. Several of these write the same file on the same
+	# development target, and Go runs packages in parallel by default, which
+	# turns two honest tests into one flake.
+	$(COMPOSE) exec -T -u unbound-web app go test -p 1 -tags=integration ./... $(GO_TEST_FLAGS)
 
 # ---------------------------------------------------------------------------
 # Build and quality

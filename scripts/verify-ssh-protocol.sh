@@ -31,7 +31,9 @@ echo "SSH transfer protocol checks against $TARGET"
 echo
 
 # --- Read --------------------------------------------------------------------
-ENCODED=$(remote "/usr/bin/cat $ENTRIES | /usr/bin/base64 -w0")
+# base64 opens the file itself. A pipeline from cat would report the status of
+# base64 alone, so a file it could not open would come back as an empty one.
+ENCODED=$(remote "/usr/bin/base64 -w0 $ENTRIES")
 if [ -z "$ENCODED" ]; then
     fail "read produced no output"
     exit 1
@@ -78,13 +80,25 @@ cp "$ORIGINAL" "$MODIFIED"
 printf '%s\n' "$MARKER" >> "$MODIFIED"
 NEW_B64=$(base64 < "$MODIFIED" | tr -d '\n')
 
-if printf '%s' "$NEW_B64" | remote "/usr/bin/base64 -d | sudo /usr/bin/tee $TMP > /dev/null && sudo /usr/bin/mv $TMP $ENTRIES"; then
+# The digest of the temporary file decides whether it is moved into place.
+# Joining tee and mv with && would gate the move on the status of tee, and tee
+# writes a stream that was cut short just as happily as a whole one.
+WRITE_SUM=$(printf '%s' "$NEW_B64" | remote "/usr/bin/base64 -d | sudo /usr/bin/tee $TMP > /dev/null; /usr/bin/sha256sum $TMP" | awk '{print $1}')
+EXPECT_SUM=$(shasum -a 256 < "$MODIFIED" | awk '{print $1}')
+
+if [ "$WRITE_SUM" = "$EXPECT_SUM" ]; then
+    pass "temporary file matches what was sent ($WRITE_SUM)"
+else
+    fail "temporary file hashes $WRITE_SUM, expected $EXPECT_SUM"
+fi
+
+if [ "$WRITE_SUM" = "$EXPECT_SUM" ] && remote "sudo /usr/bin/mv $TMP $ENTRIES"; then
     pass "write through tee and mv succeeded"
 else
     fail "write through tee and mv failed"
 fi
 
-if remote "/usr/bin/cat $ENTRIES" | grep -q 'protocol-check'; then
+if remote "/usr/bin/base64 -w0 $ENTRIES" | base64 -d | grep -q 'protocol-check'; then
     pass "written record is present on the target"
 else
     fail "written record is missing on the target"
@@ -114,7 +128,9 @@ fi
 
 # --- Restore -----------------------------------------------------------------
 RESTORE_B64=$(base64 < "$ORIGINAL" | tr -d '\n')
-if printf '%s' "$RESTORE_B64" | remote "/usr/bin/base64 -d | sudo /usr/bin/tee $TMP > /dev/null && sudo /usr/bin/mv $TMP $ENTRIES"; then
+RESTORE_SUM=$(printf '%s' "$RESTORE_B64" | remote "/usr/bin/base64 -d | sudo /usr/bin/tee $TMP > /dev/null; /usr/bin/sha256sum $TMP" | awk '{print $1}')
+
+if [ "$RESTORE_SUM" = "$REMOTE_HASH" ] && remote "sudo /usr/bin/mv $TMP $ENTRIES"; then
     RESTORED_HASH=$(remote "sha256sum $ENTRIES" | awk '{print $1}')
     if [ "$RESTORED_HASH" = "$REMOTE_HASH" ]; then
         pass "target restored to its original content"

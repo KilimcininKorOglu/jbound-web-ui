@@ -1,0 +1,110 @@
+{{/* The add and edit form. A change reaches every server of the target, so the
+     target is part of the form rather than something the operator sets
+     elsewhere and hopes is still selected. */}}
+{{define "record-form"}}
+{{$query := .Query}}
+<div class="card">
+  <div class="card-header">
+    <h6 class="mb-0">{{if .IsNew}}Add a record{{else}}Edit a record{{end}}</h6>
+  </div>
+  <div class="card-body">
+    <form hx-{{if .IsNew}}post{{else}}put{{end}}="/dns/records"
+          hx-target="#record-panel" hx-swap="innerHTML">
+
+      {{if .Problem}}{{template "alert" (alert "error" .Problem)}}{{end}}
+
+      <div class="row g-3">
+        <div class="col-md-5">
+          <label class="form-label" for="fqdn">Name</label>
+          <input class="form-control" id="fqdn" name="fqdn" value="{{.Record.FQDN}}"
+                 placeholder="www.example.net" autocapitalize="none"
+                 spellcheck="false" required>
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label" for="record_type">Type</label>
+          <select class="form-select" id="record_type" name="type"
+                  data-action="record-type">
+            {{$record := .Record}}
+            {{range .Types}}
+            <option value="{{.}}" {{if eq $record.Type .}}selected{{end}}>{{.}}</option>
+            {{end}}
+          </select>
+        </div>
+
+        <div class="col-md-4" data-field="priority"
+             {{if ne .Record.Type "MX"}}hidden{{end}}>
+          <label class="form-label" for="priority">Preference</label>
+          <input class="form-control" id="priority" name="priority" type="number"
+                 min="0" max="65535"
+                 value="{{if .Record.Priority}}{{.Record.Priority}}{{else}}10{{end}}">
+          <div class="form-text">Lower is tried first. Only MX uses it.</div>
+        </div>
+
+        <div class="col-12">
+          <label class="form-label" for="value">Value</label>
+          <input class="form-control" id="value" name="value" value="{{.Record.Value}}"
+                 placeholder="192.0.2.10" autocapitalize="none" spellcheck="false" required>
+          <div class="form-text">
+            An address for A and AAAA, a name for CNAME and MX, one word for TXT.
+          </div>
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label" for="form_target">Apply to</label>
+          <select class="form-select" id="form_target" name="target"
+                  data-action="choose-target" data-target-form="1">
+            {{if .Groups}}
+            <optgroup label="Groups">
+              {{range .Groups}}
+              <option value="group:{{.ID}}"
+                      {{if and (eq $query.Scope "group") (eq $query.GroupID .ID)}}selected{{end}}>
+                {{.Name}}
+              </option>
+              {{end}}
+            </optgroup>
+            {{end}}
+            {{if .Servers}}
+            <optgroup label="Servers">
+              {{range .Servers}}
+              <option value="server:{{.ID}}"
+                      {{if and (eq $query.Scope "server") (eq $query.ServerID .ID)}}selected{{end}}>
+                {{.Name}}
+              </option>
+              {{end}}
+            </optgroup>
+            {{end}}
+          </select>
+          <div class="form-text">
+            A change needs a single server or a group, never the whole fleet at once.
+          </div>
+        </div>
+      </div>
+
+      {{/* The target of the change, split the way the server reads it. */}}
+      <input type="hidden" name="scope"
+             value="{{if eq $query.Scope "all"}}group{{else}}{{$query.Scope}}{{end}}">
+      <input type="hidden" name="server_id" value="{{$query.ServerID}}">
+      <input type="hidden" name="group_id" value="{{$query.GroupID}}">
+
+      {{if not .IsNew}}
+      {{/* The record being replaced. The file is the source of truth and a
+           line has no identifier, so the old values are what gets matched. */}}
+      <input type="hidden" name="old_fqdn" value="{{.Old.FQDN}}">
+      <input type="hidden" name="old_type" value="{{.Old.Type}}">
+      <input type="hidden" name="old_value" value="{{.Old.Value}}">
+      <input type="hidden" name="old_priority" value="{{.Old.Priority}}">
+      {{end}}
+
+      <div class="dns-toolbar mt-4">
+        <button class="btn btn-primary" type="submit">
+          {{if .IsNew}}Add record{{else}}Save changes{{end}}
+        </button>
+        <button class="btn btn-outline-secondary" type="button" data-action="close-record-panel">
+          Cancel
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{{end}}

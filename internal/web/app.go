@@ -4,10 +4,12 @@ package web
 import (
 	"embed"
 	"net/http"
+	"strings"
 
 	"unbound-web/internal/audit"
 	"unbound-web/internal/auth"
 	"unbound-web/internal/config"
+	"unbound-web/internal/fleet"
 	"unbound-web/internal/server"
 )
 
@@ -22,13 +24,15 @@ type App struct {
 	limiter  *auth.RateLimiter
 	audit    *audit.Logger
 	servers  *server.Service
+	records  *fleet.Service
 	tmpl     *templateSet
 }
 
 // NewApp parses the templates and returns the application.
 func NewApp(cfg *config.Config, authService *auth.Service,
 	sessions *auth.SessionManager, limiter *auth.RateLimiter,
-	auditLog *audit.Logger, servers *server.Service) (*App, error) {
+	auditLog *audit.Logger, servers *server.Service,
+	records *fleet.Service) (*App, error) {
 
 	tmpl, err := parseTemplates()
 	if err != nil {
@@ -42,6 +46,7 @@ func NewApp(cfg *config.Config, authService *auth.Service,
 		limiter:  limiter,
 		audit:    auditLog,
 		servers:  servers,
+		records:  records,
 		tmpl:     tmpl,
 	}, nil
 }
@@ -55,8 +60,6 @@ type pendingPage struct {
 // pending lists the pages that exist for their layout and access rules only.
 // Each entry disappears when its phase fills the page in.
 var pending = map[string]pendingPage{
-	"dns": {"DNS Records",
-		"Record management across the fleet arrives with the record phase."},
 	"diff": {"Record Diff",
 		"The drift view across servers arrives with the diff phase."},
 	"logs": {"Audit Logs",
@@ -83,10 +86,30 @@ func (a *App) Router() http.Handler {
 	mux.Handle("POST /logout", a.requireAuth(a.requireCSRF(
 		http.HandlerFunc(a.handleLogout))))
 
-	for _, path := range []string{"/dns", "/diff", "/logs", "/system"} {
+	for _, path := range []string{"/diff", "/logs", "/system"} {
 		mux.Handle("GET "+path, a.requireAuth(a.pendingHandler(path)))
 	}
 	mux.Handle("GET /siem", a.requireAuth(a.requireAdmin(a.pendingHandler("/siem"))))
+
+	// Records are open to every signed in user. Which machines they land on is
+	// admin territory, which the map below covers.
+	records := map[string]http.HandlerFunc{
+		"GET /dns":              a.handleDNSPage,
+		"GET /dns/records":      a.handleDNSRecords,
+		"GET /dns/records/new":  a.handleRecordForm,
+		"GET /dns/records/edit": a.handleRecordForm,
+		"POST /dns/records":     a.handleRecordCreate,
+		"PUT /dns/records":      a.handleRecordUpdate,
+		"DELETE /dns/records":   a.handleRecordDelete,
+		"POST /dns/refresh":     a.handleRecordRefresh,
+	}
+	for pattern, handler := range records {
+		if strings.HasPrefix(pattern, "GET ") {
+			mux.Handle(pattern, a.requireAuth(handler))
+			continue
+		}
+		mux.Handle(pattern, a.requireAuth(a.requireCSRF(handler)))
+	}
 
 	// Fleet configuration is admin territory. A plain user may manage records
 	// but not the machines they land on.

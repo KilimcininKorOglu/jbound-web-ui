@@ -1,1 +1,102 @@
-{{define "content"}}{{template "pending" .Data}}{{end}}
+{{define "content"}}
+<div class="d-flex flex-wrap align-items-center justify-content-between mb-3">
+  <h5 class="mb-0">DNS Records</h5>
+  <div class="dns-toolbar">
+    <button class="btn btn-outline-secondary btn-sm" type="button"
+            hx-post="/dns/refresh" hx-include="#record-controls"
+            hx-target="#record-table" hx-swap="innerHTML">
+      <i class="bx bx-refresh"></i> Refresh
+    </button>
+    <button class="btn btn-primary btn-sm" type="button"
+            hx-get="/dns/records/new" hx-include="#record-controls"
+            hx-target="#record-panel" hx-swap="innerHTML">
+      <i class="bx bx-plus"></i> Add record
+    </button>
+  </div>
+</div>
+
+{{/* Every control submits the whole set, so a filter and a page never
+     disagree about what is being listed. */}}
+<div class="card mb-4">
+  <div class="card-body">
+    <form id="record-controls" class="row g-3"
+          hx-get="/dns/records" hx-target="#record-table" hx-swap="innerHTML"
+          hx-trigger="change from:(#record-controls select), keyup changed delay:400ms from:(#record-controls input[name='search'])">
+
+      <div class="col-md-4">
+        <label class="form-label" for="target">Target</label>
+        <select class="form-select" id="target" name="target"
+                data-action="choose-target">
+          <option value="all:0" {{if eq .Data.Query.Scope "all"}}selected{{end}}>
+            Every server
+          </option>
+          {{$query := .Data.Query}}
+          {{if .Data.Groups}}
+          <optgroup label="Groups">
+            {{range .Data.Groups}}
+            <option value="group:{{.ID}}"
+                    {{if and (eq $query.Scope "group") (eq $query.GroupID .ID)}}selected{{end}}>
+              {{.Name}}
+            </option>
+            {{end}}
+          </optgroup>
+          {{end}}
+          {{if .Data.Servers}}
+          <optgroup label="Servers">
+            {{range .Data.Servers}}
+            <option value="server:{{.ID}}"
+                    {{if and (eq $query.Scope "server") (eq $query.ServerID .ID)}}selected{{end}}>
+              {{.Name}}
+            </option>
+            {{end}}
+          </optgroup>
+          {{end}}
+        </select>
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label" for="search">Search</label>
+        <input class="form-control" id="search" name="search" type="search"
+               value="{{.Data.Query.Search}}" placeholder="name or value"
+               autocapitalize="none" spellcheck="false">
+      </div>
+
+      <div class="col-md-2">
+        <label class="form-label" for="type">Type</label>
+        <select class="form-select" id="type" name="type">
+          <option value="">All types</option>
+          {{range .Data.Types}}
+          <option value="{{.}}" {{if eq $query.Type .}}selected{{end}}>{{.}}</option>
+          {{end}}
+        </select>
+      </div>
+
+      <div class="col-md-2">
+        <label class="form-label" for="per_page">Per page</label>
+        <select class="form-select" id="per_page" name="per_page">
+          <option value="10" {{if eq $query.PerPage 10}}selected{{end}}>10</option>
+          <option value="25" {{if eq $query.PerPage 25}}selected{{end}}>25</option>
+          <option value="50" {{if eq $query.PerPage 50}}selected{{end}}>50</option>
+          <option value="100" {{if eq $query.PerPage 100}}selected{{end}}>100</option>
+        </select>
+      </div>
+
+      {{/* The scope travels as two fields, because the server sees them
+           separately and the selector joins them for the operator. */}}
+      <input type="hidden" name="scope" value="{{.Data.Query.Scope}}">
+      <input type="hidden" name="server_id" value="{{.Data.Query.ServerID}}">
+      <input type="hidden" name="group_id" value="{{.Data.Query.GroupID}}">
+      <input type="hidden" name="page" value="{{.Data.Query.Page}}">
+    </form>
+  </div>
+</div>
+
+<div id="record-panel" class="mb-4"></div>
+
+{{/* A change swaps the panel, so the table reloads itself on the event
+     rather than being swapped in from three different places. */}}
+<div id="record-table"
+     hx-get="/dns/records" hx-include="#record-controls"
+     hx-trigger="records-changed from:body"
+     hx-swap="innerHTML">{{template "record-table" .Data}}</div>
+{{end}}

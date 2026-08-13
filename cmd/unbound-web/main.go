@@ -113,13 +113,21 @@ func run() error {
 	serverService := server.NewService(
 		servers, store.NewGroups(db.DB), keys, pool, auditLog, cfg.DataDir, timeouts)
 
+	records := store.NewRecords(db.DB)
+	states := store.NewStates(db.DB)
+
 	// The first pass runs as soon as the panel is up, so the first page load
 	// reads a filled cache instead of waiting for the interval.
-	refresher := fleet.NewRefresher(servers, store.NewRecords(db.DB), store.NewStates(db.DB),
+	refresher := fleet.NewRefresher(servers, records, states,
 		pool, cfg.DataDir, timeouts, cfg.FleetMaxConcurrent)
 	refresher.Start(ctx, cfg.CacheRefreshInterval)
 
-	app, err := web.NewApp(cfg, authService, sessions, limiter, auditLog, serverService)
+	writer := fleet.NewWriter(servers, serverService, pool, refresher, auditLog,
+		cfg.DataDir, timeouts, cfg.FleetMaxConcurrent)
+	recordService := fleet.NewService(records, states, writer, refresher, cfg.CacheStaleAfter)
+
+	app, err := web.NewApp(cfg, authService, sessions, limiter, auditLog,
+		serverService, recordService)
 	if err != nil {
 		return err
 	}

@@ -1,0 +1,93 @@
+{{/* The record table, its summary and its pagination. Everything that changes
+     a record or a filter swaps this fragment back in. */}}
+{{define "record-table"}}
+{{$query := .Query}}
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-hover">
+      <thead>
+        <tr>
+          {{if .ShowServer}}<th>Server</th>{{end}}
+          <th>Name</th>
+          <th>Type</th>
+          <th>Value</th>
+          <th class="text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Page.Rows}}
+        <tr>
+          {{if $.ShowServer}}
+          <td class="text-muted">
+            {{.ServerName}}
+            {{if .Stale}}
+            <span class="badge bg-label-warning ms-1" data-field="stale"
+                  title="The panel could not read this server recently.">stale</span>
+            {{end}}
+          </td>
+          {{end}}
+          <td><strong>{{.FQDN}}</strong></td>
+          <td>{{template "record-type" .Type}}</td>
+          <td class="text-muted">
+            {{if eq .Type "MX"}}<span class="text-body-secondary">{{.Priority}}</span> {{end}}{{.Value}}
+          </td>
+          <td class="text-end">
+            <button class="btn btn-sm btn-outline-primary" type="button"
+                    hx-get="/dns/records/edit?fqdn={{.FQDN}}&type={{.Type}}&value={{.Value}}&priority={{.Priority}}"
+                    hx-include="#record-controls"
+                    hx-target="#record-panel" hx-swap="innerHTML">
+              Edit
+            </button>
+            <button class="btn btn-sm btn-outline-danger" type="button"
+                    hx-delete="/dns/records"
+                    hx-vals='{"fqdn": "{{.FQDN}}", "type": "{{.Type}}", "value": "{{.Value}}", "priority": "{{.Priority}}"}'
+                    hx-include="#record-controls"
+                    hx-target="#record-panel" hx-swap="innerHTML"
+                    hx-confirm="Delete {{.Type}} {{.FQDN}} from every targeted server?"
+                    data-confirm-title="Delete record">
+              Delete
+            </button>
+          </td>
+        </tr>
+        {{else}}
+        <tr>
+          <td colspan="5" class="text-center text-muted py-4">No records found.</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card-footer d-flex flex-wrap align-items-center justify-content-between">
+    <span class="text-muted small" data-field="summary">{{.Summary}}</span>
+
+    {{if .Pages}}
+    <nav>
+      <ul class="pagination pagination-sm mb-0">
+        {{range .Pages}}
+        {{if .Gap}}
+        <li class="page-item disabled"><span class="page-link">&hellip;</span></li>
+        {{else}}
+        <li class="page-item {{if eq .Number $.Page.Page}}active{{end}}">
+          <button class="page-link" type="button"
+                  hx-get="/dns/records?page={{.Number}}" hx-include="#record-controls"
+                  hx-target="#record-table" hx-swap="innerHTML">{{.Number}}</button>
+        </li>
+        {{end}}
+        {{end}}
+      </ul>
+    </nav>
+    {{end}}
+  </div>
+</div>
+{{end}}
+
+{{/* One colour per type, so an operator reads the table at a glance. */}}
+{{define "record-type"}}
+{{if eq . "A"}}<span class="badge bg-label-primary">A</span>
+{{else if eq . "AAAA"}}<span class="badge bg-label-info">AAAA</span>
+{{else if eq . "MX"}}<span class="badge bg-label-warning">MX</span>
+{{else if eq . "CNAME"}}<span class="badge bg-label-success">CNAME</span>
+{{else if eq . "TXT"}}<span class="badge bg-label-secondary">TXT</span>
+{{else}}<span class="badge bg-label-dark">{{.}}</span>{{end}}
+{{end}}

@@ -1,0 +1,525 @@
+package web
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
+	"testing"
+	"time"
+
+	"unbound-web/internal/auth"
+	"unbound-web/internal/dnsfile"
+	"unbound-web/internal/fleet"
+	"unbound-web/internal/server"
+	"unbound-web/internal/transport"
+)
+
+// seedFile is what a managed server holds before the panel touches it.
+const seedFile = `# managed by the panel
+local-data: "www.example.local. A 10.0.0.20"
+local-data: "mail.example.local. MX 10 mx1.example.local"
+`
+
+// fleetEnv is a panel with three approved servers in one group, each holding
+// the same file.
+type fleetEnv struct {
+	*testEnv
+	cookie *http.Cookie
+}
+
+func newFleetEnv(t *testing.T) *fleetEnv {
+	t.Helper()
+	ctx := context.Background()
+
+	env := newTestEnv(t)
+	cookie := env.login(t, "dnsadmin")
+
+	for i := 1; i <= 3; i++ {
+		name := fmt.Sprintf("dns%d", i)
+		if recorder := env.addServer(t, cookie, name); recorder.Code != http.StatusOK {
+			t.Fatalf("cannot add %s: %d", name, recorder.Code)
+		}
+		// A refresh reaches out, and an unapproved server is refused before it
+		// is reached, so the key is approved the way the operator would.
+		if err := env.trust(int64(i)); err != nil {
+			t.Fatalf("cannot approve %s: %v", name, err)
+		}
+		env.target(int64(i)).setFile(seedFile)
+	}
+
+	group, err := env.servers.CreateGroup(ctx, server.Actor{UID: 1001, Username: "dnsadmin"},
+		server.Group{Name: "resolvers", ServerIDs: []int64{1, 2, 3}})
+	if err != nil {
+		t.Fatalf("cannot create the group: %v", err)
+	}
+	if group.ID != 1 {
+		t.Fatalf("group id = %d, want 1", group.ID)
+	}
+
+	if _, err := env.records.Refresh(ctx); err != nil {
+		t.Fatalf("cannot fill the cache: %v", err)
+	}
+	return &fleetEnv{testEnv: env, cookie: cookie}
+}
+
+// trust approves a host key without going through the scan, which needs a real
+// server to offer one.
+func (e *testEnv) trust(id int64) error {
+	return e.serverDB.SetHostKey(context.Background(), id, "ssh-ed25519 AAAAapproved")
+}
+
+// groupForm is the target every record change in these tests uses.
+func groupForm(values url.Values) url.Values {
+	values.Set("scope", "group")
+	values.Set("group_id", "1")
+	return values
+}
+
+// deleteRecord submits a delete the way htmx does, with the fields in the
+// query string rather than in the body.
+func (e *fleetEnv) deleteRecord(t *testing.T, values url.Values) *httptest.ResponseRecorder {
+	t.Helper()
+
+	request := httptest.NewRequest(http.MethodDelete, "/dns/records?"+values.Encode(), nil)
+	request.Header.Set(auth.CSRFHeader, e.csrfTokenOf(t, e.cookie))
+	return e.do(t, request, e.cookie)
+}
+
+// table returns the rendered record table for one query string.
+func (e *fleetEnv) table(t *testing.T, query string) string {
+	t.Helper()
+
+	recorder := e.do(t, httptest.NewRequest(http.MethodGet, "/dns/records?"+query, nil), e.cookie)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("GET /dns/records?%s = %d", query, recorder.Code)
+	}
+	return recorder.Body.String()
+}
+
+func TestRecordRoutesNeedASession(t *testing.T) {
+	env := newTestEnv(t)
+
+	for _, path := range []string{"/dns", "/dns/records", "/dns/records/new"} {
+		recorder := env.do(t, httptest.NewRequest(http.MethodGet, path, nil))
+		if recorder.Code != http.StatusSeeOther {
+			t.Errorf("GET %s = %d, want a redirect to the login page", path, recorder.Code)
+		}
+	}
+}
+
+func TestRecordChangesNeedACSRFToken(t *testing.T) {
+	env := newTestEnv(t)
+	cookie := env.login(t, "dnsadmin")
+
+	recorder := env.do(t, postForm("/dns/records", "fqdn=a.example.net&type=A&value=192.0.2.1"), cookie)
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", recorder.Code)
+	}
+}
+
+func TestAPlainUserMayManageRecords(t *testing.T) {
+	// Records are the everyday work. Which machines they land on is admin
+	// territory, and that is guarded separately.
+	env := newTestEnv(t)
+	cookie := env.login(t, "dnsuser")
+
+	recorder := env.do(t, httptest.NewRequest(http.MethodGet, "/dns", nil), cookie)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+}
+
+func TestTheTableListsWhatTheServersHold(t *testing.T) {
+	env := newFleetEnv(t)
+
+	body := env.table(t, "")
+	for _, want := range []string{"www.example.local", "mail.example.local", "dns1", "dns3"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the table does not show %q", want)
+		}
+	}
+	// Three servers holding two records each.
+	if !strings.Contains(body, "Showing 6 of 6 records (Page 1/1)") {
+		t.Errorf("the summary is wrong:\n%s", body)
+	}
+}
+
+func TestTheTableScopesToOneServer(t *testing.T) {
+	env := newFleetEnv(t)
+	env.target(2).setFile("local-data: \"only-on-two.example.local. A 10.0.0.99\"\n")
+	if _, err := env.records.RefreshOne(context.Background(), 2); err != nil {
+		t.Fatalf("cannot refresh: %v", err)
+	}
+
+	body := env.table(t, "scope=server&server_id=2")
+	if !strings.Contains(body, "only-on-two.example.local") {
+		t.Error("the table does not show the record of that server")
+	}
+	if strings.Contains(body, "www.example.local") {
+		t.Error("the table shows records from another server")
+	}
+	// Every row would repeat the same name, so the column is dropped.
+	if strings.Contains(body, "<th>Server</th>") {
+		t.Error("the server column is shown for a single server view")
+	}
+}
+
+func TestTheTableSearchesAndFilters(t *testing.T) {
+	env := newFleetEnv(t)
+
+	body := env.table(t, "search=mail")
+	if strings.Contains(body, "www.example.local") {
+		t.Error("the search returned a record it should have filtered out")
+	}
+	if !strings.Contains(body, "mail.example.local") {
+		t.Error("the search dropped the matching record")
+	}
+
+	body = env.table(t, "type=MX")
+	if strings.Contains(body, ">A<") && !strings.Contains(body, "MX") {
+		t.Error("the type filter did not hold")
+	}
+}
+
+func TestTheTablePagesAndSummarises(t *testing.T) {
+	env := newFleetEnv(t)
+
+	body := env.table(t, "per_page=10&page=1")
+	if !strings.Contains(body, "Showing 6 of 6 records (Page 1/1)") {
+		t.Errorf("summary = %s", body)
+	}
+
+	// Ten per page over six records leaves one page, so no links are drawn.
+	if strings.Contains(body, "page-link") {
+		t.Error("pagination is drawn for a single page")
+	}
+}
+
+func TestAnEmptyResultSaysSo(t *testing.T) {
+	env := newFleetEnv(t)
+
+	body := env.table(t, "search=nothing-matches-this")
+	if !strings.Contains(body, "No records found.") {
+		t.Errorf("the table does not say the result is empty:\n%s", body)
+	}
+}
+
+func TestAddingARecordReachesEveryMemberOfTheGroup(t *testing.T) {
+	env := newFleetEnv(t)
+
+	recorder := env.adminForm(t, http.MethodPost, "/dns/records", env.cookie, groupForm(url.Values{
+		"fqdn": {"new.example.local"}, "type": {"A"}, "value": {"10.0.0.50"},
+	}))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200:\n%s", recorder.Code, recorder.Body.String())
+	}
+
+	body := recorder.Body.String()
+	for _, want := range []string{"dns1", "dns2", "dns3", "Record added"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the result table does not mention %q", want)
+		}
+	}
+	if strings.Count(body, `data-field="status">success<`) != 3 {
+		t.Errorf("the result table does not report three successes:\n%s", body)
+	}
+
+	for id := int64(1); id <= 3; id++ {
+		if !strings.Contains(env.target(id).file(), "new.example.local") {
+			t.Errorf("server %d did not receive the record", id)
+		}
+	}
+}
+
+func TestAPartialFailureAnswersWith207(t *testing.T) {
+	env := newFleetEnv(t)
+	env.target(3).writeErr = transport.ErrCommandFailed
+
+	recorder := env.adminForm(t, http.MethodPost, "/dns/records", env.cookie, groupForm(url.Values{
+		"fqdn": {"new.example.local"}, "type": {"A"}, "value": {"10.0.0.50"},
+	}))
+	if recorder.Code != http.StatusMultiStatus {
+		t.Fatalf("status = %d, want 207", recorder.Code)
+	}
+
+	body := recorder.Body.String()
+	if strings.Count(body, `data-field="status">success<`) != 2 {
+		t.Errorf("the result table does not report two successes:\n%s", body)
+	}
+	if !strings.Contains(body, `data-field="status">failed<`) {
+		t.Error("the failing server is not reported")
+	}
+	if !strings.Contains(body, "Some servers took the change") {
+		t.Error("the panel does not explain what a partial result means")
+	}
+	if !strings.Contains(recorder.Header().Get("HX-Trigger"), "toast") {
+		t.Error("no toast was raised")
+	}
+}
+
+func TestAFailureOnEveryServerAnswersWith500(t *testing.T) {
+	env := newFleetEnv(t)
+	for id := int64(1); id <= 3; id++ {
+		env.target(id).writeErr = transport.ErrCommandFailed
+	}
+
+	recorder := env.adminForm(t, http.MethodPost, "/dns/records", env.cookie, groupForm(url.Values{
+		"fqdn": {"new.example.local"}, "type": {"A"}, "value": {"10.0.0.50"},
+	}))
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", recorder.Code)
+	}
+	if !strings.Contains(recorder.Body.String(), "No server took the change") {
+		t.Error("the panel does not say the change landed nowhere")
+	}
+}
+
+func TestADisabledServerIsReportedAsSkipped(t *testing.T) {
+	env := newFleetEnv(t)
+
+	record, err := env.servers.Get(context.Background(), 3)
+	if err != nil {
+		t.Fatalf("cannot read the server: %v", err)
+	}
+	record.Enabled = false
+	if err := env.servers.Update(context.Background(),
+		server.Actor{UID: 1001, Username: "dnsadmin"}, record); err != nil {
+		t.Fatalf("cannot disable the server: %v", err)
+	}
+
+	recorder := env.adminForm(t, http.MethodPost, "/dns/records", env.cookie, groupForm(url.Values{
+		"fqdn": {"new.example.local"}, "type": {"A"}, "value": {"10.0.0.50"},
+	}))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, because a skip is not a failure", recorder.Code)
+	}
+	if !strings.Contains(recorder.Body.String(), `data-field="status">skipped<`) {
+		t.Errorf("the disabled server is not reported as skipped:\n%s", recorder.Body.String())
+	}
+}
+
+func TestAnInvalidRecordIsRefusedBeforeAnyServerIsTouched(t *testing.T) {
+	env := newFleetEnv(t)
+
+	recorder := env.adminForm(t, http.MethodPost, "/dns/records", env.cookie, groupForm(url.Values{
+		"fqdn": {"not a name"}, "type": {"A"}, "value": {"10.0.0.50"},
+	}))
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", recorder.Code)
+	}
+	if !strings.Contains(recorder.Body.String(), "name may hold") {
+		t.Errorf("the form does not explain the refusal:\n%s", recorder.Body.String())
+	}
+
+	for id := int64(1); id <= 3; id++ {
+		if strings.Contains(env.target(id).file(), "not a name") {
+			t.Errorf("server %d was written to", id)
+		}
+	}
+}
+
+func TestAChangeWithoutATargetIsRefused(t *testing.T) {
+	env := newFleetEnv(t)
+
+	recorder := env.adminForm(t, http.MethodPost, "/dns/records", env.cookie, url.Values{
+		"fqdn": {"new.example.local"}, "type": {"A"}, "value": {"10.0.0.50"},
+		"scope": {"all"},
+	})
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", recorder.Code)
+	}
+	if !strings.Contains(recorder.Body.String(), "single server or a group") {
+		t.Errorf("the form does not explain the refusal:\n%s", recorder.Body.String())
+	}
+}
+
+func TestEditingARecordReplacesItEverywhere(t *testing.T) {
+	env := newFleetEnv(t)
+
+	recorder := env.adminForm(t, http.MethodPut, "/dns/records", env.cookie, groupForm(url.Values{
+		"old_fqdn": {"www.example.local"}, "old_type": {"A"}, "old_value": {"10.0.0.20"},
+		"fqdn": {"www.example.local"}, "type": {"A"}, "value": {"10.0.0.99"},
+	}))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200:\n%s", recorder.Code, recorder.Body.String())
+	}
+
+	for id := int64(1); id <= 3; id++ {
+		file := env.target(id).file()
+		if !strings.Contains(file, "10.0.0.99") || strings.Contains(file, "10.0.0.20") {
+			t.Errorf("server %d still holds the old value:\n%s", id, file)
+		}
+	}
+}
+
+func TestDeletingARecordRemovesItEverywhere(t *testing.T) {
+	env := newFleetEnv(t)
+
+	recorder := env.deleteRecord(t, groupForm(url.Values{
+		"fqdn": {"www.example.local"}, "type": {"A"}, "value": {"10.0.0.20"},
+	}))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200:\n%s", recorder.Code, recorder.Body.String())
+	}
+
+	for id := int64(1); id <= 3; id++ {
+		if strings.Contains(env.target(id).file(), "www.example.local") {
+			t.Errorf("server %d still holds the record", id)
+		}
+	}
+}
+
+func TestARecordMissingOnOneServerFailsOnlyThere(t *testing.T) {
+	// The servers drifted apart before the panel arrived, which is the case
+	// the fleet view exists for.
+	env := newFleetEnv(t)
+	env.target(3).setFile("# nothing here\n")
+
+	recorder := env.deleteRecord(t, groupForm(url.Values{
+		"fqdn": {"www.example.local"}, "type": {"A"}, "value": {"10.0.0.20"},
+	}))
+	if recorder.Code != http.StatusMultiStatus {
+		t.Fatalf("status = %d, want 207", recorder.Code)
+	}
+	if !strings.Contains(recorder.Body.String(), "not in the file") {
+		t.Errorf("the result does not explain the failure:\n%s", recorder.Body.String())
+	}
+}
+
+func TestASuccessfulChangeIsCachedRightAway(t *testing.T) {
+	// The operator submits and expects to see the record, not to wait for the
+	// next refresh interval.
+	env := newFleetEnv(t)
+
+	env.adminForm(t, http.MethodPost, "/dns/records", env.cookie, groupForm(url.Values{
+		"fqdn": {"fresh.example.local"}, "type": {"A"}, "value": {"10.0.0.60"},
+	}))
+
+	body := env.table(t, "search=fresh")
+	if !strings.Contains(body, "fresh.example.local") {
+		t.Errorf("the table does not show the new record:\n%s", body)
+	}
+}
+
+func TestEveryRecordChangeIsAuditedPerServer(t *testing.T) {
+	env := newFleetEnv(t)
+
+	env.adminForm(t, http.MethodPost, "/dns/records", env.cookie, groupForm(url.Values{
+		"fqdn": {"new.example.local"}, "type": {"A"}, "value": {"10.0.0.50"},
+	}))
+
+	rows, err := env.db.Query(
+		"SELECT action, username, server_id, details FROM audit_logs WHERE action LIKE 'dns_%' ORDER BY id")
+	if err != nil {
+		t.Fatalf("cannot read the audit table: %v", err)
+	}
+	defer rows.Close()
+
+	count := 0
+	for rows.Next() {
+		var action, username, details string
+		var serverID *int64
+		if err := rows.Scan(&action, &username, &serverID, &details); err != nil {
+			t.Fatalf("cannot read an audit row: %v", err)
+		}
+		count++
+
+		if action != "dns_add" || username != "dnsadmin" || serverID == nil {
+			t.Errorf("got %s by %s on %v", action, username, serverID)
+		}
+		if !strings.Contains(details, "Added A record: new.example.local -> 10.0.0.50") {
+			t.Errorf("details = %q", details)
+		}
+		if !strings.Contains(details, "group resolvers") {
+			t.Errorf("the details do not name the group: %q", details)
+		}
+	}
+	if count != 3 {
+		t.Errorf("got %d audit rows, want one per server", count)
+	}
+}
+
+func TestRefreshReadsEveryServerAgain(t *testing.T) {
+	env := newFleetEnv(t)
+
+	// Somebody edited the file on the target by hand, which is what the
+	// refresh exists to notice.
+	env.target(2).setFile("local-data: \"byhand.example.local. A 10.0.0.77\"\n")
+
+	recorder := env.adminForm(t, http.MethodPost, "/dns/refresh", env.cookie, url.Values{})
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+	if !strings.Contains(recorder.Body.String(), "byhand.example.local") {
+		t.Errorf("the table does not show the record found on the target:\n%s", recorder.Body.String())
+	}
+}
+
+func TestTheFormOffersEveryManagedType(t *testing.T) {
+	env := newFleetEnv(t)
+
+	recorder := env.do(t, httptest.NewRequest(http.MethodGet, "/dns/records/new", nil), env.cookie)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+
+	body := recorder.Body.String()
+	for _, recordType := range dnsfile.Types {
+		if !strings.Contains(body, `value="`+recordType+`"`) {
+			t.Errorf("the form does not offer %s", recordType)
+		}
+	}
+}
+
+func TestTheEditFormCarriesTheRecordItReplaces(t *testing.T) {
+	env := newFleetEnv(t)
+
+	recorder := env.do(t, httptest.NewRequest(http.MethodGet,
+		"/dns/records/edit?fqdn=www.example.local&type=A&value=10.0.0.20&priority=0", nil), env.cookie)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+
+	body := recorder.Body.String()
+	for _, want := range []string{
+		`name="old_fqdn" value="www.example.local"`,
+		`name="old_type" value="A"`,
+		`name="old_value" value="10.0.0.20"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the form does not carry %s:\n%s", want, body)
+		}
+	}
+}
+
+func TestAStaleServerIsMarkedInTheTable(t *testing.T) {
+	// Old records with a warning next to them say more than an empty page.
+	env := newFleetEnv(t)
+
+	// Nobody has read that server for an hour, which is longer than the window
+	// the panel trusts.
+	old := time.Now().UTC().Add(-time.Hour)
+	err := env.stateDB.SetFetched(context.Background(), fleet.State{
+		ServerID: 2, FileSHA256: "abc", FetchedAt: &old, RecordCount: 2})
+	if err != nil {
+		t.Fatalf("cannot age the server state: %v", err)
+	}
+
+	body := env.table(t, "")
+	if !strings.Contains(body, `data-field="stale"`) {
+		t.Errorf("the table does not mark the stale server:\n%s", body)
+	}
+}
+
+func TestTheQueryFallsBackRatherThanFailing(t *testing.T) {
+	// These are view controls. A stale link is not worth an error page.
+	env := newFleetEnv(t)
+
+	body := env.table(t, "scope=server&server_id=&type=SRV&page=notanumber&per_page=9999")
+	if !strings.Contains(body, "Showing 6 of 6 records") {
+		t.Errorf("an unreadable query did not fall back to the default view:\n%s", body)
+	}
+}

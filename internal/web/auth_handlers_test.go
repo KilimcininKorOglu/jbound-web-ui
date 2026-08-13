@@ -2,11 +2,14 @@ package web
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,6 +17,7 @@ import (
 	"unbound-web/internal/auth"
 	"unbound-web/internal/config"
 	"unbound-web/internal/database"
+	"unbound-web/internal/fleet"
 	"unbound-web/internal/server"
 	"unbound-web/internal/store"
 	"unbound-web/internal/transport"
@@ -41,12 +45,17 @@ func (s *stubAuthenticator) Authenticate(_ context.Context,
 }
 
 type testEnv struct {
-	app      *App
-	db       *sql.DB
-	sessions *store.Sessions
-	servers  *server.Service
-	dataDir  string
-	keyDir   string
+	app       *App
+	db        *sql.DB
+	sessions  *store.Sessions
+	servers   *server.Service
+	serverDB  *store.Servers
+	records   *fleet.Service
+	connector *stubConnector
+	recordDB  *store.Records
+	stateDB   *store.States
+	dataDir   string
+	keyDir    string
 	// transport lets a test choose what a managed server answers.
 	transport *stubTransport
 }
@@ -83,11 +92,26 @@ func newTestEnv(t *testing.T) *testEnv {
 		t.Fatalf("cannot create the key store: %v", err)
 	}
 
+	// The first server keeps the shared transport, so a test can set what it
+	// answers without looking the server up. The rest get their own file.
 	remote := &stubTransport{}
+	connector := &stubConnector{
+		transport: remote,
+		byID:      map[int64]*stubTransport{1: remote},
+	}
+	timeouts := server.Timeouts{Connect: time.Second, Command: time.Second}
+
+	serverStore := store.NewServers(db.DB)
 	servers := server.NewService(
-		store.NewServers(db.DB), store.NewGroups(db.DB), keys,
-		&stubConnector{transport: remote}, auditLog, dataDir,
-		server.Timeouts{Connect: time.Second, Command: time.Second})
+		serverStore, store.NewGroups(db.DB), keys, connector, auditLog, dataDir, timeouts)
+
+	recordStore := store.NewRecords(db.DB)
+	stateStore := store.NewStates(db.DB)
+	refresher := fleet.NewRefresher(serverStore, recordStore, stateStore,
+		connector, dataDir, timeouts, 2)
+	writer := fleet.NewWriter(serverStore, servers, connector, refresher,
+		auditLog, dataDir, timeouts, 2)
+	records := fleet.NewService(recordStore, stateStore, writer, refresher, 15*time.Minute)
 
 	app, err := NewApp(cfg,
 		auth.NewService(authenticator, auth.Policy{
@@ -96,7 +120,7 @@ func newTestEnv(t *testing.T) *testEnv {
 		auth.NewSessionManager(sessions, cfg.SessionTimeout, cfg.CookieSecure),
 		auth.NewRateLimiter(store.NewLoginAttempts(db.DB),
 			auth.DefaultRateWindow, auth.DefaultRateMaxTries),
-		auditLog, servers,
+		auditLog, servers, records,
 	)
 	if err != nil {
 		t.Fatalf("cannot build the application: %v", err)
@@ -107,6 +131,11 @@ func newTestEnv(t *testing.T) *testEnv {
 		db:        db.DB,
 		sessions:  sessions,
 		servers:   servers,
+		serverDB:  serverStore,
+		records:   records,
+		connector: connector,
+		recordDB:  recordStore,
+		stateDB:   stateStore,
 		dataDir:   dataDir,
 		keyDir:    keys.Dir(),
 		transport: remote,
@@ -116,29 +145,99 @@ func newTestEnv(t *testing.T) *testEnv {
 // stubTransport stands in for a managed server. The transport itself is
 // covered by its own integration tests against the development targets.
 type stubTransport struct {
+	mu       sync.Mutex
 	probeErr error
+
+	// content is the host entries file this server holds, so a record change
+	// can be checked the way an operator would check it.
+	content  []byte
+	readErr  error
+	writeErr error
 }
 
 func (s *stubTransport) ReadHostEntries(context.Context) ([]byte, string, error) {
-	return nil, "", nil
-}
-func (s *stubTransport) WriteHostEntries(context.Context, []byte, string) error { return nil }
-func (s *stubTransport) Reload(context.Context) (string, error)                 { return "", nil }
-func (s *stubTransport) ServiceStatus(context.Context) (bool, string, error)    { return true, "", nil }
-func (s *stubTransport) Probe(context.Context) error                            { return s.probeErr }
-func (s *stubTransport) Close() error                                           { return nil }
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
+	if s.readErr != nil {
+		return nil, "", s.readErr
+	}
+	return append([]byte(nil), s.content...), digestOf(s.content), nil
+}
+
+func (s *stubTransport) WriteHostEntries(_ context.Context, data []byte, expect string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.writeErr != nil {
+		return s.writeErr
+	}
+	if expect != digestOf(s.content) {
+		return transport.ErrConflict
+	}
+	s.content = append([]byte(nil), data...)
+	return nil
+}
+
+func (s *stubTransport) file() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return string(s.content)
+}
+
+func (s *stubTransport) setFile(content string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.content = []byte(content)
+}
+
+func (s *stubTransport) Reload(context.Context) (string, error)              { return "", nil }
+func (s *stubTransport) ServiceStatus(context.Context) (bool, string, error) { return true, "", nil }
+func (s *stubTransport) Probe(context.Context) error                         { return s.probeErr }
+func (s *stubTransport) Close() error                                        { return nil }
+
+// digestOf is the digest the optimistic write is checked against.
+func digestOf(content []byte) string {
+	sum := sha256.Sum256(content)
+	return hex.EncodeToString(sum[:])
+}
+
+// stubConnector hands out one transport per server, so a fleet operation can
+// be checked server by server.
 type stubConnector struct {
+	mu        sync.Mutex
 	transport *stubTransport
+	byID      map[int64]*stubTransport
 }
 
-func (s *stubConnector) Get(transport.Config) (transport.Transport, error) {
-	return s.transport, nil
+func (s *stubConnector) Get(cfg transport.Config) (transport.Transport, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if cfg.ID == 0 {
+		return s.transport, nil
+	}
+	if s.byID == nil {
+		s.byID = map[int64]*stubTransport{}
+	}
+	client, ok := s.byID[cfg.ID]
+	if !ok {
+		client = &stubTransport{}
+		s.byID[cfg.ID] = client
+	}
+	return client, nil
 }
 
 func (s *stubConnector) Remove(int64) {}
 
 // do serves one request and returns the recorder.
+// target returns the transport of one server, creating it the way the
+// connector would.
+func (e *testEnv) target(id int64) *stubTransport {
+	client, _ := e.connector.Get(transport.Config{ID: id})
+	return client.(*stubTransport)
+}
+
 func (e *testEnv) do(t *testing.T, r *http.Request, cookies ...*http.Cookie) *httptest.ResponseRecorder {
 	t.Helper()
 	r.Header.Set("User-Agent", browserAgent)

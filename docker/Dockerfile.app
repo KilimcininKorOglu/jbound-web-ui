@@ -19,6 +19,7 @@ RUN apt-get update \
         sudo \
         gcc \
         make \
+        cppcheck \
         procps \
         ca-certificates \
     && rm -rf /var/lib/apt/lists/*

@@ -5,6 +5,11 @@ KEY_DIR      := docker/keys
 DEV_KEY      := $(KEY_DIR)/dev_ed25519
 GO_TEST_FLAGS := -count=1 -race
 
+# The analysers are pinned and run through go run, so a checkout needs nothing
+# installed beyond the Go toolchain and every run uses the same version.
+STATICCHECK := go run honnef.co/go/tools/cmd/staticcheck@2025.1.1
+GOVULNCHECK := go run golang.org/x/vuln/cmd/govulncheck@v1.1.4
+
 .DEFAULT_GOAL := help
 
 .PHONY: help
@@ -77,6 +82,10 @@ dev-protocol: ## Exercise the SSH transfer protocol against a target (TARGET=dns
 dev-test: ## Run the unit tests inside the panel container
 	$(COMPOSE) exec -T app go test ./... $(GO_TEST_FLAGS)
 
+.PHONY: dev-cppcheck
+dev-cppcheck: ## Analyse the setuid helper inside the panel container
+	$(COMPOSE) exec -T app make cppcheck
+
 .PHONY: dev-itest
 dev-itest: ## Run the integration tests inside the panel container
 	# As the service account, not as root. One of the gate checks is that the
@@ -114,15 +123,32 @@ vet: ## Run go vet
 
 .PHONY: lint
 lint: vet ## Run the static analysers
-	@command -v staticcheck >/dev/null 2>&1 \
-		&& staticcheck ./... \
-		|| echo "staticcheck not installed, skipped"
+	# Both tag sets. The integration files are compiled out of the default
+	# build, so an analyser that only sees it would never read them.
+	$(STATICCHECK) ./...
+	$(STATICCHECK) -tags=integration ./...
 
 .PHONY: vuln
 vuln: ## Scan for known vulnerabilities
-	@command -v govulncheck >/dev/null 2>&1 \
-		&& govulncheck ./... \
-		|| echo "govulncheck not installed, skipped"
+	$(GOVULNCHECK) ./...
+
+.PHONY: cppcheck
+cppcheck: ## Analyse the setuid helper
+	# The helper is the only privileged component, so it carries a second
+	# analyser on top of -Wall -Wextra -Werror.
+	@command -v cppcheck >/dev/null 2>&1 \
+		|| { echo "cppcheck is not installed"; exit 1; }
+	cppcheck --enable=warning,style,performance,portability \
+		--error-exitcode=1 --inline-suppr --std=c11 \
+		--suppress=missingIncludeSystem authhelper/authhelper.c
+
+.PHONY: coverage
+coverage: ## Report the test coverage of every package
+	go test ./... -count=1 -coverprofile=coverage.out
+	@go tool cover -func=coverage.out | tail -1
+
+.PHONY: check
+check: lint vuln test ## Run every check that needs no container
 
 .PHONY: clean
 clean: ## Remove build output

@@ -91,6 +91,17 @@ func (f *fakeStates) SetUnreachable(_ context.Context, serverID int64, failure s
 	return nil
 }
 
+func (f *fakeStates) SetApplied(_ context.Context, serverID int64, digest string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	state := f.states[serverID]
+	state.ServerID = serverID
+	state.AppliedSHA256 = digest
+	f.states[serverID] = state
+	return nil
+}
+
 func (f *fakeStates) Get(_ context.Context, serverID int64) (State, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

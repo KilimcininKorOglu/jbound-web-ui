@@ -22,6 +22,7 @@ type RecordStore interface {
 type StateStore interface {
 	SetFetched(ctx context.Context, state State) error
 	SetUnreachable(ctx context.Context, serverID int64, failure string) error
+	SetApplied(ctx context.Context, serverID int64, digest string) error
 	Get(ctx context.Context, serverID int64) (State, error)
 	List(ctx context.Context) (map[int64]State, error)
 }
@@ -77,6 +78,11 @@ type Result struct {
 
 	// Records is how many the file held. It stays zero when the read failed.
 	Records int
+
+	// Digest is the SHA-256 of the file as it was just read. A reload records
+	// it as the applied digest, which is how the panel knows afterwards that
+	// the resolver holds what the file says.
+	Digest string
 
 	// Err carries the reason a server could not be read. The cache of that
 	// server is left as it was.
@@ -182,7 +188,13 @@ func (r *Refresher) refresh(ctx context.Context, record server.Server) Result {
 	}
 
 	result.Records = len(records)
+	result.Digest = digest
 	return result
+}
+
+// markApplied records the digest the resolver has loaded.
+func (r *Refresher) markApplied(ctx context.Context, serverID int64, digest string) error {
+	return r.states.SetApplied(ctx, serverID, digest)
 }
 
 // markUnreachable records why a server could not be read.

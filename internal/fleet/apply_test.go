@@ -64,6 +64,10 @@ type writableTarget struct {
 	writeErr error
 	readErr  error
 
+	reloadOut string
+	reloadErr error
+	reloads   int
+
 	// expectations records what each write was checked against, which is what
 	// proves the digest travels back.
 	expectations []string
@@ -98,9 +102,19 @@ func (t *writableTarget) WriteHostEntries(_ context.Context, data []byte, expect
 	return nil
 }
 
-func (t *writableTarget) Reload(context.Context) (string, error) { return "", nil }
-func (t *writableTarget) Probe(context.Context) error            { return nil }
-func (t *writableTarget) Close() error                           { return nil }
+func (t *writableTarget) Reload(context.Context) (string, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	t.reloads++
+	if t.reloadErr != nil {
+		return "", t.reloadErr
+	}
+	return t.reloadOut, nil
+}
+
+func (t *writableTarget) Probe(context.Context) error { return nil }
+func (t *writableTarget) Close() error                { return nil }
 
 func (t *writableTarget) ServiceStatus(context.Context) (bool, string, error) {
 	return true, "active", nil
@@ -131,6 +145,7 @@ type writeHarness struct {
 	groups    *fakeGroups
 	connector *fakeConnector
 	audit     *fakeAudit
+	states    *fakeStates
 	targets   map[string]*writableTarget
 }
 
@@ -173,6 +188,7 @@ func newWriteHarness(t *testing.T, count int) *writeHarness {
 		groups:    groups,
 		connector: connector,
 		audit:     auditRepo,
+		states:    states,
 		targets:   writable,
 	}
 

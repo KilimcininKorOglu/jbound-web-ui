@@ -213,6 +213,19 @@ func NewWriter(servers ServerSource, groups GroupSource, pool Connector,
 // operator sees that it was left out rather than wondering why the count is
 // short.
 func (w *Writer) Targets(ctx context.Context, target Target) ([]server.Server, string, error) {
+	if target.Scope == ScopeAll {
+		// A change to every server at once is not something an operator asks
+		// for by accident, so it has to be a group they built on purpose.
+		return nil, "", fmt.Errorf("%w: a write needs a server or a group", ErrScope)
+	}
+	return w.Members(ctx, target)
+}
+
+// Members resolves a target into the servers it covers.
+//
+// It answers for every scope, including the whole fleet, because a listing may
+// span what a write may not.
+func (w *Writer) Members(ctx context.Context, target Target) ([]server.Server, string, error) {
 	switch target.Scope {
 	case ScopeServer:
 		record, err := w.servers.Get(ctx, target.ServerID)
@@ -233,9 +246,11 @@ func (w *Writer) Targets(ctx context.Context, target Target) ([]server.Server, s
 		return members, group.Name, nil
 
 	case ScopeAll:
-		// A change to every server at once is not something an operator asks
-		// for by accident, so it has to be a group they built on purpose.
-		return nil, "", fmt.Errorf("%w: a write needs a server or a group", ErrScope)
+		members, err := w.servers.ListEnabled(ctx)
+		if err != nil {
+			return nil, "", err
+		}
+		return members, "", nil
 
 	default:
 		return nil, "", fmt.Errorf("%w: %q", ErrScope, target.Scope)
@@ -259,7 +274,21 @@ func (w *Writer) Apply(ctx context.Context, actor server.Actor,
 		return Report{}, err
 	}
 
-	report := Report{Results: make([]ServerResult, len(targets)), GroupName: groupName}
+	results := w.fanOut(ctx, targets, func(ctx context.Context, record server.Server) ServerResult {
+		return w.applyOne(ctx, actor, record, op, groupName)
+	})
+
+	return Report{Results: results, GroupName: groupName}, nil
+}
+
+// fanOut runs one job per server, bounded by the configured concurrency.
+//
+// The results keep the order of the targets, so the table reads the same way
+// twice regardless of which server answered first.
+func (w *Writer) fanOut(ctx context.Context, targets []server.Server,
+	job func(context.Context, server.Server) ServerResult) []ServerResult {
+
+	results := make([]ServerResult, len(targets))
 	slots := make(chan struct{}, w.concurrent)
 
 	var wait sync.WaitGroup
@@ -271,30 +300,22 @@ func (w *Writer) Apply(ctx context.Context, actor server.Actor,
 			slots <- struct{}{}
 			defer func() { <-slots }()
 
-			report.Results[i] = w.applyOne(ctx, actor, record, op, groupName)
+			results[i] = job(ctx, record)
 		}()
 	}
 	wait.Wait()
 
-	return report, nil
+	return results
 }
 
 // applyOne reads, changes and writes the file of one server.
 func (w *Writer) applyOne(ctx context.Context, actor server.Actor,
 	record server.Server, op Operation, groupName string) ServerResult {
 
+	if refusal, ok := refuse(record); ok {
+		return refusal
+	}
 	result := ServerResult{ServerID: record.ID, ServerName: record.Name}
-
-	if !record.Enabled {
-		result.Status = StatusSkipped
-		result.Message = "Server disabled"
-		return result
-	}
-	if !record.Trusted() {
-		result.Status = StatusFailed
-		result.Message = "The host key has not been approved yet"
-		return result
-	}
 
 	lock := w.lockFor(record.ID)
 	lock.Lock()
@@ -318,6 +339,27 @@ func (w *Writer) applyOne(ctx context.Context, actor server.Actor,
 
 	w.writeAudit(ctx, actor, record, op, groupName)
 	return result
+}
+
+// refuse reports the servers no operation may reach, and why.
+//
+// A disabled server is skipped rather than failed, because leaving it out is
+// what the operator asked for. A server whose host key nobody approved is a
+// failure, because the operator meant to reach it and did not.
+func refuse(record server.Server) (ServerResult, bool) {
+	result := ServerResult{ServerID: record.ID, ServerName: record.Name}
+
+	switch {
+	case !record.Enabled:
+		result.Status = StatusSkipped
+		result.Message = "Server disabled"
+	case !record.Trusted():
+		result.Status = StatusFailed
+		result.Message = "The host key has not been approved yet"
+	default:
+		return ServerResult{}, false
+	}
+	return result, true
 }
 
 // write performs the read, change and write of one server.

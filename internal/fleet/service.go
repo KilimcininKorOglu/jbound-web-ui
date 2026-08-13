@@ -79,6 +79,53 @@ func (s *Service) Stale(ctx context.Context) (map[int64]bool, error) {
 	return stale, nil
 }
 
+// Status reports where the servers of one target stand.
+//
+// It answers for the whole fleet as well, because the records page keeps its
+// status bar next to a listing that may cover every server.
+func (s *Service) Status(ctx context.Context, query Query) (Status, error) {
+	target := Target{Scope: query.Scope, ServerID: query.ServerID, GroupID: query.GroupID}
+
+	members, groupName, err := s.writer.Members(ctx, target)
+	if err != nil {
+		return Status{}, err
+	}
+
+	states, err := s.states.List(ctx)
+	if err != nil {
+		return Status{}, err
+	}
+
+	now := s.now()
+	status := Status{
+		GroupName: groupName,
+		CanApply:  query.Scope != ScopeAll,
+		Servers:   make([]ServerStatus, 0, len(members)),
+	}
+
+	for _, record := range members {
+		state := states[record.ID]
+		status.Servers = append(status.Servers, ServerStatus{
+			ServerID:      record.ID,
+			Name:          record.Name,
+			Enabled:       record.Enabled,
+			Pending:       state.Pending(),
+			Stale:         state.Stale(now, s.staleAfter),
+			Reachable:     state.Reachable,
+			UnboundActive: state.UnboundActive,
+			LastError:     state.LastError,
+		})
+	}
+	return status, nil
+}
+
+// Reload asks the resolvers of one target to re-read their files.
+func (s *Service) Reload(ctx context.Context, actor server.Actor,
+	target Target) (Report, error) {
+
+	return s.writer.Reload(ctx, actor, target)
+}
+
 // Apply runs one record change across a target.
 func (s *Service) Apply(ctx context.Context, actor server.Actor,
 	target Target, op Operation) (Report, error) {

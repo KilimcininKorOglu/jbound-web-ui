@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // ErrRule marks a forwarding rule the panel refuses to write.
@@ -267,14 +268,41 @@ local6.*    %s;JanBoundPanelFormat
 	return out.Bytes()
 }
 
+// commandTimeout bounds one configured command.
+//
+// A daemon that never comes back would otherwise hold the request open until
+// the browser gives up, with no way to tell what happened.
+const commandTimeout = 30 * time.Second
+
+// pipeDelay is how long a command's output is still collected after it exits.
+//
+// Restarting rsyslog leaves the new daemon holding the pipes it inherited, so
+// waiting for them to close would wait for the daemon to stop. That is exactly
+// the process the panel just started.
+const pipeDelay = 2 * time.Second
+
 // runCommand executes one configured command without a shell.
 func runCommand(ctx context.Context, argv []string) ([]byte, error) {
 	if len(argv) == 0 {
 		return nil, errors.New("the command is not configured")
 	}
 
-	output, err := exec.CommandContext(ctx, argv[0], argv[1:]...).CombinedOutput()
-	return output, err
+	ctx, cancel := context.WithTimeout(ctx, commandTimeout)
+	defer cancel()
+
+	var output bytes.Buffer
+	command := exec.CommandContext(ctx, argv[0], argv[1:]...)
+	command.Stdout = &output
+	command.Stderr = &output
+	command.WaitDelay = pipeDelay
+
+	err := command.Run()
+	if errors.Is(err, exec.ErrWaitDelay) {
+		// The command itself succeeded. Only its inherited pipes stayed open,
+		// which is what a restarted daemon looks like from here.
+		err = nil
+	}
+	return output.Bytes(), err
 }
 
 // firstLine keeps a command's failure to one readable sentence.

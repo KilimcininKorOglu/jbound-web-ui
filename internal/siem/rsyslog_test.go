@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"unbound-web/internal/audit"
 )
@@ -281,5 +282,31 @@ func TestTheTestEventsCoverMoreThanOneSeverity(t *testing.T) {
 	}
 	if len(levels) < 2 {
 		t.Errorf("every test event went out at the same severity: %v", levels)
+	}
+}
+
+func TestACommandThatLeavesADaemonBehindStillReturns(t *testing.T) {
+	// Restarting rsyslog leaves the new daemon holding the pipes it inherited.
+	// Waiting for them to close would wait for the process the panel just
+	// started, which is to say forever.
+	start := time.Now()
+
+	output, err := runCommand(context.Background(),
+		[]string{"sh", "-c", "sleep 30 & echo restarted"})
+	if err != nil {
+		t.Fatalf("runCommand returned an error: %v", err)
+	}
+	if !strings.Contains(string(output), "restarted") {
+		t.Errorf("output = %q", output)
+	}
+	if elapsed := time.Since(start); elapsed > commandTimeout {
+		t.Errorf("the command took %s", elapsed)
+	}
+}
+
+func TestAFailingCommandStillReportsItsExitCode(t *testing.T) {
+	_, err := runCommand(context.Background(), []string{"sh", "-c", "echo broken >&2; exit 1"})
+	if err == nil {
+		t.Fatal("a failing command reported success")
 	}
 }

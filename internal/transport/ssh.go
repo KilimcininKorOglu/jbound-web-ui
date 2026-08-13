@@ -72,9 +72,10 @@ func dial(cfg Config, callback ssh.HostKeyCallback) (*ssh.Client, error) {
 		User: cfg.User,
 		// Public key only. Password authentication would mean the panel holds
 		// a password for every managed server.
-		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
-		HostKeyCallback: callback,
-		Timeout:         cfg.ConnectTimeout,
+		Auth:              []ssh.AuthMethod{ssh.PublicKeys(signer)},
+		HostKeyCallback:   callback,
+		HostKeyAlgorithms: hostKeyAlgorithms(cfg.HostKey),
+		Timeout:           cfg.ConnectTimeout,
 	}
 
 	address := net.JoinHostPort(cfg.Host, fmt.Sprint(cfg.Port))

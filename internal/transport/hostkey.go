@@ -68,6 +68,42 @@ func hostKeyCallback(approved string) ssh.HostKeyCallback {
 	}
 }
 
+// preferredHostKeyAlgorithms decides which key a server offers when no key has
+// been approved yet.
+//
+// A server usually holds one key per algorithm, and the library would take the
+// ecdsa one by default. The panel asks the operator to compare the fingerprint
+// against `ssh-keyscan -t ed25519`, so the same key has to be the one it sees.
+var preferredHostKeyAlgorithms = []string{
+	ssh.KeyAlgoED25519,
+	ssh.KeyAlgoECDSA256,
+	ssh.KeyAlgoECDSA384,
+	ssh.KeyAlgoECDSA521,
+	ssh.KeyAlgoRSASHA256,
+	ssh.KeyAlgoRSASHA512,
+	ssh.KeyAlgoRSA,
+}
+
+// hostKeyAlgorithms narrows the handshake to the approved key.
+//
+// Once a key is approved, only its algorithm is offered. Without that, a server
+// holding several keys could answer with a different one and the connection
+// would read as a mismatch, which is what an impostor looks like.
+func hostKeyAlgorithms(approved string) []string {
+	key, err := ParseHostKey(approved)
+	if err != nil {
+		return preferredHostKeyAlgorithms
+	}
+
+	algorithm := key.Type()
+	// An rsa key is stored as ssh-rsa but has to be requested as the signature
+	// algorithm the server should sign with.
+	if algorithm == ssh.KeyAlgoRSA {
+		return []string{ssh.KeyAlgoRSASHA256, ssh.KeyAlgoRSASHA512, ssh.KeyAlgoRSA}
+	}
+	return []string{algorithm}
+}
+
 // ScanHostKey connects far enough to learn the host key and returns its
 // fingerprint together with the line to store.
 //

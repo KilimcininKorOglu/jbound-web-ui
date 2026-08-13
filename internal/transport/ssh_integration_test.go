@@ -119,6 +119,61 @@ func TestScanHostKeyReportsAFingerprint(t *testing.T) {
 	}
 }
 
+func TestScanPrefersTheKeyTheOperatorIsToldToCompare(t *testing.T) {
+	// The panel asks the operator to run `ssh-keyscan -t ed25519`. A server
+	// holds one key per algorithm, so the scan has to land on the same one or
+	// the two fingerprints will never match.
+	_, authorized, err := ScanHostKey(devConfig(t))
+	if err != nil {
+		t.Fatalf("ScanHostKey returned an error: %v", err)
+	}
+
+	key, err := ParseHostKey(authorized)
+	if err != nil {
+		t.Fatalf("the returned line is not a usable host key: %v", err)
+	}
+	if key.Type() != ssh.KeyAlgoED25519 {
+		t.Errorf("key type = %s, want %s", key.Type(), ssh.KeyAlgoED25519)
+	}
+}
+
+func TestAnApprovedKeyDecidesWhichOneTheServerOffers(t *testing.T) {
+	// Approving a key that is not the preferred one must keep working. Without
+	// narrowing the handshake, the server would answer with its ed25519 key and
+	// the connection would read as a mismatch, which is what an impostor looks
+	// like.
+	cfg := devConfig(t)
+
+	scan := cfg
+	scan.HostKey = ""
+	// Ask for the ecdsa key on its own to learn what it is.
+	scanned, err := scanWith(scan, ssh.KeyAlgoECDSA256)
+	if err != nil {
+		t.Fatalf("cannot read the ecdsa host key: %v", err)
+	}
+	cfg.HostKey = scanned
+
+	transport, err := NewSSH(cfg)
+	if err != nil {
+		t.Fatalf("cannot build the transport: %v", err)
+	}
+	defer transport.Close()
+
+	if _, _, err := transport.ReadHostEntries(context.Background()); err != nil {
+		t.Fatalf("the approved ecdsa key was refused: %v", err)
+	}
+}
+
+// scanWith reads one host key of a chosen algorithm.
+func scanWith(cfg Config, algorithm string) (string, error) {
+	previous := preferredHostKeyAlgorithms
+	preferredHostKeyAlgorithms = []string{algorithm}
+	defer func() { preferredHostKeyAlgorithms = previous }()
+
+	_, authorized, err := ScanHostKey(cfg)
+	return authorized, err
+}
+
 func TestConnectingWithoutAnApprovedHostKeyIsRefused(t *testing.T) {
 	// There is no first use exception, so a server nobody approved cannot be
 	// reached at all.

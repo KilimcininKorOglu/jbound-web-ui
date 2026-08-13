@@ -1,0 +1,29 @@
+# Development environment secrets
+.env.dev
+
+# Development SSH keys for the dev stack
+docker/keys/
+
+# Build output
+dist/
+tmp/
+*.test
+coverage.out
+
+# Local databases
+*.db
+*.db-shm
+*.db-wal
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Screenshots
+.playwright-mcp/

@@ -1,0 +1,118 @@
+# Development stack for the unbound-web panel.
+#
+# One panel plus three throwaway Unbound targets plus a SIEM sink. The panel
+# reaches the targets over SSH exactly as it would in production.
+#
+# Host port block 8330-8339, reserved in ~/.claude/docker-ports.md.
+#
+# Start with: make dev-up
+
+name: unbound-web
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.app
+    container_name: unbound-web-app
+    env_file:
+      - .env.dev
+    environment:
+      SRC_DIR: /src
+      KEY_DIR: /keys
+    volumes:
+      # Bind mounted source so air rebuilds on edit.
+      - .:/src
+      - ./docker/keys:/keys:ro
+      - unbound-web-data:/var/lib/unbound-web
+      - unbound-web-gocache:/go/cache
+      - unbound-web-gomod:/go/pkg/mod
+    ports:
+      - "127.0.0.1:8330:8080"
+    networks:
+      - unbound-web-net
+    depends_on:
+      - dns1
+      - dns2
+      - dns3
+      - siem-sink
+
+  dns1:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dnstarget
+    container_name: unbound-web-dns1
+    environment:
+      SSH_USER: dnsops
+      SEED_FILE: /seed/dns1.conf
+      PUBLIC_KEY_FILE: /keys/dev_ed25519.pub
+      SHELL_POLLUTION: "0"
+    volumes:
+      - ./docker/seed:/seed:ro
+      - ./docker/keys:/keys:ro
+    ports:
+      - "127.0.0.1:8331:53/tcp"
+      - "127.0.0.1:8331:53/udp"
+      - "127.0.0.1:8334:22"
+    networks:
+      - unbound-web-net
+
+  dns2:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dnstarget
+    container_name: unbound-web-dns2
+    environment:
+      SSH_USER: dnsops
+      SEED_FILE: /seed/dns2.conf
+      PUBLIC_KEY_FILE: /keys/dev_ed25519.pub
+      SHELL_POLLUTION: "0"
+    volumes:
+      - ./docker/seed:/seed:ro
+      - ./docker/keys:/keys:ro
+    ports:
+      - "127.0.0.1:8332:53/tcp"
+      - "127.0.0.1:8332:53/udp"
+      - "127.0.0.1:8335:22"
+    networks:
+      - unbound-web-net
+
+  dns3:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dnstarget
+    container_name: unbound-web-dns3
+    environment:
+      SSH_USER: dnsops
+      SEED_FILE: /seed/dns3.conf
+      PUBLIC_KEY_FILE: /keys/dev_ed25519.pub
+      # The integration test flips this on only for the shell pollution check.
+      SHELL_POLLUTION: "${SHELL_POLLUTION:-0}"
+    volumes:
+      - ./docker/seed:/seed:ro
+      - ./docker/keys:/keys:ro
+    ports:
+      - "127.0.0.1:8333:53/tcp"
+      - "127.0.0.1:8333:53/udp"
+      - "127.0.0.1:8336:22"
+    networks:
+      - unbound-web-net
+
+  siem-sink:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.siemsink
+    container_name: unbound-web-siem-sink
+    ports:
+      - "127.0.0.1:8337:514"
+    networks:
+      - unbound-web-net
+
+networks:
+  unbound-web-net:
+    name: unbound-web-net
+
+volumes:
+  unbound-web-data:
+  unbound-web-gocache:
+  unbound-web-gomod:

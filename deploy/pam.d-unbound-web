@@ -1,0 +1,15 @@
+# PAM service definition for the unbound-web panel.
+# Install to /etc/pam.d/unbound-web. The PAM_SERVICE config value must match
+# this file name.
+#
+# Debian and Ubuntu use common-auth and common-account.
+# On RHEL and derivatives replace both lines with:
+#   auth     include  system-auth
+#   account  include  system-auth
+#
+# Only the auth and account stacks are used. The helper calls
+# pam_authenticate and pam_acct_mgmt. It opens no session and sets no
+# credentials.
+
+auth     include  common-auth
+account  include  common-account

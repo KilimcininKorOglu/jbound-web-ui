@@ -1,0 +1,71 @@
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:          unbound
+# Required-Start:    $network $remote_fs
+# Required-Stop:     $network $remote_fs
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Unbound DNS resolver
+### END INIT INFO
+#
+# Development only. Debian ships Unbound with a systemd unit, and containers
+# have no systemd, so "service unbound reload" would fail. The service command
+# falls back to /etc/init.d when systemd is absent, so this script keeps the
+# panel using the exact same reload command as production.
+
+set -eu
+
+PIDFILE=/run/unbound.pid
+CONF=/etc/unbound/unbound.conf
+
+unbound_pid() {
+    if [ -f "$PIDFILE" ]; then
+        cat "$PIDFILE"
+        return 0
+    fi
+    pgrep -x unbound || true
+}
+
+case "${1:-}" in
+    reload|force-reload)
+        pid=$(unbound_pid)
+        if [ -z "$pid" ]; then
+            echo "unbound is not running" >&2
+            exit 1
+        fi
+        # Unbound rereads its configuration, including host_entries.conf, on
+        # SIGHUP. This is what the panel triggers after writing records.
+        kill -HUP "$pid"
+        echo "unbound reloaded"
+        ;;
+    status)
+        pid=$(unbound_pid)
+        if [ -z "$pid" ]; then
+            echo "unbound is not running"
+            exit 3
+        fi
+        echo "unbound is running (pid $pid)"
+        ;;
+    start)
+        if [ -n "$(unbound_pid)" ]; then
+            echo "unbound is already running"
+            exit 0
+        fi
+        /usr/sbin/unbound -c "$CONF"
+        ;;
+    stop)
+        pid=$(unbound_pid)
+        if [ -n "$pid" ]; then
+            kill "$pid"
+        fi
+        ;;
+    restart)
+        "$0" stop || true
+        sleep 1
+        "$0" start
+        ;;
+    *)
+        echo "usage: $0 {start|stop|restart|reload|status}" >&2
+        exit 2
+        ;;
+esac

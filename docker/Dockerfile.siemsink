@@ -1,0 +1,20 @@
+# Stands in for a SIEM collector during development.
+#
+# The panel forwards CEF events here over TCP so the integration test can
+# assert that forwarding actually leaves the panel host.
+
+FROM debian:bookworm-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y rsyslog procps \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY docker/rsyslog-sink.conf /etc/rsyslog.conf
+
+RUN mkdir -p /var/spool/rsyslog && touch /var/log/siem-sink.log
+
+EXPOSE 514/tcp
+
+CMD ["/usr/sbin/rsyslogd", "-n", "-f", "/etc/rsyslog.conf"]

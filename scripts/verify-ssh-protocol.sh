@@ -1,0 +1,133 @@
+#!/bin/bash
+# Exercises the SSH file transfer protocol from plan.md section 0.6 by hand.
+#
+# This runs the exact commands the transport layer will run, so a protocol
+# problem surfaces before any Go code depends on it.
+#
+# Run through: make dev-protocol
+
+set -uo pipefail
+
+COMPOSE=(docker compose -f docker-compose.dev.yml --env-file .env.dev)
+TARGET=${1:-dns1}
+ENTRIES=/etc/unbound/host_entries.conf
+TMP=/etc/unbound/.host_entries.conf.tmp
+
+FAILURES=0
+pass() { printf '  \033[32mOK\033[0m    %s\n' "$1"; }
+fail() { printf '  \033[31mFAIL\033[0m  %s\n' "$1"; FAILURES=$((FAILURES + 1)); }
+
+remote() {
+    "${COMPOSE[@]}" exec -T app ssh \
+        -i /var/lib/unbound-web/keys/dev_ed25519 \
+        -o StrictHostKeyChecking=no \
+        -o UserKnownHostsFile=/dev/null \
+        -o BatchMode=yes \
+        -o LogLevel=ERROR \
+        "dnsops@$TARGET" "$@"
+}
+
+echo "SSH transfer protocol checks against $TARGET"
+echo
+
+# --- Read --------------------------------------------------------------------
+ENCODED=$(remote "/usr/bin/cat $ENTRIES | /usr/bin/base64 -w0")
+if [ -z "$ENCODED" ]; then
+    fail "read produced no output"
+    exit 1
+fi
+
+# Two conditions, both required. base64 -w0 never wraps, so a second line is
+# always shell pollution. Checking only the alphabet would let it through,
+# because grep matches line by line and the base64 line passes on its own.
+ENCODED_LINES=$(printf '%s\n' "$ENCODED" | wc -l | tr -d ' ')
+ENCODED_BAD=$(printf '%s\n' "$ENCODED" | grep -cve '^[A-Za-z0-9+/=]*$' || true)
+if [ "$ENCODED_LINES" -eq 1 ] && [ "$ENCODED_BAD" -eq 0 ]; then
+    pass "read output is a single line of strict base64"
+else
+    fail "read output is $ENCODED_LINES line(s) with $ENCODED_BAD outside the alphabet"
+fi
+
+# Decoded bytes go to a file, never to a shell variable. Command substitution
+# strips trailing newlines, which would silently change the file content.
+WORK_DIR=$(mktemp -d)
+trap 'rm -rf "$WORK_DIR"' EXIT
+ORIGINAL="$WORK_DIR/original"
+printf '%s' "$ENCODED" | base64 -d > "$ORIGINAL"
+
+if grep -q 'local-data:' "$ORIGINAL"; then
+    pass "decoded content carries local-data lines"
+else
+    fail "decoded content has no local-data lines"
+fi
+
+# --- Hash agreement ----------------------------------------------------------
+REMOTE_HASH=$(remote "sha256sum $ENTRIES" | awk '{print $1}')
+LOCAL_HASH=$(printf '%s' "$ENCODED" | base64 -d | shasum -a 256 | awk '{print $1}')
+if [ "$REMOTE_HASH" = "$LOCAL_HASH" ]; then
+    pass "remote and locally computed SHA-256 agree ($REMOTE_HASH)"
+else
+    fail "hash mismatch, remote $REMOTE_HASH local $LOCAL_HASH"
+fi
+
+# --- Write -------------------------------------------------------------------
+# Appends a record, then removes it again, so the target ends where it started.
+MARKER='local-data: "protocol-check.example.local. A 10.0.0.250"'
+MODIFIED="$WORK_DIR/modified"
+cp "$ORIGINAL" "$MODIFIED"
+printf '%s\n' "$MARKER" >> "$MODIFIED"
+NEW_B64=$(base64 < "$MODIFIED" | tr -d '\n')
+
+if printf '%s' "$NEW_B64" | remote "/usr/bin/base64 -d | sudo /usr/bin/tee $TMP > /dev/null && sudo /usr/bin/mv $TMP $ENTRIES"; then
+    pass "write through tee and mv succeeded"
+else
+    fail "write through tee and mv failed"
+fi
+
+if remote "/usr/bin/cat $ENTRIES" | grep -q 'protocol-check'; then
+    pass "written record is present on the target"
+else
+    fail "written record is missing on the target"
+fi
+
+# --- Ownership and permissions must be unchanged -----------------------------
+STAT=$(remote "stat -c '%a %U:%G' $ENTRIES" | tr -d '\r')
+if [ "$STAT" = "644 root:root" ]; then
+    pass "host entries file kept mode 644 and owner root:root"
+else
+    fail "host entries file is now '$STAT', expected '644 root:root'"
+fi
+
+DIR_MODE=$(remote "stat -c '%a' /etc/unbound" | tr -d '\r')
+if [ "$DIR_MODE" = "755" ]; then
+    pass "/etc/unbound kept mode 755"
+else
+    fail "/etc/unbound is now $DIR_MODE, expected 755"
+fi
+
+# --- Reload ------------------------------------------------------------------
+if remote "sudo /usr/sbin/service unbound reload" >/dev/null 2>&1; then
+    pass "sudo service unbound reload succeeded"
+else
+    fail "sudo service unbound reload failed"
+fi
+
+# --- Restore -----------------------------------------------------------------
+RESTORE_B64=$(base64 < "$ORIGINAL" | tr -d '\n')
+if printf '%s' "$RESTORE_B64" | remote "/usr/bin/base64 -d | sudo /usr/bin/tee $TMP > /dev/null && sudo /usr/bin/mv $TMP $ENTRIES"; then
+    RESTORED_HASH=$(remote "sha256sum $ENTRIES" | awk '{print $1}')
+    if [ "$RESTORED_HASH" = "$REMOTE_HASH" ]; then
+        pass "target restored to its original content"
+    else
+        fail "restore left a different hash, $RESTORED_HASH instead of $REMOTE_HASH"
+    fi
+else
+    fail "restore write failed, the target is left modified"
+fi
+
+echo
+if [ "$FAILURES" -gt 0 ]; then
+    echo "$FAILURES check(s) failed"
+    exit 1
+fi
+echo "all protocol checks passed"

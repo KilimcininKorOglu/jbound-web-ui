@@ -1,0 +1,44 @@
+# Development target that stands in for a managed Unbound server.
+#
+# The panel never installs anything here. This image only provides what a real
+# target needs: an SSH account, an Unbound service, and the three sudoers rules
+# written by deploy/setup-target.sh.
+
+FROM debian:bookworm-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y \
+        unbound \
+        openssh-server \
+        sudo \
+        procps \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Unbound configuration. The distribution default is replaced on purpose, see
+# docker/unbound.conf for the reasoning.
+COPY docker/unbound.conf /etc/unbound/unbound.conf
+
+# sshd needs this directory and rejects password authentication here, matching
+# the production requirement that the panel authenticates with a key only.
+RUN mkdir -p /run/sshd \
+    && printf '%s\n' \
+        'PasswordAuthentication no' \
+        'PermitRootLogin no' \
+        'PubkeyAuthentication yes' \
+        'UsePAM yes' \
+        > /etc/ssh/sshd_config.d/unbound-web.conf
+
+# Containers have no systemd, so "service unbound reload" needs a sysv script
+# to fall back to. This keeps the panel reload command identical to production.
+COPY docker/unbound-initscript /etc/init.d/unbound
+
+COPY deploy/setup-target.sh /usr/local/sbin/setup-target.sh
+COPY docker/entrypoint-dns.sh /usr/local/bin/entrypoint-dns.sh
+RUN chmod 0755 /etc/init.d/unbound /usr/local/sbin/setup-target.sh /usr/local/bin/entrypoint-dns.sh
+
+EXPOSE 22 53/tcp 53/udp
+
+ENTRYPOINT ["/usr/local/bin/entrypoint-dns.sh"]

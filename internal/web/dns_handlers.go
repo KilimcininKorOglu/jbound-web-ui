@@ -178,12 +178,15 @@ func staleNote(status fleet.Status) string {
 }
 
 // queryFromRequest reads the listing controls out of the query string.
+func queryFromRequest(r *http.Request) fleet.Query {
+	return listingFrom(r.URL.Query())
+}
+
+// listingFrom reads the listing controls out of a form or a query string.
 //
 // Anything unreadable falls back to the default rather than failing. These are
 // view controls, and a stale link is not worth an error page.
-func queryFromRequest(r *http.Request) fleet.Query {
-	values := r.URL.Query()
-
+func listingFrom(values valueSource) fleet.Query {
 	query := fleet.Query{
 		Scope:    values.Get("scope"),
 		ServerID: parseID(values.Get("server_id")),
@@ -389,6 +392,90 @@ func (a *App) reportProblem(w http.ResponseWriter, problem string, status int) {
 		Kind:    reloadReport,
 		Problem: problem,
 	})
+}
+
+// queryFormData feeds the query form and its answers.
+type queryFormData struct {
+	Domain string
+	Type   string
+	Query  fleet.Query
+
+	Servers []server.Server
+	Groups  []server.Group
+	Types   []string
+
+	// Report stays empty until a query has run.
+	Report  fleet.QueryReport
+	Asked   bool
+	Problem string
+}
+
+// handleQueryForm opens the query panel.
+func (a *App) handleQueryForm(w http.ResponseWriter, r *http.Request) {
+	data, err := a.queryData(r)
+	if err != nil {
+		a.dnsError(w, "cannot load the query form", err)
+		return
+	}
+	a.RenderPartial(w, http.StatusOK, "record-query", data)
+}
+
+// handleQuery asks the target what it answers for a name.
+//
+// The query leaves the panel host rather than the remote shell. The name is
+// operator input, and a remote shell would turn it into an injection surface.
+func (a *App) handleQuery(w http.ResponseWriter, r *http.Request) {
+	data, err := a.queryData(r)
+	if err != nil {
+		a.dnsError(w, "cannot load the query form", err)
+		return
+	}
+	data.Domain = strings.TrimSpace(r.Form.Get("domain"))
+	data.Type = strings.TrimSpace(r.Form.Get("query_type"))
+
+	target, err := targetFromValues(r.Form)
+	if err != nil {
+		// A query reads, so the whole fleet is a fair target here.
+		target = fleet.Target{Scope: fleet.ScopeAll}
+	}
+
+	report, err := a.records.Query(r.Context(), a.actor(r), target, data.Domain, data.Type)
+	if err != nil {
+		data.Problem = recordMessage(err)
+		a.RenderPartial(w, dnsStatus(err), "record-query", data)
+		return
+	}
+
+	data.Report = report
+	data.Asked = true
+	a.RenderPartial(w, http.StatusOK, "record-query", data)
+}
+
+// queryData fills the parts of the query panel that do not depend on an answer.
+//
+// The controls travel in the body of a query and in the query string of the
+// form request, so both are read the same way.
+func (a *App) queryData(r *http.Request) (queryFormData, error) {
+	if err := r.ParseForm(); err != nil {
+		return queryFormData{}, err
+	}
+
+	data := queryFormData{
+		Query: listingFrom(r.Form),
+		Types: dnsfile.Types,
+	}
+
+	servers, err := a.servers.List(r.Context())
+	if err != nil {
+		return queryFormData{}, err
+	}
+	groups, err := a.servers.ListGroups(r.Context())
+	if err != nil {
+		return queryFormData{}, err
+	}
+	data.Servers = servers
+	data.Groups = groups
+	return data, nil
 }
 
 // handleRecordRefresh reads every server again.

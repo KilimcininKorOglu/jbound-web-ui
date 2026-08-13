@@ -16,6 +16,7 @@ import (
 	"unbound-web/internal/auth"
 	"unbound-web/internal/config"
 	"unbound-web/internal/database"
+	"unbound-web/internal/dnsquery"
 	"unbound-web/internal/fleet"
 	"unbound-web/internal/preflight"
 	"unbound-web/internal/server"
@@ -124,7 +125,9 @@ func run() error {
 
 	writer := fleet.NewWriter(servers, serverService, pool, refresher, auditLog,
 		cfg.DataDir, timeouts, cfg.FleetMaxConcurrent)
-	recordService := fleet.NewService(records, states, writer, refresher, cfg.CacheStaleAfter)
+	queries := dnsquery.New(cfg.DigPath, cfg.DNSQueryTimeout)
+	recordService := fleet.NewService(records, states, writer, refresher,
+		queries, auditLog, cfg.CacheStaleAfter)
 
 	app, err := web.NewApp(cfg, authService, sessions, limiter, auditLog,
 		serverService, recordService)

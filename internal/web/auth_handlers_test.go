@@ -58,6 +58,8 @@ type testEnv struct {
 	keyDir    string
 	// transport lets a test choose what a managed server answers.
 	transport *stubTransport
+	// queries lets a test choose what a resolver replies to a name query.
+	queries *stubQuerier
 }
 
 func newTestEnv(t *testing.T) *testEnv {
@@ -111,7 +113,9 @@ func newTestEnv(t *testing.T) *testEnv {
 		connector, dataDir, timeouts, 2)
 	writer := fleet.NewWriter(serverStore, servers, connector, refresher,
 		auditLog, dataDir, timeouts, 2)
-	records := fleet.NewService(recordStore, stateStore, writer, refresher, 15*time.Minute)
+	queries := &stubQuerier{answers: map[string][]string{}}
+	records := fleet.NewService(recordStore, stateStore, writer, refresher,
+		queries, auditLog, 15*time.Minute)
 
 	app, err := NewApp(cfg,
 		auth.NewService(authenticator, auth.Policy{
@@ -139,7 +143,42 @@ func newTestEnv(t *testing.T) *testEnv {
 		dataDir:   dataDir,
 		keyDir:    keys.Dir(),
 		transport: remote,
+		queries:   queries,
 	}
+}
+
+// stubQuerier answers a name query, so the record page can be covered without
+// a dns client on the host running the tests.
+type stubQuerier struct {
+	mu      sync.Mutex
+	answers map[string][]string
+	err     error
+	asked   []string
+}
+
+func (s *stubQuerier) Ask(_ context.Context, host, domain, recordType string) ([]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.asked = append(s.asked, strings.TrimSpace(host+" "+domain+" "+recordType))
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.answers[host], nil
+}
+
+// answer sets what one server replies.
+func (s *stubQuerier) answer(host string, records ...string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.answers[host] = records
+}
+
+// questions returns what was asked, in the order the queries were made.
+func (s *stubQuerier) questions() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.asked...)
 }
 
 // stubTransport stands in for a managed server. The transport itself is

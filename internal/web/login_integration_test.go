@@ -30,6 +30,7 @@ import (
 	"unbound-web/internal/auth"
 	"unbound-web/internal/config"
 	"unbound-web/internal/database"
+	"unbound-web/internal/dnsquery"
 	"unbound-web/internal/fleet"
 	"unbound-web/internal/preflight"
 	"unbound-web/internal/server"
@@ -130,7 +131,8 @@ func newLiveApp(t *testing.T) *App {
 	records := fleet.NewService(recordStore, stateStore,
 		fleet.NewWriter(serverStore, servers, pool, refresher, auditLog,
 			dataDir, timeouts, cfg.FleetMaxConcurrent),
-		refresher, cfg.CacheStaleAfter)
+		refresher, dnsquery.New(cfg.DigPath, cfg.DNSQueryTimeout),
+		auditLog, cfg.CacheStaleAfter)
 
 	app, err := NewApp(cfg,
 		auth.NewService(authenticator, auth.Policy{

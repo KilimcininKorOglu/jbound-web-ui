@@ -7,6 +7,11 @@
             hx-target="#record-table" hx-swap="innerHTML">
       <i class="bx bx-refresh"></i> Refresh
     </button>
+    <button class="btn btn-outline-secondary btn-sm" type="button"
+            hx-get="/dns/query" hx-include="#record-controls"
+            hx-target="#record-panel" hx-swap="innerHTML">
+      <i class="bx bx-search"></i> Query
+    </button>
     <button class="btn btn-primary btn-sm" type="button"
             hx-get="/dns/records/new" hx-include="#record-controls"
             hx-target="#record-panel" hx-swap="innerHTML">

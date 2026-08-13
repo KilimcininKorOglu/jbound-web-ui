@@ -19,6 +19,7 @@ import (
 
 	"unbound-web/internal/audit"
 	"unbound-web/internal/database"
+	"unbound-web/internal/dnsquery"
 	"unbound-web/internal/fleet"
 	"unbound-web/internal/server"
 	"unbound-web/internal/store"
@@ -37,6 +38,7 @@ const (
 
 type harness struct {
 	refresher *fleet.Refresher
+	service   *fleet.Service
 	servers   *store.Servers
 	records   *store.Records
 	states    *store.States
@@ -67,8 +69,9 @@ func newHarness(t *testing.T) *harness {
 	states := store.NewStates(db.DB)
 	timeouts := server.Timeouts{Connect: 5 * time.Second, Command: 15 * time.Second}
 
+	auditLog := audit.NewLogger(store.NewAuditLogs(db.DB))
 	service := server.NewService(servers, store.NewGroups(db.DB), keys, pool,
-		audit.NewLogger(store.NewAuditLogs(db.DB)), dataDir, timeouts)
+		auditLog, dataDir, timeouts)
 
 	material, err := os.ReadFile(testKeyPath)
 	if err != nil {
@@ -99,12 +102,18 @@ func newHarness(t *testing.T) *harness {
 	}
 	record.HostKey = offer.AuthorizedKey
 
+	refresher := fleet.NewRefresher(servers, records, states, pool, dataDir, timeouts, 2)
+	writer := fleet.NewWriter(servers, service, pool, refresher, auditLog,
+		dataDir, timeouts, 2)
+
 	return &harness{
-		refresher: fleet.NewRefresher(servers, records, states, pool, dataDir, timeouts, 2),
-		servers:   servers,
-		records:   records,
-		states:    states,
-		record:    record,
+		refresher: refresher,
+		service: fleet.NewService(records, states, writer, refresher,
+			dnsquery.New("dig", 10*time.Second), auditLog, 15*time.Minute),
+		servers: servers,
+		records: records,
+		states:  states,
+		record:  record,
 	}
 }
 

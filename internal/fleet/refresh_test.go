@@ -161,9 +161,9 @@ func (f *fakeTransport) ReadHostEntries(context.Context) ([]byte, string, error)
 }
 
 func (f *fakeTransport) WriteHostEntries(context.Context, []byte, string) error { return nil }
-func (f *fakeTransport) Reload(context.Context) (string, error)                { return "", nil }
-func (f *fakeTransport) Probe(context.Context) error                           { return nil }
-func (f *fakeTransport) Close() error                                          { return nil }
+func (f *fakeTransport) Reload(context.Context) (string, error)                 { return "", nil }
+func (f *fakeTransport) Probe(context.Context) error                            { return nil }
+func (f *fakeTransport) Close() error                                           { return nil }
 
 func (f *fakeTransport) ServiceStatus(context.Context) (bool, string, error) {
 	if f.statusErr != nil {

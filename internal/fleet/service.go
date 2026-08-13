@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"unbound-web/internal/audit"
 	"unbound-web/internal/server"
 )
 
@@ -21,6 +22,8 @@ type Service struct {
 	states  StateStore
 	writer  *Writer
 	refresh *Refresher
+	queries NameQuerier
+	audit   *audit.Logger
 
 	staleAfter time.Duration
 	now        func() time.Time
@@ -28,13 +31,16 @@ type Service struct {
 
 // NewService builds the record service.
 func NewService(records RecordLister, states StateStore, writer *Writer,
-	refresh *Refresher, staleAfter time.Duration) *Service {
+	refresh *Refresher, queries NameQuerier, auditLog *audit.Logger,
+	staleAfter time.Duration) *Service {
 
 	return &Service{
 		records:    records,
 		states:     states,
 		writer:     writer,
 		refresh:    refresh,
+		queries:    queries,
+		audit:      auditLog,
 		staleAfter: staleAfter,
 		now:        time.Now,
 	}

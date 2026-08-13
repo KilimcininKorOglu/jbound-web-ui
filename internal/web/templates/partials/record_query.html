@@ -1,0 +1,121 @@
+{{/* Ask the servers what they actually answer.
+
+     The record table shows what the files hold. This shows what a client
+     gets, which is the only way to see that a change went live. */}}
+{{define "record-query"}}
+{{$query := .Query}}
+<div class="card">
+  <div class="card-header">
+    <h6 class="mb-0">Query a name</h6>
+  </div>
+  <div class="card-body">
+    <form hx-post="/dns/query" hx-target="#record-panel" hx-swap="innerHTML">
+
+      {{if .Problem}}{{template "alert" (alert "error" .Problem)}}{{end}}
+
+      <div class="row g-3">
+        <div class="col-md-5">
+          <label class="form-label" for="domain">Name</label>
+          <input class="form-control" id="domain" name="domain" value="{{.Domain}}"
+                 placeholder="www.example.net" autocapitalize="none"
+                 spellcheck="false" required>
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label" for="query_type">Type</label>
+          <select class="form-select" id="query_type" name="query_type">
+            <option value="">Any</option>
+            {{$type := .Type}}
+            {{range .Types}}
+            <option value="{{.}}" {{if eq $type .}}selected{{end}}>{{.}}</option>
+            {{end}}
+          </select>
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label" for="query_target">Ask</label>
+          <select class="form-select" id="query_target" name="target"
+                  data-action="choose-target">
+            <option value="all:0" {{if eq $query.Scope "all"}}selected{{end}}>
+              Every server
+            </option>
+            {{if .Groups}}
+            <optgroup label="Groups">
+              {{range .Groups}}
+              <option value="group:{{.ID}}"
+                      {{if and (eq $query.Scope "group") (eq $query.GroupID .ID)}}selected{{end}}>
+                {{.Name}}
+              </option>
+              {{end}}
+            </optgroup>
+            {{end}}
+            {{if .Servers}}
+            <optgroup label="Servers">
+              {{range .Servers}}
+              <option value="server:{{.ID}}"
+                      {{if and (eq $query.Scope "server") (eq $query.ServerID .ID)}}selected{{end}}>
+                {{.Name}}
+              </option>
+              {{end}}
+            </optgroup>
+            {{end}}
+          </select>
+        </div>
+      </div>
+
+      <input type="hidden" name="scope" value="{{$query.Scope}}">
+      <input type="hidden" name="server_id" value="{{$query.ServerID}}">
+      <input type="hidden" name="group_id" value="{{$query.GroupID}}">
+
+      <div class="dns-toolbar mt-4">
+        <button class="btn btn-primary" type="submit">Ask</button>
+        <button class="btn btn-outline-secondary" type="button" data-action="close-record-panel">
+          Close
+        </button>
+      </div>
+    </form>
+
+    {{if .Asked}}
+    <hr>
+    {{if .Report.Agree}}
+      {{template "alert" (alert "success" "Every server that answered gave the same answer.")}}
+    {{else}}
+      {{template "alert" (alert "warning" "The servers do not agree. Compare the answers below.")}}
+    {{end}}
+
+    <div class="table-responsive">
+      <table class="table table-sm">
+        <thead>
+          <tr>
+            <th>Server</th>
+            <th>Answer</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Report.Results}}
+          <tr>
+            <td>
+              <strong>{{.ServerName}}</strong>
+              <div class="text-muted small">{{.Host}}</div>
+            </td>
+            <td>
+              {{if .Skipped}}
+              <span class="text-muted">skipped, the server is disabled</span>
+              {{else if .Err}}
+              <span class="text-danger" data-field="query-error">{{.Err}}</span>
+              {{else if not .Records}}
+              <span class="text-muted" data-field="query-empty">no answer</span>
+              {{else}}
+              <pre class="mb-0" data-field="query-answer">{{range .Records}}{{.}}
+{{end}}</pre>
+              {{end}}
+            </td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{end}}
+  </div>
+</div>
+{{end}}

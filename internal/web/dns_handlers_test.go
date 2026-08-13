@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -670,5 +671,138 @@ func TestTheStatusBarRidesWithTheTable(t *testing.T) {
 	body := env.table(t, "scope=group&group_id=1")
 	if !strings.Contains(body, `id="record-status"`) || !strings.Contains(body, `hx-swap-oob="true"`) {
 		t.Errorf("the table response carries no status bar:\n%s", body)
+	}
+}
+
+// query submits the query form for one target.
+func (e *fleetEnv) query(t *testing.T, values url.Values) *httptest.ResponseRecorder {
+	t.Helper()
+	return e.adminForm(t, http.MethodPost, "/dns/query", e.cookie, values)
+}
+
+func TestAQueryAsksEveryServerOfTheGroup(t *testing.T) {
+	env := newFleetEnv(t)
+	for _, host := range []string{"dns1.example", "dns2.example", "dns3.example"} {
+		env.queries.answer(host, "10.0.0.20")
+	}
+
+	recorder := env.query(t, groupForm(url.Values{
+		"domain": {"www.example.local"}, "query_type": {"A"},
+	}))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200:\n%s", recorder.Code, recorder.Body.String())
+	}
+
+	body := recorder.Body.String()
+	if strings.Count(body, `data-field="query-answer"`) != 3 {
+		t.Errorf("the panel does not show one answer per server:\n%s", body)
+	}
+	if !strings.Contains(body, "Every server that answered gave the same answer.") {
+		t.Error("the panel does not say that the servers agree")
+	}
+
+	asked := env.queries.questions()
+	if len(asked) != 3 {
+		t.Fatalf("asked = %v, want one question per server", asked)
+	}
+	for _, question := range asked {
+		if !strings.HasSuffix(question, "www.example.local A") {
+			t.Errorf("question = %q", question)
+		}
+	}
+}
+
+func TestAQueryShowsThatTheServersDisagree(t *testing.T) {
+	// A record that resolves on two servers and not on the third is drift the
+	// record table cannot show, because the files may well be identical and
+	// one resolver simply behind.
+	env := newFleetEnv(t)
+	env.queries.answer("dns1.example", "10.0.0.20")
+	env.queries.answer("dns2.example", "10.0.0.20")
+
+	recorder := env.query(t, groupForm(url.Values{"domain": {"www.example.local"}}))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+
+	body := recorder.Body.String()
+	if !strings.Contains(body, "The servers do not agree.") {
+		t.Errorf("the panel does not report the disagreement:\n%s", body)
+	}
+	if !strings.Contains(body, `data-field="query-empty"`) {
+		t.Error("the server that answered nothing is not shown as such")
+	}
+}
+
+func TestAQueryRefusesAnInvalidName(t *testing.T) {
+	env := newFleetEnv(t)
+
+	recorder := env.query(t, groupForm(url.Values{"domain": {"www example.local"}}))
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", recorder.Code)
+	}
+	if len(env.queries.questions()) != 0 {
+		t.Error("a refused name still reached a server")
+	}
+}
+
+func TestAQueryMayCoverTheWholeFleet(t *testing.T) {
+	// A query reads. Unlike a write, it does not need a target somebody built
+	// on purpose.
+	env := newFleetEnv(t)
+
+	recorder := env.query(t, url.Values{"scope": {"all"}, "domain": {"www.example.local"}})
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200:\n%s", recorder.Code, recorder.Body.String())
+	}
+	if len(env.queries.questions()) != 3 {
+		t.Errorf("asked = %v, want every server", env.queries.questions())
+	}
+}
+
+func TestAQueryIsAuditedOnce(t *testing.T) {
+	// A row per member of a large group would bury the changes the log exists
+	// for, and a query changes nothing.
+	env := newFleetEnv(t)
+	env.query(t, groupForm(url.Values{"domain": {"www.example.local"}}))
+
+	var count int
+	var details string
+	row := env.db.QueryRow(
+		"SELECT COUNT(*), COALESCE(MAX(details), '') FROM audit_logs WHERE action = 'dns_query'")
+	if err := row.Scan(&count, &details); err != nil {
+		t.Fatalf("cannot read the audit table: %v", err)
+	}
+
+	if count != 1 {
+		t.Fatalf("got %d audit rows, want 1", count)
+	}
+	if !strings.HasPrefix(details, "Queried: www.example.local") {
+		t.Errorf("details = %q", details)
+	}
+	if !strings.Contains(details, "group resolvers") {
+		t.Errorf("the row does not name the target: %q", details)
+	}
+}
+
+func TestAQueryNamesTheServerItCouldNotAsk(t *testing.T) {
+	env := newFleetEnv(t)
+	env.queries.err = errors.New("dial udp 10.0.0.3:53: connection refused")
+
+	recorder := env.query(t, groupForm(url.Values{"domain": {"www.example.local"}}))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+	if !strings.Contains(recorder.Body.String(), "connection refused") {
+		t.Errorf("the reason is not shown:\n%s", recorder.Body.String())
+	}
+}
+
+func TestTheQueryFormNeedsASession(t *testing.T) {
+	env := newTestEnv(t)
+
+	recorder := env.do(t, httptest.NewRequest(http.MethodGet, "/dns/query", nil))
+	if recorder.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want a redirect to the login page", recorder.Code)
 	}
 }

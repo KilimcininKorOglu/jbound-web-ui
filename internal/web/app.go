@@ -103,6 +103,8 @@ func (a *App) Router() http.Handler {
 		"DELETE /dns/records":   a.handleRecordDelete,
 		"POST /dns/refresh":     a.handleRecordRefresh,
 		"POST /dns/apply":       a.handleRecordApply,
+		"GET /dns/query":        a.handleQueryForm,
+		"POST /dns/query":       a.handleQuery,
 	}
 	for pattern, handler := range records {
 		if strings.HasPrefix(pattern, "GET ") {

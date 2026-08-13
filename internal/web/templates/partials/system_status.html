@@ -1,0 +1,82 @@
+{{/* The fleet as the panel last saw it. Every field comes from the cache, so
+     drawing this card opens no connection to any managed server. The moment of
+     the last read travels with each row, because a status without its age says
+     more than it knows. */}}
+{{define "system-status"}}
+<div class="card">
+  <div class="card-header d-flex flex-wrap align-items-center justify-content-between">
+    <h6 class="mb-0">Servers</h6>
+    <span class="text-muted" data-field="fleet-summary">{{.Summary}}</span>
+  </div>
+
+  {{if .Servers}}
+  <div class="table-responsive text-nowrap">
+    <table class="table table-hover">
+      <thead>
+        <tr>
+          <th>Server</th>
+          <th>Address</th>
+          <th>State</th>
+          <th>Unbound</th>
+          <th>Records</th>
+          <th>Changes</th>
+          <th>Last read</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Servers}}
+        <tr data-server="{{.Name}}">
+          <td><strong>{{.Name}}</strong></td>
+          <td class="text-muted">{{.SSHUser}}@{{.Host}}:{{.SSHPort}}</td>
+          <td>
+            {{if eq .State "ok"}}
+            <span class="badge bg-label-success" data-field="state">reachable</span>
+            {{else if eq .State "unreachable"}}
+            <span class="badge bg-label-danger" data-field="state">unreachable</span>
+            {{else if eq .State "unbound-down"}}
+            <span class="badge bg-label-danger" data-field="state">unbound stopped</span>
+            {{else if eq .State "untrusted"}}
+            <span class="badge bg-label-warning" data-field="state">host key not approved</span>
+            {{else if eq .State "disabled"}}
+            <span class="badge bg-label-secondary" data-field="state">disabled</span>
+            {{else}}
+            <span class="badge bg-label-secondary" data-field="state">not read yet</span>
+            {{end}}
+          </td>
+          <td>
+            {{if .UnboundActive}}
+            <span class="status-indicator"><span class="dot green"></span> running</span>
+            {{else}}
+            <span class="status-indicator"><span class="dot"></span> unknown</span>
+            {{end}}
+          </td>
+          <td data-field="records">{{.Records}}</td>
+          <td>
+            {{if .Pending}}
+            <span class="badge bg-label-warning" data-field="pending">unapplied</span>
+            {{else}}
+            <span class="text-muted">applied</span>
+            {{end}}
+          </td>
+          <td class="text-muted" data-field="fetched">
+            {{with localTimePtr .FetchedAt}}{{.}}{{else}}never{{end}}
+          </td>
+        </tr>
+        {{if .CacheError}}
+        <tr class="table-danger">
+          <td colspan="7" data-field="cache-error">
+            <i class="bx bx-error-circle"></i> {{.Name}}: {{.CacheError}}
+          </td>
+        </tr>
+        {{end}}
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  <div class="card-body">
+    <p class="text-muted mb-0">No server is registered yet.</p>
+  </div>
+  {{end}}
+</div>
+{{end}}

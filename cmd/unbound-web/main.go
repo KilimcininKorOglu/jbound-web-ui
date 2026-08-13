@@ -152,6 +152,8 @@ func run() error {
 		Records:   recordService,
 		SIEM:      rsyslog,
 		Forwarder: forwarder,
+		Hostname:  panelHost,
+		Started:   time.Now(),
 	})
 	if err != nil {
 		return err

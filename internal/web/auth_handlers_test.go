@@ -70,7 +70,8 @@ func newTestEnv(t *testing.T) *testEnv {
 	t.Helper()
 	ctx := context.Background()
 
-	db, err := database.Open(ctx, filepath.Join(t.TempDir(), "panel.db"))
+	dbPath := filepath.Join(t.TempDir(), "panel.db")
+	db, err := database.Open(ctx, dbPath)
 	if err != nil {
 		t.Fatalf("cannot open the test database: %v", err)
 	}
@@ -88,6 +89,7 @@ func newTestEnv(t *testing.T) *testEnv {
 		CookieSecure:   false,
 		MinUID:         1000,
 		AdminGroup:     "sudo",
+		DBPath:         dbPath,
 	}
 	sessions := store.NewSessions(db.DB)
 	forwarder := &recordingForwarder{}
@@ -270,6 +272,14 @@ func (s *stubTransport) file() string {
 	return string(s.content)
 }
 
+// failReads makes this server answer every read with a failure, which is what
+// a machine that is off looks like from the panel.
+func (s *stubTransport) failReads(err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.readErr = err
+}
+
 func (s *stubTransport) setFile(content string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -315,12 +325,17 @@ type stubConnector struct {
 	mu        sync.Mutex
 	transport *stubTransport
 	byID      map[int64]*stubTransport
+
+	// handed counts how often a transport was asked for, which is how a page
+	// that must not reach any server is checked.
+	handed int
 }
 
 func (s *stubConnector) Get(cfg transport.Config) (transport.Transport, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	s.handed++
 	if cfg.ID == 0 {
 		return s.transport, nil
 	}
@@ -336,6 +351,13 @@ func (s *stubConnector) Get(cfg transport.Config) (transport.Transport, error) {
 }
 
 func (s *stubConnector) Remove(int64) {}
+
+// connections is how many transports the connector has handed out.
+func (s *stubConnector) connections() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.handed
+}
 
 // do serves one request and returns the recorder.
 // target returns the transport of one server, creating it the way the

@@ -1,1 +1,110 @@
-{{define "content"}}{{template "pending" .Data}}{{end}}
+{{define "content"}}
+<div class="d-flex flex-wrap align-items-center justify-content-between mb-3">
+  <h5 class="mb-0">System Info</h5>
+</div>
+
+<div class="row g-4 mb-4">
+  <div class="col-lg-4">
+    <div class="card h-100">
+      <div class="card-header">
+        <h6 class="mb-0">Session</h6>
+      </div>
+      <div class="card-body">
+        <dl class="row mb-0">
+          <dt class="col-5">User</dt>
+          <dd class="col-7" data-field="username">{{.Data.Session.Username}}</dd>
+
+          <dt class="col-5">UID</dt>
+          <dd class="col-7" data-field="uid">{{.Data.Session.UID}}</dd>
+
+          <dt class="col-5">Role</dt>
+          <dd class="col-7">
+            {{if eq .Data.Session.Role "admin"}}
+            <span class="badge bg-label-primary" data-field="role">admin</span>
+            {{else}}
+            <span class="badge bg-label-info" data-field="role">{{.Data.Session.Role}}</span>
+            {{end}}
+          </dd>
+
+          <dt class="col-5">Signed in</dt>
+          <dd class="col-7" data-field="signed-in">{{localTime .Data.Session.StartedAt}}</dd>
+
+          <dt class="col-5">Last action</dt>
+          <dd class="col-7 mb-0" data-field="last-active">{{localTime .Data.Session.LastActive}}</dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="card h-100">
+      <div class="card-header">
+        <h6 class="mb-0">Panel</h6>
+      </div>
+      <div class="card-body">
+        <dl class="row mb-0">
+          <dt class="col-5">Host</dt>
+          <dd class="col-7" data-field="hostname">{{.Data.Panel.Hostname}}</dd>
+
+          <dt class="col-5">Version</dt>
+          <dd class="col-7" data-field="version">{{.Data.Panel.Version}}</dd>
+
+          <dt class="col-5">Uptime</dt>
+          <dd class="col-7" data-field="uptime">{{.Data.Panel.Uptime}}</dd>
+
+          <dt class="col-5">Database</dt>
+          <dd class="col-7 mb-0" data-field="db-size">{{.Data.Panel.DatabaseSize}}</dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="card h-100">
+      <div class="card-header">
+        <h6 class="mb-0">Syslog</h6>
+      </div>
+      <div class="card-body">
+        {{if .Data.Syslog.Problem}}
+        {{template "alert" (alert "error" .Data.Syslog.Problem)}}
+        {{end}}
+
+        <dl class="row mb-0">
+          <dt class="col-5">rsyslog</dt>
+          <dd class="col-7">
+            {{if eq .Data.Syslog.Status "active"}}
+            <span class="badge bg-label-success" data-field="rsyslog">active</span>
+            {{else}}
+            <span class="badge bg-label-danger" data-field="rsyslog">{{.Data.Syslog.Status}}</span>
+            {{end}}
+          </dd>
+
+          <dt class="col-5">Forwarding</dt>
+          <dd class="col-7">
+            {{if .Data.Syslog.Forwarding}}
+            <span class="badge bg-label-success" data-field="forwarding">on</span>
+            {{else}}
+            <span class="badge bg-label-secondary" data-field="forwarding">off</span>
+            {{end}}
+          </dd>
+
+          <dt class="col-5">Facility</dt>
+          <dd class="col-7"><code data-field="facility">{{.Data.Syslog.Facility}}</code></dd>
+
+          <dt class="col-5">Log file</dt>
+          <dd class="col-7 mb-0 text-break">
+            <code data-field="log-file">{{.Data.Syslog.LogFile}}</code>
+          </dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+</div>
+
+{{/* The card is rendered here and replaced on a timer. Rendering it with the
+     page rather than on a load trigger keeps the first paint complete, and the
+     fragment behind the timer is the same one either way. */}}
+<div id="system-status"
+     hx-get="/system/status" hx-trigger="every 30s"
+     hx-swap="innerHTML">{{template "system-status" .Data.Status}}</div>
+{{end}}

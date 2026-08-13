@@ -4,7 +4,9 @@ package web
 import (
 	"embed"
 	"net/http"
+	"os"
 	"strings"
+	"time"
 
 	"unbound-web/internal/audit"
 	"unbound-web/internal/auth"
@@ -34,6 +36,14 @@ type Deps struct {
 	// what the test events go out through.
 	SIEM      *siem.Manager
 	Forwarder audit.Forwarder
+
+	// Hostname is the panel host as the system page reports it. NewApp reads
+	// it when the caller leaves it empty.
+	Hostname string
+
+	// Started is when the process came up, which is what the uptime counts
+	// from. NewApp stamps it when the caller leaves it zero.
+	Started time.Time
 }
 
 // App holds everything the handlers need.
@@ -48,20 +58,21 @@ func NewApp(deps Deps) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if deps.Started.IsZero() {
+		deps.Started = time.Now()
+	}
+	if deps.Hostname == "" {
+		// A host that cannot name itself is not a reason to refuse to start,
+		// so the system page says so instead.
+		name, err := os.Hostname()
+		if err != nil {
+			name = "unknown"
+		}
+		deps.Hostname = name
+	}
+
 	return &App{Deps: deps, tmpl: tmpl}, nil
-}
-
-// pendingPage describes a page whose behaviour lands in a later phase.
-type pendingPage struct {
-	Heading string
-	Note    string
-}
-
-// pending lists the pages that exist for their layout and access rules only.
-// Each entry disappears when its phase fills the page in.
-var pending = map[string]pendingPage{
-	"system": {"System Info",
-		"The read only host information arrives with the fleet status phase."},
 }
 
 // Router builds the panel handler.
@@ -80,12 +91,12 @@ func (a *App) Router() http.Handler {
 	mux.Handle("POST /logout", a.requireAuth(a.requireCSRF(
 		http.HandlerFunc(a.handleLogout))))
 
-	for _, path := range []string{"/system"} {
-		mux.Handle("GET "+path, a.requireAuth(a.pendingHandler(path)))
-	}
 	// Records are open to every signed in user. Which machines they land on is
 	// admin territory, which the map below covers.
 	records := map[string]http.HandlerFunc{
+		"GET /system":        a.handleSystemPage,
+		"GET /system/status": a.handleSystemStatus,
+
 		"GET /dns":              a.handleDNSPage,
 		"GET /dns/records":      a.handleDNSRecords,
 		"GET /dns/records/new":  a.handleRecordForm,
@@ -149,21 +160,4 @@ func (a *App) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
-}
-
-// pendingHandler renders the stand in page of one route.
-func (a *App) pendingHandler(path string) http.Handler {
-	name := path[1:]
-
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		page, ok := pending[name]
-		if !ok {
-			http.NotFound(w, r)
-			return
-		}
-		a.Render(w, r, http.StatusOK, name, PageData{
-			Title: page.Heading,
-			Data:  page,
-		})
-	})
 }

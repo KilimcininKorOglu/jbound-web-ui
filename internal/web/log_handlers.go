@@ -3,6 +3,7 @@ package web
 import (
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	"unbound-web/internal/audit"
@@ -93,12 +94,7 @@ func auditQuery(values valueSource) audit.Query {
 }
 
 func knownAction(action string) bool {
-	for _, known := range audit.Actions() {
-		if known == action {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(audit.Actions(), action)
 }
 
 // logSummary reads "Showing X of Y entries (Page A/B)".

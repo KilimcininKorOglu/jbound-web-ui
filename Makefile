@@ -9,6 +9,7 @@ GO_TEST_FLAGS := -count=1 -race
 # installed beyond the Go toolchain and every run uses the same version.
 STATICCHECK := go run honnef.co/go/tools/cmd/staticcheck@2025.1.1
 GOVULNCHECK := go run golang.org/x/vuln/cmd/govulncheck@v1.1.4
+MODERNIZE := go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@v0.20.0
 
 .DEFAULT_GOAL := help
 
@@ -127,6 +128,11 @@ lint: vet ## Run the static analysers
 	# build, so an analyser that only sees it would never read them.
 	$(STATICCHECK) ./...
 	$(STATICCHECK) -tags=integration ./...
+	# The moderniser reports constructs the standard library has replaced.
+	# Left unattended they accumulate, so they fail the build like any other
+	# lint problem.
+	$(MODERNIZE) ./...
+	$(MODERNIZE) -tags=integration ./...
 
 .PHONY: vuln
 vuln: ## Scan for known vulnerabilities

@@ -106,11 +106,9 @@ func (s *Service) Query(ctx context.Context, actor server.Actor, target Target,
 
 	var wait sync.WaitGroup
 	for i, record := range members {
-		wait.Add(1)
-		go func() {
-			defer wait.Done()
+		wait.Go(func() {
 			report.Results[i] = s.ask(ctx, record, domain, recordType)
-		}()
+		})
 	}
 	wait.Wait()
 

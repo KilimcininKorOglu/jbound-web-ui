@@ -26,6 +26,10 @@ const (
 	ActionGroupCreate = "group_create"
 	ActionGroupUpdate = "group_update"
 	ActionGroupDelete = "group_delete"
+
+	ActionDNSAdd    = "dns_add"
+	ActionDNSEdit   = "dns_edit"
+	ActionDNSDelete = "dns_delete"
 )
 
 // Entry is one audit row. ServerID stays nil for actions that target no

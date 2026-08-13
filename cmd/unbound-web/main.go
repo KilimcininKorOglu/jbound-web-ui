@@ -16,6 +16,7 @@ import (
 	"unbound-web/internal/auth"
 	"unbound-web/internal/config"
 	"unbound-web/internal/database"
+	"unbound-web/internal/fleet"
 	"unbound-web/internal/preflight"
 	"unbound-web/internal/server"
 	"unbound-web/internal/store"
@@ -103,12 +104,20 @@ func run() error {
 	pool := transport.NewPool(ctx, cfg.SSHIdleTimeout)
 	defer pool.Close()
 
+	timeouts := server.Timeouts{
+		Connect: cfg.SSHConnectTimeout,
+		Command: cfg.SSHCommandTimeout,
+	}
+	servers := store.NewServers(db.DB)
+
 	serverService := server.NewService(
-		store.NewServers(db.DB), store.NewGroups(db.DB), keys, pool, auditLog,
-		cfg.DataDir, server.Timeouts{
-			Connect: cfg.SSHConnectTimeout,
-			Command: cfg.SSHCommandTimeout,
-		})
+		servers, store.NewGroups(db.DB), keys, pool, auditLog, cfg.DataDir, timeouts)
+
+	// The first pass runs as soon as the panel is up, so the first page load
+	// reads a filled cache instead of waiting for the interval.
+	refresher := fleet.NewRefresher(servers, store.NewRecords(db.DB), store.NewStates(db.DB),
+		pool, cfg.DataDir, timeouts, cfg.FleetMaxConcurrent)
+	refresher.Start(ctx, cfg.CacheRefreshInterval)
 
 	app, err := web.NewApp(cfg, authService, sessions, limiter, auditLog, serverService)
 	if err != nil {

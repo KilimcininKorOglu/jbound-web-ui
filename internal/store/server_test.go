@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -13,6 +14,7 @@ import (
 )
 
 type fixture struct {
+	db      *sql.DB
 	servers *store.Servers
 	groups  *store.Groups
 }
@@ -27,6 +29,7 @@ func newFixture(t *testing.T) *fixture {
 	t.Cleanup(func() { db.Close() })
 
 	return &fixture{
+		db:      db.DB,
 		servers: store.NewServers(db.DB),
 		groups:  store.NewGroups(db.DB),
 	}

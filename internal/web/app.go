@@ -60,8 +60,6 @@ type pendingPage struct {
 // pending lists the pages that exist for their layout and access rules only.
 // Each entry disappears when its phase fills the page in.
 var pending = map[string]pendingPage{
-	"diff": {"Record Diff",
-		"The drift view across servers arrives with the diff phase."},
 	"logs": {"Audit Logs",
 		"The audit log view arrives with the log phase."},
 	"siem": {"SIEM Config",
@@ -86,7 +84,7 @@ func (a *App) Router() http.Handler {
 	mux.Handle("POST /logout", a.requireAuth(a.requireCSRF(
 		http.HandlerFunc(a.handleLogout))))
 
-	for _, path := range []string{"/diff", "/logs", "/system"} {
+	for _, path := range []string{"/logs", "/system"} {
 		mux.Handle("GET "+path, a.requireAuth(a.pendingHandler(path)))
 	}
 	mux.Handle("GET /siem", a.requireAuth(a.requireAdmin(a.pendingHandler("/siem"))))
@@ -105,6 +103,10 @@ func (a *App) Router() http.Handler {
 		"POST /dns/apply":       a.handleRecordApply,
 		"GET /dns/query":        a.handleQueryForm,
 		"POST /dns/query":       a.handleQuery,
+
+		"GET /diff":         a.handleDiffPage,
+		"GET /diff/table":   a.handleDiffTable,
+		"POST /diff/repair": a.handleDiffRepair,
 	}
 	for pattern, handler := range records {
 		if strings.HasPrefix(pattern, "GET ") {

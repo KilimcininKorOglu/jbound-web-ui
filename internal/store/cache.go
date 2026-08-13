@@ -111,6 +111,43 @@ SELECT c.server_id, s.name, c.line, c.fqdn, c.type, c.value, c.priority, c.raw
 	return page, nil
 }
 
+// ByServer returns every cached record of a target, keyed by server.
+//
+// The diff compares whole files rather than a page of them, so this one has no
+// limit. It is bounded by the target instead: a diff runs against a group.
+func (r *Records) ByServer(ctx context.Context, query fleet.Query) (map[int64][]dnsfile.Record, error) {
+	query.Normalise()
+	where, args := recordFilter(query)
+
+	rows, err := r.db.QueryContext(ctx, `
+SELECT c.server_id, c.line, c.fqdn, c.type, c.value, c.priority, c.raw
+  FROM record_cache c
+  JOIN servers s ON s.id = c.server_id`+where+`
+ ORDER BY c.fqdn, c.type, c.value`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the cached records: %w", err)
+	}
+	defer rows.Close()
+
+	byServer := map[int64][]dnsfile.Record{}
+	for rows.Next() {
+		var (
+			serverID int64
+			record   dnsfile.Record
+		)
+		err := rows.Scan(&serverID, &record.Line, &record.FQDN,
+			&record.Type, &record.Value, &record.Priority, &record.Raw)
+		if err != nil {
+			return nil, fmt.Errorf("cannot read a cached record: %w", err)
+		}
+		byServer[serverID] = append(byServer[serverID], record)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("cannot read the cached record rows: %w", err)
+	}
+	return byServer, nil
+}
+
 // recordFilter builds the shared WHERE clause of the count and the page, so
 // the two can never disagree about which rows the page is counted from.
 func recordFilter(query fleet.Query) (string, []any) {

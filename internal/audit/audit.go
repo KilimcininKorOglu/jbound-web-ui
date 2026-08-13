@@ -32,6 +32,8 @@ const (
 	ActionDNSDelete  = "dns_delete"
 	ActionDNSRestart = "dns_restart"
 	ActionDNSQuery   = "dns_query"
+
+	ActionDiffRepair = "diff_repair"
 )
 
 // Entry is one audit row. ServerID stays nil for actions that target no

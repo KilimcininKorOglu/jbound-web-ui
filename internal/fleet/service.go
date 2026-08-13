@@ -5,12 +5,17 @@ import (
 	"time"
 
 	"unbound-web/internal/audit"
+	"unbound-web/internal/dnsfile"
 	"unbound-web/internal/server"
 )
 
-// RecordLister reads pages of cached records.
+// RecordLister reads the cached records.
+//
+// A page feeds the record table. The whole set feeds the diff, which compares
+// files rather than pages of them.
 type RecordLister interface {
 	List(ctx context.Context, query Query) (Page, error)
+	ByServer(ctx context.Context, query Query) (map[int64][]dnsfile.Record, error)
 }
 
 // Service is what the HTTP layer talks to.

@@ -1,1 +1,70 @@
-{{define "content"}}{{template "pending" .Data}}{{end}}
+{{define "content"}}
+<div class="d-flex flex-wrap align-items-center justify-content-between mb-3">
+  <h5 class="mb-0">Record Diff</h5>
+</div>
+
+{{/* The comparison is between the servers of one group. A single server has
+     nothing to disagree with. */}}
+<div class="card mb-4">
+  <div class="card-body">
+    <form id="diff-controls" class="row g-3 align-items-end"
+          hx-get="/diff/table" hx-target="#diff-table" hx-swap="innerHTML"
+          hx-trigger="change from:(#diff-controls select), change from:(#diff-controls input)">
+
+      <div class="col-md-5">
+        <label class="form-label" for="diff_target">Compare</label>
+        <select class="form-select" id="diff_target" name="target"
+                data-action="choose-target">
+          <option value="all:0" {{if eq .Data.Query.Scope "all"}}selected{{end}}>
+            Every server
+          </option>
+          {{$query := .Data.Query}}
+          {{if .Data.Groups}}
+          <optgroup label="Groups">
+            {{range .Data.Groups}}
+            <option value="group:{{.ID}}"
+                    {{if and (eq $query.Scope "group") (eq $query.GroupID .ID)}}selected{{end}}>
+              {{.Name}}
+            </option>
+            {{end}}
+          </optgroup>
+          {{end}}
+        </select>
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label" for="diff_search">Search</label>
+        <input class="form-control" id="diff_search" name="search" type="search"
+               value="{{.Data.Query.Search}}" placeholder="name or value"
+               autocapitalize="none" spellcheck="false">
+      </div>
+
+      <div class="col-md-3">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="only_mismatches"
+                 name="only_mismatches" value="1"
+                 {{if .Data.OnlyMismatches}}checked{{end}}>
+          <label class="form-check-label" for="only_mismatches">
+            Only show differences
+          </label>
+        </div>
+      </div>
+
+      {{/* The filter travels with a marker of its own. An unchecked box sends
+           nothing, and without this the server could not tell that apart from
+           a first load. */}}
+      <input type="hidden" name="view" value="1">
+      <input type="hidden" name="scope" value="{{.Data.Query.Scope}}">
+      <input type="hidden" name="server_id" value="{{.Data.Query.ServerID}}">
+      <input type="hidden" name="group_id" value="{{.Data.Query.GroupID}}">
+    </form>
+  </div>
+</div>
+
+<div id="record-panel" class="mb-4"></div>
+
+<div id="diff-table"
+     hx-get="/diff/table" hx-include="#diff-controls"
+     hx-trigger="records-changed from:body"
+     hx-swap="innerHTML">{{template "diff-table" .Data}}</div>
+{{end}}

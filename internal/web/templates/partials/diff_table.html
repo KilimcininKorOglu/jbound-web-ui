@@ -1,0 +1,81 @@
+{{/* One row per record, one column per server.
+
+     The cell says what that server does with the record: holds it, lacks it,
+     or holds the same name with another value. The last one matters most,
+     because both servers answer and they answer differently. */}}
+{{define "diff-table"}}
+{{$query := .Query}}
+<div class="card">
+  <div class="card-body pb-0">
+    <span class="text-muted small" data-field="diff-summary">{{.Summary}}</span>
+    {{if .StaleNote}}
+    <div class="text-muted small" data-field="stale-note">{{.StaleNote}}</div>
+    {{end}}
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-hover">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Value</th>
+          {{range .Diff.Servers}}
+          <th>
+            {{.Name}}
+            {{if .Stale}}
+            <span class="badge bg-label-warning ms-1" data-field="stale">stale</span>
+            {{end}}
+          </th>
+          {{end}}
+          <th class="text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Diff.Rows}}
+        <tr>
+          <td><strong>{{.FQDN}}</strong></td>
+          <td>{{template "record-type" .Type}}</td>
+          <td class="text-muted">
+            {{if eq .Type "MX"}}<span class="text-body-secondary">{{.Priority}}</span> {{end}}{{.Value}}
+          </td>
+
+          {{range .Cells}}
+          <td>
+            {{if eq .State "present"}}
+            <span class="badge bg-label-success" data-field="cell">present</span>
+            {{else if eq .State "different"}}
+            <span class="badge bg-label-danger" title="This server holds {{.Value}}"
+                  data-field="cell">different</span>
+            {{else}}
+            <span class="badge bg-label-secondary" data-field="cell">missing</span>
+            {{end}}
+          </td>
+          {{end}}
+
+          <td class="text-end">
+            {{if not .Match}}
+            <button class="btn btn-sm btn-outline-primary" type="button"
+                    data-field="repair"
+                    hx-post="/diff/repair" hx-include="#diff-controls"
+                    hx-vals='{"fqdn": "{{.FQDN}}", "type": "{{.Type}}", "value": "{{.Value}}", "priority": "{{.Priority}}"}'
+                    hx-target="#record-panel" hx-swap="innerHTML"
+                    hx-confirm="Write {{.Type}} {{.FQDN}} to every server that differs?"
+                    data-confirm-title="Repair record">
+              Repair
+            </button>
+            {{end}}
+          </td>
+        </tr>
+        {{else}}
+        <tr>
+          <td colspan="{{.Columns}}" class="text-center text-muted py-4">
+            {{.Summary}}
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+{{end}}

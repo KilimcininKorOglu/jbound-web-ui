@@ -63,18 +63,24 @@ type SessionManager struct {
 	// made on the settings page applies to the sessions that are already open.
 	idle func() time.Duration
 
+	// lifetime bounds a session however active it is. Without it a browser
+	// that is used every day never signs out, which is what turns a stolen
+	// laptop into a permanent session.
+	lifetime func() time.Duration
+
 	cookieSecure bool
 	// now is replaceable so tests can move past the timeout without sleeping.
 	now func() time.Time
 }
 
 // NewSessionManager builds the manager.
-func NewSessionManager(repo SessionRepository, idle func() time.Duration,
+func NewSessionManager(repo SessionRepository, idle, lifetime func() time.Duration,
 	cookieSecure bool) *SessionManager {
 
 	return &SessionManager{
 		repo:         repo,
 		idle:         idle,
+		lifetime:     lifetime,
 		cookieSecure: cookieSecure,
 		now:          time.Now,
 	}
@@ -143,6 +149,13 @@ func (m *SessionManager) Load(ctx context.Context, w http.ResponseWriter,
 		return Session{}, ErrSessionExpired
 	}
 
+	// The absolute bound. A session that is used all day still ends, so a
+	// browser somebody walked away from cannot stay signed in for ever.
+	if now.Sub(session.CreatedAt) > m.lifetime() {
+		m.destroy(ctx, w, session.ID)
+		return Session{}, ErrSessionExpired
+	}
+
 	// Constant time, because the fingerprint is derived from data the client
 	// controls and a timing signal would help an attacker forge it.
 	if !hmac.Equal([]byte(session.Fingerprint), []byte(Fingerprint(r))) {
@@ -204,8 +217,10 @@ func (m *SessionManager) setCookie(w http.ResponseWriter, id string) {
 		HttpOnly: true,
 		Secure:   m.cookieSecure,
 		SameSite: http.SameSiteStrictMode,
-		// No MaxAge. The session dies with the browser, and the server side
-		// timeout is what actually bounds its life.
+		// The cookie outlives the browser window and expires with the session
+		// lifetime. The server side rules still decide: the cookie only stops
+		// the browser from offering an identifier that cannot work any more.
+		MaxAge: int(m.lifetime().Seconds()),
 	})
 }
 

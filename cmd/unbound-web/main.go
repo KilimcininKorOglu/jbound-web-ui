@@ -103,7 +103,8 @@ func run() error {
 		AllowedGroup: cfg.AllowedGroup,
 	})
 	sessions := auth.NewSessionManager(store.NewSessions(db.DB),
-		options.DurationOf(settings.SessionIdleTimeout), cfg.CookieSecure)
+		options.DurationOf(settings.SessionIdleTimeout),
+		options.DurationOf(settings.SessionLifetime), cfg.CookieSecure)
 	limiter := auth.NewRateLimiter(store.NewLoginAttempts(db.DB),
 		options.DurationOf(settings.LoginRateWindow),
 		options.IntOf(settings.LoginRateMaxAttempts))

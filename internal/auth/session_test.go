@@ -111,7 +111,8 @@ func findCookie(t *testing.T, cookies []*http.Cookie, name string) *http.Cookie 
 
 func TestStartCreatesASessionAndSetsAHardenedCookie(t *testing.T) {
 	repo := newFakeSessionRepo()
-	manager := NewSessionManager(repo, settings.Fixed(30*time.Minute), true)
+	manager := NewSessionManager(repo, settings.Fixed(30*time.Minute),
+		settings.Fixed(24*time.Hour), true)
 
 	session, cookie := startSession(t, manager)
 
@@ -133,16 +134,79 @@ func TestStartCreatesASessionAndSetsAHardenedCookie(t *testing.T) {
 	if cookie.SameSite != http.SameSiteStrictMode {
 		t.Errorf("SameSite = %v, want Strict", cookie.SameSite)
 	}
-	// A session that survives the browser would outlive the person at the
-	// keyboard.
-	if cookie.MaxAge != 0 || !cookie.Expires.IsZero() {
-		t.Error("the cookie is persistent, it must last for the browser session only")
+	// The cookie expires with the session lifetime, so a browser stops offering
+	// an identifier the server would refuse anyway.
+	if want := int((24 * time.Hour).Seconds()); cookie.MaxAge != want {
+		t.Errorf("MaxAge = %d, want %d", cookie.MaxAge, want)
+	}
+}
+
+// The absolute bound. A browser that is used all day still signs out, which is
+// what keeps a session somebody walked away from from lasting for ever.
+func TestLoadEndsASessionThatReachedItsLifetime(t *testing.T) {
+	repo := newFakeSessionRepo()
+	manager := NewSessionManager(repo, settings.Fixed(30*time.Minute),
+		settings.Fixed(24*time.Hour), false)
+	session, cookie := startSession(t, manager)
+
+	// Active the whole time: the idle rule alone would keep this session.
+	manager.now = func() time.Time { return session.CreatedAt.Add(25 * time.Hour) }
+	repo.sessions[session.ID] = Session{
+		ID:            session.ID,
+		UID:           session.UID,
+		Username:      session.Username,
+		Role:          session.Role,
+		Fingerprint:   session.Fingerprint,
+		CSRFToken:     session.CSRFToken,
+		LastActive:    session.CreatedAt.Add(25 * time.Hour),
+		RegeneratedAt: session.CreatedAt.Add(25 * time.Hour),
+		CreatedAt:     session.CreatedAt,
+	}
+
+	r := testRequest(testUserAgent, "203.0.113.5:1000")
+	r.AddCookie(cookie)
+
+	_, err := manager.Load(context.Background(), httptest.NewRecorder(), r)
+	if !errors.Is(err, ErrSessionExpired) {
+		t.Fatalf("got %v, want ErrSessionExpired", err)
+	}
+	if _, ok := repo.sessions[session.ID]; ok {
+		t.Error("the session survived its lifetime")
+	}
+}
+
+// A session inside its lifetime is untouched by the rule.
+func TestASessionInsideItsLifetimeIsKept(t *testing.T) {
+	repo := newFakeSessionRepo()
+	manager := NewSessionManager(repo, settings.Fixed(30*time.Minute),
+		settings.Fixed(24*time.Hour), false)
+	session, cookie := startSession(t, manager)
+
+	manager.now = func() time.Time { return session.CreatedAt.Add(23 * time.Hour) }
+	repo.sessions[session.ID] = Session{
+		ID:            session.ID,
+		UID:           session.UID,
+		Username:      session.Username,
+		Role:          session.Role,
+		Fingerprint:   session.Fingerprint,
+		CSRFToken:     session.CSRFToken,
+		LastActive:    session.CreatedAt.Add(23 * time.Hour),
+		RegeneratedAt: session.CreatedAt.Add(23 * time.Hour),
+		CreatedAt:     session.CreatedAt,
+	}
+
+	r := testRequest(testUserAgent, "203.0.113.5:1000")
+	r.AddCookie(cookie)
+
+	if _, err := manager.Load(context.Background(), httptest.NewRecorder(), r); err != nil {
+		t.Fatalf("Load returned %v, want the session", err)
 	}
 }
 
 func TestLoadReturnsTheSessionAndRecordsActivity(t *testing.T) {
 	repo := newFakeSessionRepo()
-	manager := NewSessionManager(repo, settings.Fixed(30*time.Minute), false)
+	manager := NewSessionManager(repo, settings.Fixed(30*time.Minute),
+		settings.Fixed(24*time.Hour), false)
 	session, cookie := startSession(t, manager)
 
 	later := session.LastActive.Add(time.Minute)
@@ -166,7 +230,8 @@ func TestLoadReturnsTheSessionAndRecordsActivity(t *testing.T) {
 
 func TestLoadRejectsAMissingOrUnknownSession(t *testing.T) {
 	repo := newFakeSessionRepo()
-	manager := NewSessionManager(repo, settings.Fixed(30*time.Minute), false)
+	manager := NewSessionManager(repo, settings.Fixed(30*time.Minute),
+		settings.Fixed(24*time.Hour), false)
 
 	t.Run("no cookie", func(t *testing.T) {
 		_, err := manager.Load(context.Background(), httptest.NewRecorder(),
@@ -189,7 +254,8 @@ func TestLoadRejectsAMissingOrUnknownSession(t *testing.T) {
 
 func TestLoadExpiresAnIdleSession(t *testing.T) {
 	repo := newFakeSessionRepo()
-	manager := NewSessionManager(repo, settings.Fixed(30*time.Minute), false)
+	manager := NewSessionManager(repo, settings.Fixed(30*time.Minute),
+		settings.Fixed(24*time.Hour), false)
 	session, cookie := startSession(t, manager)
 
 	manager.now = func() time.Time { return session.LastActive.Add(31 * time.Minute) }
@@ -208,7 +274,8 @@ func TestLoadExpiresAnIdleSession(t *testing.T) {
 
 func TestLoadDropsTheSessionWhenTheUserAgentChanges(t *testing.T) {
 	repo := newFakeSessionRepo()
-	manager := NewSessionManager(repo, settings.Fixed(30*time.Minute), false)
+	manager := NewSessionManager(repo, settings.Fixed(30*time.Minute),
+		settings.Fixed(24*time.Hour), false)
 	session, cookie := startSession(t, manager)
 
 	r := testRequest("curl/8.0 (stolen cookie)", "203.0.113.5:1000")
@@ -225,7 +292,8 @@ func TestLoadDropsTheSessionWhenTheUserAgentChanges(t *testing.T) {
 
 func TestLoadDropsTheSessionWhenTheAddressChanges(t *testing.T) {
 	repo := newFakeSessionRepo()
-	manager := NewSessionManager(repo, settings.Fixed(30*time.Minute), false)
+	manager := NewSessionManager(repo, settings.Fixed(30*time.Minute),
+		settings.Fixed(24*time.Hour), false)
 	_, cookie := startSession(t, manager)
 
 	r := testRequest(testUserAgent, "198.51.100.9:1000")
@@ -239,7 +307,8 @@ func TestLoadDropsTheSessionWhenTheAddressChanges(t *testing.T) {
 
 func TestLoadRotatesTheIdentifierAfterFiveMinutes(t *testing.T) {
 	repo := newFakeSessionRepo()
-	manager := NewSessionManager(repo, settings.Fixed(30*time.Minute), false)
+	manager := NewSessionManager(repo, settings.Fixed(30*time.Minute),
+		settings.Fixed(24*time.Hour), false)
 	session, cookie := startSession(t, manager)
 
 	manager.now = func() time.Time { return session.RegeneratedAt.Add(rotateInterval) }
@@ -271,7 +340,8 @@ func TestLoadRotatesTheIdentifierAfterFiveMinutes(t *testing.T) {
 
 func TestDestroyRemovesTheSession(t *testing.T) {
 	repo := newFakeSessionRepo()
-	manager := NewSessionManager(repo, settings.Fixed(30*time.Minute), false)
+	manager := NewSessionManager(repo, settings.Fixed(30*time.Minute),
+		settings.Fixed(24*time.Hour), false)
 	session, cookie := startSession(t, manager)
 
 	r := testRequest(testUserAgent, "203.0.113.5:1000")

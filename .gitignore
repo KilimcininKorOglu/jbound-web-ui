@@ -9,6 +9,7 @@ dist/
 tmp/
 *.test
 coverage.out
+authhelper/unbound-web-authhelper
 
 # Local databases
 *.db

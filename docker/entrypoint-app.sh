@@ -79,6 +79,9 @@ if [ ! -f "$SRC_DIR/go.mod" ]; then
     exec sleep infinity
 fi
 
+# runuser rather than setpriv. setpriv performs the exec itself, which lets it
+# start a binary the target account has no execute permission on. That makes it
+# a poor tool for reasoning about the 4750 helper, and the same confusion would
+# apply to anything else it launches.
 log "starting the panel through air"
-exec setpriv --reuid unbound-web --regid unbound-web --init-groups \
-    --inh-caps=-all air -c .air.toml
+exec runuser -u unbound-web -- air -c .air.toml

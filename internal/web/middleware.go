@@ -1,0 +1,177 @@
+package web
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+	"net/http"
+	"net/url"
+	"time"
+
+	"unbound-web/internal/auth"
+)
+
+// contextKey keeps the session out of the string keyed context namespace, so
+// no other package can overwrite it by accident.
+type contextKey struct{ name string }
+
+var sessionKey = &contextKey{name: "session"}
+
+// SessionFrom returns the session of the current request.
+func SessionFrom(ctx context.Context) (auth.Session, bool) {
+	session, ok := ctx.Value(sessionKey).(auth.Session)
+	return session, ok
+}
+
+// requireAuth rejects requests without a valid session.
+//
+// It also renews the session, so no handler can serve a request on a session
+// that just passed its timeout.
+func (a *App) requireAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		session, err := a.sessions.Load(r.Context(), w, r)
+		if err != nil {
+			switch {
+			case errors.Is(err, auth.ErrSessionExpired):
+				redirect(w, r, "/?timeout=1")
+			case errors.Is(err, auth.ErrNoSession):
+				redirect(w, r, "/")
+			case errors.Is(err, auth.ErrFingerprintMismatch):
+				slog.Warn("session rejected",
+					"reason", "fingerprint mismatch", "ip", auth.ClientIP(r))
+				redirect(w, r, "/")
+			default:
+				slog.Error("cannot load the session", "error", err)
+				http.Error(w, "internal error", http.StatusInternalServerError)
+			}
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), sessionKey, session)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// requireAdmin rejects a session whose role is not admin.
+func (a *App) requireAdmin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		session, ok := SessionFrom(r.Context())
+		if !ok {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if !session.IsAdmin() {
+			slog.Warn("admin route refused",
+				"username", session.Username, "path", r.URL.Path)
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// requireCSRF validates the token of a state changing request.
+func (a *App) requireCSRF(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !auth.CSRFRequired(r.Method) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if !sameOrigin(r) {
+			slog.Warn("cross origin request refused",
+				"path", r.URL.Path, "origin", r.Header.Get("Origin"))
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+
+		session, ok := SessionFrom(r.Context())
+		if !ok {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if !auth.ValidCSRF(session.CSRFToken, auth.CSRFToken(r)) {
+			slog.Warn("csrf token refused",
+				"username", session.Username, "path", r.URL.Path)
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// sameOrigin checks the Origin header when the client sends one.
+//
+// Browsers always send it on a state changing request, so a mismatch is a
+// cross site attempt. Command line clients send nothing, and rejecting those
+// would break the integration tests without adding any protection.
+func sameOrigin(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+	parsed, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	return parsed.Host == r.Host
+}
+
+// redirect sends the client to another page.
+//
+// htmx replaces a page fragment with whatever comes back, so a 303 to the
+// login page would land inside the current layout. The HX-Redirect header
+// makes htmx navigate instead.
+func redirect(w http.ResponseWriter, r *http.Request, target string) {
+	if r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("HX-Redirect", target)
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	http.Redirect(w, r, target, http.StatusSeeOther)
+}
+
+// securityHeaders sets the response headers that apply to every route.
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Referrer-Policy", "same-origin")
+		h.Set("Content-Security-Policy",
+			"default-src 'self'; img-src 'self' data:; style-src 'self'; "+
+				"script-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+		next.ServeHTTP(w, r)
+	})
+}
+
+// statusRecorder captures the response status for the request log.
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (s *statusRecorder) WriteHeader(status int) {
+	s.status = status
+	s.ResponseWriter.WriteHeader(status)
+}
+
+// requestLog records one line per request.
+//
+// Only the path is logged, never the query string or the body, because both
+// can carry a password typed into the wrong field.
+func requestLog(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		started := time.Now()
+		recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+
+		next.ServeHTTP(recorder, r)
+
+		slog.Info("request",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"status", recorder.status,
+			"duration_ms", time.Since(started).Milliseconds(),
+			"ip", auth.ClientIP(r),
+		)
+	})
+}

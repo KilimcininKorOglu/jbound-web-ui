@@ -1,0 +1,18 @@
+{{/* The body of a successful login. htmx navigates on the HX-Redirect header
+     and never renders this, so it only needs to carry the facts a plain client
+     needs to continue. */}}
+{{define "loggedin"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Signed in - JanBound DNS Panel</title>
+</head>
+<body>
+<main>
+  <p>Signed in as <span data-field="username">{{.Username}}</span>
+     with the role <span data-field="role">{{.Role}}</span>.</p>
+  <p><a href="/dashboard">Continue to the dashboard</a></p>
+</main>
+</body>
+</html>
+{{end}}

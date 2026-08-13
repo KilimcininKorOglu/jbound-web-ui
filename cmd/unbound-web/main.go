@@ -12,9 +12,12 @@ import (
 	"syscall"
 	"time"
 
+	"unbound-web/internal/audit"
+	"unbound-web/internal/auth"
 	"unbound-web/internal/config"
 	"unbound-web/internal/database"
 	"unbound-web/internal/preflight"
+	"unbound-web/internal/store"
 	"unbound-web/internal/web"
 )
 
@@ -52,6 +55,11 @@ func run() error {
 	if err := preflight.DataDir(cfg.DataDir, cfg.KeyDir); err != nil {
 		return err
 	}
+	// Authentication is impossible without the helper, so the panel refuses to
+	// start rather than serving a login form that can only fail.
+	if err := preflight.AuthHelper(cfg.AuthHelperPath); err != nil {
+		return err
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -69,7 +77,26 @@ func run() error {
 		slog.Error("cleanup failed", "error", err)
 	})
 
-	handler := web.NewRouter(cfg)
+	authenticator, err := auth.NewHelperAuthenticator(cfg.AuthHelperPath, cfg.AuthMaxConcurrent)
+	if err != nil {
+		return err
+	}
+	authService := auth.NewService(authenticator, auth.Policy{
+		MinUID:       cfg.MinUID,
+		AdminGroup:   cfg.AdminGroup,
+		AllowedGroup: cfg.AllowedGroup,
+	})
+	sessions := auth.NewSessionManager(
+		store.NewSessions(db.DB), cfg.SessionTimeout, cfg.CookieSecure)
+	limiter := auth.NewRateLimiter(
+		store.NewLoginAttempts(db.DB), auth.DefaultRateWindow, auth.DefaultRateMaxTries)
+	auditLog := audit.NewLogger(store.NewAuditLogs(db.DB))
+
+	app, err := web.NewApp(cfg, authService, sessions, limiter, auditLog)
+	if err != nil {
+		return err
+	}
+	handler := app.Router()
 
 	server := &http.Server{
 		Addr:              cfg.ListenAddr,

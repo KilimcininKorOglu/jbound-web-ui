@@ -1,0 +1,23 @@
+{{/* Stands in for the pages that arrive with the Sneat layout in Faz 4. It
+     exists so the authentication middleware has real routes to protect. */}}
+{{define "placeholder"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} - JanBound DNS Panel</title>
+</head>
+<body hx-headers='{"X-CSRF-Token": "{{.CSRFToken}}"}'>
+<main>
+  <h1>{{.Title}}</h1>
+  <p>Signed in as <span data-field="username">{{.Session.Username}}</span>
+     with the role <span data-field="role">{{.Session.Role}}</span>.</p>
+
+  <form method="post" action="/logout" hx-post="/logout">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+    <button type="submit">Sign out</button>
+  </form>
+</main>
+</body>
+</html>
+{{end}}

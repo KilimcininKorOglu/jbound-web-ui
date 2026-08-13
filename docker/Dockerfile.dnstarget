@@ -21,6 +21,12 @@ RUN apt-get update \
 # docker/unbound.conf for the reasoning.
 COPY docker/unbound.conf /etc/unbound/unbound.conf
 
+# The package generates host keys during installation, which would give every
+# container built from this image the same identity. Removing them here lets
+# the entrypoint generate one set per container, so a fleet of targets looks
+# like a fleet rather than one server answering on three names.
+RUN rm -f /etc/ssh/ssh_host_*
+
 # sshd needs this directory and rejects password authentication here, matching
 # the production requirement that the panel authenticates with a key only.
 RUN mkdir -p /run/sshd \

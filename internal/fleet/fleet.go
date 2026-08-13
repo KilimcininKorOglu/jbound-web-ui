@@ -58,7 +58,7 @@ const (
 	ScopeAll    = "all"
 )
 
-// Pagination bounds, taken from the reference project (controller.php::136).
+// Pagination bounds.
 const (
 	DefaultPerPage = 25
 	MinPerPage     = 10
@@ -82,7 +82,7 @@ type Query struct {
 	PerPage int
 }
 
-// Normalise clamps the paging fields the way the reference project does.
+// Normalise clamps the paging fields.
 //
 // The page itself cannot be clamped yet, because the total is only known once
 // the query has run. Page does that afterwards.
@@ -118,8 +118,8 @@ type Page struct {
 	TotalPages int
 }
 
-// NewPage clamps the requested page against the total, which is the rule the
-// reference project applies (core/functions.php::289-290).
+// NewPage clamps the requested page against the total, because a page number
+// out of range comes from a stale link rather than from a missing page.
 func NewPage(query Query, total int) Page {
 	totalPages := max(1, (total+query.PerPage-1)/query.PerPage)
 

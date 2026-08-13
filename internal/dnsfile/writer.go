@@ -18,8 +18,7 @@ var ErrDuplicate = errors.New("the record is already in the file")
 
 // BuildLine renders one record the way the file holds it.
 //
-// Source: core/functions.php::325-332. The trailing dot makes the name
-// absolute, which is what Unbound expects.
+// The trailing dot makes the name absolute, which is what Unbound expects.
 func (r Record) BuildLine() string {
 	fqdn := strings.TrimSuffix(r.FQDN, ".") + "."
 
@@ -35,9 +34,8 @@ func (r Record) BuildLine() string {
 
 // Add appends a record to the file.
 //
-// Unlike the reference project, the content is joined through a line split
-// rather than a raw append. A file whose last line has no newline would
-// otherwise swallow the new record into it.
+// The content is joined through a line split rather than appended to. A file
+// whose last line has no newline would otherwise swallow the new record.
 func Add(content []byte, record Record) ([]byte, error) {
 	if err := record.Validate(); err != nil {
 		return nil, err
@@ -54,9 +52,9 @@ func Add(content []byte, record Record) ([]byte, error) {
 
 // Edit replaces one record with another.
 //
-// Every matching line is replaced, which is what the reference project does.
-// A file that holds the same record twice is a mistake somebody made by hand,
-// and leaving one of the two behind would look like the edit did not work.
+// Every matching line is replaced. A file that holds the same record twice is
+// a mistake somebody made by hand, and leaving one of the two behind would
+// look like the edit did not work.
 func Edit(content []byte, old, updated Record) ([]byte, error) {
 	if err := old.Validate(); err != nil {
 		return nil, err
@@ -84,8 +82,8 @@ func Edit(content []byte, old, updated Record) ([]byte, error) {
 
 // Delete removes every line that holds a record.
 //
-// Source: core/functions.php::391-404. The comparison is against the trimmed
-// line, so indentation on the target does not hide a record from the panel.
+// The comparison is against the trimmed line, so indentation on the target
+// does not hide a record from the panel.
 func Delete(content []byte, record Record) ([]byte, error) {
 	if err := record.Validate(); err != nil {
 		return nil, err

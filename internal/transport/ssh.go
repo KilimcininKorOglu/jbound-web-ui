@@ -375,9 +375,8 @@ func (t *SSHTransport) Reload(ctx context.Context) (string, error) {
 
 	stdout, stderr, err := t.run(ctx, t.cfg.ReloadCmd, nil)
 	if err != nil {
-		// The reference project reports success whatever the command did. A
-		// reload that failed silently means the panel shows records the
-		// resolver is not serving.
+		// A reload that failed silently would leave the panel showing records
+		// the resolver is not serving.
 		return strings.TrimSpace(stdout + stderr), err
 	}
 	return strings.TrimSpace(stdout + stderr), nil

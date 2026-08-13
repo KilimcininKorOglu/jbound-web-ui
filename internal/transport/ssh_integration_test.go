@@ -353,8 +353,8 @@ func TestReloadRunsTheConfiguredCommand(t *testing.T) {
 }
 
 func TestReloadReportsAFailingCommand(t *testing.T) {
-	// The reference project reports success whatever the command did, which
-	// leaves the panel showing records the resolver is not serving.
+	// A reload that reported success whatever the command did would leave the
+	// panel showing records the resolver is not serving.
 	cfg := approvedConfig(t)
 	cfg.ReloadCmd = "/bin/false"
 

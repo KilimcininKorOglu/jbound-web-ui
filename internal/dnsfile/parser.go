@@ -3,8 +3,6 @@
 // Everything here is a pure function over a byte slice. The file arrives from
 // a managed server over SSH and leaves the same way, so knowing nothing about
 // files or networks keeps the rules testable against fixed content.
-//
-// The rules are ported from the reference project, core/functions.php::219-412.
 package dnsfile
 
 import (
@@ -53,8 +51,8 @@ func Parse(content []byte) []Record {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		// A ptr record is the reverse of a record the panel manages, and the
-		// reference project leaves it alone as well.
+		// A ptr record is the reverse of a record the panel manages, so it is
+		// left where it is.
 		if strings.HasPrefix(line, "local-data-ptr:") {
 			continue
 		}

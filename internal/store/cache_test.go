@@ -287,8 +287,7 @@ func TestListClampsAPageBeyondTheEnd(t *testing.T) {
 }
 
 func TestListKeepsAStableOrder(t *testing.T) {
-	// The reference project kept the order of the file, which says nothing
-	// once several servers are shown at once.
+	// The order of a file says nothing once several servers are shown at once.
 	f := newCacheFixture(t)
 	f.fill(t, f.second.ID, cached(1, "b.example.net", "A", "192.0.2.20"))
 	f.fill(t, f.first.ID,

@@ -85,7 +85,7 @@ CREATE INDEX IF NOT EXISTS idx_group_members_server
 -- ---------------------------------------------------------------------------
 -- Per server state
 -- ---------------------------------------------------------------------------
--- applied_sha256 replaces the single filehash.txt of the reference project.
+-- applied_sha256 records what the resolver last loaded, per server.
 -- A difference against file_sha256 means the server carries unapplied changes.
 CREATE TABLE IF NOT EXISTS server_state (
     server_id      INTEGER PRIMARY KEY REFERENCES servers(id) ON DELETE CASCADE,
@@ -144,7 +144,7 @@ CREATE INDEX IF NOT EXISTS idx_audit_server_id  ON audit_logs (server_id);
 -- ---------------------------------------------------------------------------
 -- Login attempts
 -- ---------------------------------------------------------------------------
--- Rate limiting keys on the address, matching the reference project: ten
+-- Rate limiting keys on the address: ten
 -- attempts per fifteen minutes.
 CREATE TABLE IF NOT EXISTS login_attempts (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,

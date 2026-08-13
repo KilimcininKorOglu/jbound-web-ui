@@ -66,8 +66,8 @@ func (r *Records) Clear(ctx context.Context, serverID int64) error {
 
 // List returns one page of cached records.
 //
-// The order is by server, name and type. The reference project kept the order
-// of the file, which says nothing once several servers are shown at once.
+// The order is by server, name and type. The order of a file says nothing
+// once several servers are shown at once.
 func (r *Records) List(ctx context.Context, query fleet.Query) (fleet.Page, error) {
 	query.Normalise()
 
@@ -130,8 +130,7 @@ func recordFilter(query fleet.Query) (string, []any) {
 	}
 
 	if search := strings.TrimSpace(query.Search); search != "" {
-		// The search is a substring match on either column, which is what the
-		// reference project does in PHP (core/functions.php::275-279).
+		// The search is a substring match on either column.
 		pattern := "%" + escapeLike(strings.ToLower(search)) + "%"
 		clauses = append(clauses,
 			`(LOWER(c.fqdn) LIKE ? ESCAPE '\' OR LOWER(c.value) LIKE ? ESCAPE '\')`)

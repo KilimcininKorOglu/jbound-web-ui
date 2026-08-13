@@ -131,7 +131,7 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 // Cleanup removes expired sessions and stale login attempts.
 //
 // Login attempts older than fifteen minutes no longer count towards the rate
-// limit, matching the reference project, so keeping them serves no purpose.
+// limit, so keeping them serves no purpose.
 func (db *DB) Cleanup(ctx context.Context, sessionTimeout time.Duration) error {
 	cutoff := fmt.Sprintf("-%d seconds", int(sessionTimeout.Seconds()))
 

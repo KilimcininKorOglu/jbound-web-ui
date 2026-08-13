@@ -120,8 +120,8 @@ func TestLoadUsesProductionDefaults(t *testing.T) {
 	if !cfg.CookieSecure {
 		t.Error("CookieSecure = false, want true by default")
 	}
-	// The defaults must match the reference project so production behaviour
-	// does not drift when nothing is configured.
+	// The defaults decide production behaviour when nothing is configured, so
+	// they are asserted rather than assumed.
 	if got := cfg.RsyslogRestartCmd.String(); got != "systemctl restart rsyslog" {
 		t.Errorf("RsyslogRestartCmd = %q, want systemctl restart rsyslog", got)
 	}

@@ -10,8 +10,6 @@ import (
 )
 
 // The record types the panel manages. Anything else in the file is left alone.
-//
-// Source: core/functions.php::322.
 const (
 	TypeA     = "A"
 	TypeAAAA  = "AAAA"
@@ -24,8 +22,6 @@ const (
 var Types = []string{TypeA, TypeAAAA, TypeMX, TypeCNAME, TypeTXT}
 
 // DefaultMXPriority is what an MX record gets when nobody chose a preference.
-//
-// Source: core/functions.php::330.
 const DefaultMXPriority = 10
 
 // ErrInvalid marks a rejected record, which a handler answers with 422 rather
@@ -34,9 +30,8 @@ var ErrInvalid = errors.New("invalid record")
 
 // namePattern is what a name may hold, for both the record and its value.
 //
-// Source: core/functions.php::308 and 317. It is deliberately permissive: the
-// file is also edited by hand on the target, and a stricter rule here would
-// refuse records the resolver itself accepts.
+// It is deliberately permissive: the file is also edited by hand on the
+// target, and a stricter rule here would refuse records the resolver accepts.
 var namePattern = regexp.MustCompile(`^[a-zA-Z0-9._-]{1,253}$`)
 
 // ValidateFQDN reports whether a name can be written to the file.
@@ -71,9 +66,9 @@ func ValidateRecordType(recordType string) error {
 
 // Validate reports every problem of a record in one pass.
 //
-// The quote and the whitespace checks have no counterpart in the reference
-// project. A value holding either would produce a line the parser reads back
-// differently, so the record would survive the write and vanish from the view.
+// A value holding a quote or whitespace would produce a line the parser reads
+// back differently, so the record would survive the write and then vanish from
+// the view.
 func (r Record) Validate() error {
 	var problems []string
 

@@ -16,8 +16,8 @@ import (
 	"unbound-web/internal/transport"
 )
 
-// Defaults for a new server. They match a Debian install, which is what the
-// reference project assumes, and every one of them is editable.
+// Defaults for a new server. They match a Debian install and every one of
+// them is editable.
 const (
 	DefaultHostEntriesPath = "/etc/unbound/host_entries.conf"
 	DefaultReloadCmd       = "sudo /usr/sbin/service unbound reload"

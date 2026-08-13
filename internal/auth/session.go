@@ -17,9 +17,8 @@ import (
 // else, so every session fact stays on the server.
 const SessionCookieName = "unbound_web_session"
 
-// rotateInterval controls how often a live session gets a new identifier. The
-// reference project rotates every five minutes, which bounds how long a stolen
-// identifier stays useful.
+// rotateInterval controls how often a live session gets a new identifier. Five
+// minutes bounds how long a stolen identifier stays useful.
 const rotateInterval = 5 * time.Minute
 
 // Session states reported by Load. The caller turns each into a redirect or a
@@ -220,9 +219,9 @@ func (m *SessionManager) clearCookie(w http.ResponseWriter) {
 
 // Fingerprint binds a session to the client that created it.
 //
-// The address is the key and the user agent is the message, matching the
-// reference project. Only the address is used, not the source port, because a
-// new connection gets a new port and would otherwise drop the session.
+// The address is the key and the user agent is the message. Only the address
+// is used, not the source port, because a new connection gets a new port and
+// would otherwise drop the session.
 func Fingerprint(r *http.Request) string {
 	key := sha256.Sum256([]byte(ClientIP(r)))
 	mac := hmac.New(sha256.New, key[:])

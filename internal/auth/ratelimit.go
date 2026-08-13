@@ -6,8 +6,7 @@ import (
 	"time"
 )
 
-// Rate limit defaults, taken from the reference project: ten attempts per
-// address in a fifteen minute window.
+// Rate limit defaults: ten attempts per address in a fifteen minute window.
 const (
 	DefaultRateWindow   = 15 * time.Minute
 	DefaultRateMaxTries = 10
@@ -38,9 +37,8 @@ func NewRateLimiter(repo AttemptRepository, window time.Duration, maxTries int) 
 
 // Allow reports whether another attempt from this address is permitted.
 //
-// Rows older than the window are removed first, matching the reference project.
-// The cleanup loop does the same on a timer, so this only bounds the count of a
-// single burst.
+// Rows older than the window are removed first. The cleanup loop does the same
+// on a timer, so this only bounds the count of a single burst.
 func (l *RateLimiter) Allow(ctx context.Context, ip string) (bool, error) {
 	cutoff := l.now().UTC().Add(-l.window)
 

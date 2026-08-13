@@ -28,3 +28,6 @@ Thumbs.db
 
 # Screenshots
 .playwright-mcp/
+
+# The implementation plan stays local.
+plan.md

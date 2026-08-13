@@ -80,9 +80,8 @@ func NewService(auth Authenticator, policy Policy) *Service {
 
 // ErrLoginFailed is the single failure every rejected login produces.
 //
-// The reference project returns one message for every failure, and keeping
-// that prevents the login form from telling an attacker which accounts exist,
-// which are locked, and which are merely wrong.
+// One message covers every failure, so the login form cannot tell an attacker
+// which accounts exist, which are locked, and which are merely wrong.
 var ErrLoginFailed = errors.New("invalid username or password")
 
 // Login authenticates a user and applies the policy.

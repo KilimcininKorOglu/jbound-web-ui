@@ -35,6 +35,13 @@ type dnsPageData struct {
 
 	// Summary reads "Showing X of Y records (Page A/B)".
 	Summary string
+
+	// Status drives the Apply Rules bar above the table.
+	Status fleet.Status
+
+	// StaleNote names the servers whose cache is old, so the status bar can
+	// say what it cannot vouch for.
+	StaleNote string
 }
 
 // pageLink is one entry of the pagination control.
@@ -58,7 +65,49 @@ type recordFormData struct {
 // reportData feeds the per server result table.
 type reportData struct {
 	Report fleet.Report
-	Query  fleet.Query
+	Kind   reportKind
+
+	// Problem replaces the result table when the operation was refused before
+	// it reached a server.
+	Problem string
+}
+
+// reportKind is the wording one kind of fleet operation uses.
+//
+// The table is the same for a record change and a reload. What differs is what
+// a failure means to the reader, so the sentences travel with the report
+// rather than being decided inside the template.
+type reportKind struct {
+	Title   string
+	OK      string
+	Partial string
+	None    string
+
+	ToastOK      string
+	ToastPartial string
+	ToastNone    string
+}
+
+var changeReport = reportKind{
+	Title:   "Result",
+	OK:      "The change reached every server it was meant for.",
+	Partial: "Some servers took the change and others did not. The ones that failed still hold the old file.",
+	None:    "No server took the change.",
+
+	ToastOK:      "The change reached every server.",
+	ToastPartial: "The change reached some servers but not all.",
+	ToastNone:    "The change reached no server.",
+}
+
+var reloadReport = reportKind{
+	Title:   "Apply Rules",
+	OK:      "Every server reloaded and now answers from the file it holds.",
+	Partial: "Some servers reloaded and others did not. The ones that failed still answer from the file they loaded last.",
+	None:    "No server reloaded.",
+
+	ToastOK:      "Every server reloaded.",
+	ToastPartial: "Some servers reloaded but not all.",
+	ToastNone:    "No server reloaded.",
 }
 
 func (a *App) handleDNSPage(w http.ResponseWriter, r *http.Request) {
@@ -72,13 +121,16 @@ func (a *App) handleDNSPage(w http.ResponseWriter, r *http.Request) {
 
 // handleDNSRecords re-renders the table, which is what every filter, page and
 // change swaps back into the page.
+//
+// The status bar rides along out of band. It reads the same target as the
+// table, and a separate request for it could answer about a different one.
 func (a *App) handleDNSRecords(w http.ResponseWriter, r *http.Request) {
 	data, err := a.dnsPageData(r)
 	if err != nil {
 		a.dnsError(w, "cannot load the records", err)
 		return
 	}
-	a.RenderPartial(w, http.StatusOK, "record-table", data)
+	a.RenderPartial(w, http.StatusOK, "record-table-swap", data)
 }
 
 func (a *App) dnsPageData(r *http.Request) (dnsPageData, error) {
@@ -97,6 +149,10 @@ func (a *App) dnsPageData(r *http.Request) (dnsPageData, error) {
 	if err != nil {
 		return dnsPageData{}, err
 	}
+	status, err := a.records.Status(r.Context(), query)
+	if err != nil {
+		return dnsPageData{}, err
+	}
 
 	return dnsPageData{
 		Page:       page,
@@ -107,7 +163,18 @@ func (a *App) dnsPageData(r *http.Request) (dnsPageData, error) {
 		ShowServer: query.Scope != fleet.ScopeServer,
 		Pages:      pageWindow(page),
 		Summary:    summary(page),
+		Status:     status,
+		StaleNote:  staleNote(status),
 	}, nil
+}
+
+// staleNote names the servers the status was drawn from too long ago.
+func staleNote(status fleet.Status) string {
+	stale := status.Stale()
+	if len(stale) == 0 {
+		return ""
+	}
+	return "The panel has not read " + strings.Join(stale, ", ") + " recently."
 }
 
 // queryFromRequest reads the listing controls out of the query string.
@@ -260,30 +327,68 @@ func (a *App) applyOperation(w http.ResponseWriter, r *http.Request, kind string
 		return
 	}
 
-	a.renderReport(w, r, report)
+	a.renderReport(w, report, changeReport)
+}
+
+// handleRecordApply reloads the resolver on every server of the target.
+//
+// The file and what the resolver answers from are two different things, so
+// this is a separate action rather than the tail of every write.
+func (a *App) handleRecordApply(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		a.reportProblem(w, "The form could not be read.", http.StatusBadRequest)
+		return
+	}
+
+	target, err := targetFromValues(r.Form)
+	if err != nil {
+		a.reportProblem(w, recordMessage(err), http.StatusBadRequest)
+		return
+	}
+
+	report, err := a.records.Reload(r.Context(), a.actor(r), target)
+	if err != nil {
+		a.reportProblem(w, recordMessage(err), dnsStatus(err))
+		return
+	}
+
+	a.renderReport(w, report, reloadReport)
 }
 
 // renderReport answers with the result table and the status the outcome earns.
-func (a *App) renderReport(w http.ResponseWriter, r *http.Request, report fleet.Report) {
+func (a *App) renderReport(w http.ResponseWriter, report fleet.Report, kind reportKind) {
+
 	success, failed, _ := report.Counts()
 
 	status := http.StatusOK
 	switch {
 	case failed == 0:
-		SetToast(w, ToastSuccess, "The change reached every server.")
+		SetToast(w, ToastSuccess, kind.ToastOK)
 	case success == 0:
 		status = http.StatusInternalServerError
-		SetToast(w, ToastError, "The change reached no server.")
+		SetToast(w, ToastError, kind.ToastNone)
 	default:
 		// A partial success is not a success. It gets its own colour, and the
 		// result table stays open so the operator can see which server failed.
 		status = http.StatusMultiStatus
-		SetToast(w, ToastWarning, "The change reached some servers but not all.")
+		SetToast(w, ToastWarning, kind.ToastPartial)
 	}
 
 	SetTrigger(w, "records-changed", nil)
+	a.RenderPartial(w, status, "record-report", reportData{Report: report, Kind: kind})
+}
+
+// reportProblem answers a refused operation that has no form behind it.
+//
+// Apply Rules is a button rather than a form, so the reason goes where the
+// result would have been.
+func (a *App) reportProblem(w http.ResponseWriter, problem string, status int) {
+
+	SetToast(w, ToastError, problem)
 	a.RenderPartial(w, status, "record-report", reportData{
-		Report: report, Query: queryFromRequest(r)})
+		Kind:    reloadReport,
+		Problem: problem,
+	})
 }
 
 // handleRecordRefresh reads every server again.

@@ -153,6 +153,11 @@ type stubTransport struct {
 	content  []byte
 	readErr  error
 	writeErr error
+
+	// reloads counts how often the resolver was asked to re-read its files,
+	// which is what Apply Rules is checked against.
+	reloads   int
+	reloadErr error
 }
 
 func (s *stubTransport) ReadHostEntries(context.Context) ([]byte, string, error) {
@@ -191,7 +196,29 @@ func (s *stubTransport) setFile(content string) {
 	s.content = []byte(content)
 }
 
-func (s *stubTransport) Reload(context.Context) (string, error)              { return "", nil }
+func (s *stubTransport) Reload(context.Context) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.reloads++
+	if s.reloadErr != nil {
+		return "", s.reloadErr
+	}
+	return "", nil
+}
+
+func (s *stubTransport) reloadCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.reloads
+}
+
+func (s *stubTransport) failReload(err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.reloadErr = err
+}
+
 func (s *stubTransport) ServiceStatus(context.Context) (bool, string, error) { return true, "", nil }
 func (s *stubTransport) Probe(context.Context) error                         { return s.probeErr }
 func (s *stubTransport) Close() error                                        { return nil }

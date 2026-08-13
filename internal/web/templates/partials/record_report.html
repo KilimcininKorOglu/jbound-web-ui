@@ -3,45 +3,49 @@
 {{define "record-report"}}
 <div class="card">
   <div class="card-header">
-    <h6 class="mb-0">Result</h6>
+    <h6 class="mb-0">{{.Kind.Title}}</h6>
   </div>
   <div class="card-body">
-    {{if .Report.OK}}
-      {{template "alert" (alert "success" "The change reached every server it was meant for.")}}
-    {{else if .Report.Partial}}
-      {{template "alert" (alert "warning" "Some servers took the change and others did not. The ones that failed still hold the old file.")}}
+    {{if .Problem}}
+      {{template "alert" (alert "error" .Problem)}}
     {{else}}
-      {{template "alert" (alert "error" "No server took the change.")}}
-    {{end}}
+      {{if .Report.OK}}
+        {{template "alert" (alert "success" .Kind.OK)}}
+      {{else if .Report.Partial}}
+        {{template "alert" (alert "warning" .Kind.Partial)}}
+      {{else}}
+        {{template "alert" (alert "error" .Kind.None)}}
+      {{end}}
 
-    <div class="table-responsive">
-      <table class="table table-sm">
-        <thead>
-          <tr>
-            <th>Server</th>
-            <th>Status</th>
-            <th>Message</th>
-          </tr>
-        </thead>
-        <tbody>
-          {{range .Report.Results}}
-          <tr>
-            <td><strong>{{.ServerName}}</strong></td>
-            <td>
-              {{if eq .Status "success"}}
-              <span class="badge bg-label-success" data-field="status">success</span>
-              {{else if eq .Status "skipped"}}
-              <span class="badge bg-label-secondary" data-field="status">skipped</span>
-              {{else}}
-              <span class="badge bg-label-danger" data-field="status">failed</span>
-              {{end}}
-            </td>
-            <td class="text-muted">{{.Message}}</td>
-          </tr>
-          {{end}}
-        </tbody>
-      </table>
-    </div>
+      <div class="table-responsive">
+        <table class="table table-sm">
+          <thead>
+            <tr>
+              <th>Server</th>
+              <th>Status</th>
+              <th>Message</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range .Report.Results}}
+            <tr>
+              <td><strong>{{.ServerName}}</strong></td>
+              <td>
+                {{if eq .Status "success"}}
+                <span class="badge bg-label-success" data-field="status">success</span>
+                {{else if eq .Status "skipped"}}
+                <span class="badge bg-label-secondary" data-field="status">skipped</span>
+                {{else}}
+                <span class="badge bg-label-danger" data-field="status">failed</span>
+                {{end}}
+              </td>
+              <td class="text-muted">{{.Message}}</td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    {{end}}
 
     <div class="dns-toolbar">
       <button class="btn btn-outline-secondary btn-sm" type="button"

@@ -523,3 +523,152 @@ func TestTheQueryFallsBackRatherThanFailing(t *testing.T) {
 		t.Errorf("an unreadable query did not fall back to the default view:\n%s", body)
 	}
 }
+
+// applyRules presses the Apply Rules button for one target.
+func (e *fleetEnv) applyRules(t *testing.T, values url.Values) *httptest.ResponseRecorder {
+	t.Helper()
+	return e.adminForm(t, http.MethodPost, "/dns/apply", e.cookie, values)
+}
+
+func TestApplyRulesReloadsEveryMemberOfTheGroup(t *testing.T) {
+	env := newFleetEnv(t)
+
+	recorder := env.applyRules(t, groupForm(url.Values{}))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200:\n%s", recorder.Code, recorder.Body.String())
+	}
+
+	body := recorder.Body.String()
+	if strings.Count(body, `data-field="status">success<`) != 3 {
+		t.Errorf("the result table does not report three reloads:\n%s", body)
+	}
+	for id := int64(1); id <= 3; id++ {
+		if count := env.target(id).reloadCount(); count != 1 {
+			t.Errorf("server %d was reloaded %d times", id, count)
+		}
+	}
+}
+
+func TestAPartialReloadAnswersWith207(t *testing.T) {
+	env := newFleetEnv(t)
+	env.target(3).failReload(transport.ErrCommandFailed)
+
+	recorder := env.applyRules(t, groupForm(url.Values{}))
+	if recorder.Code != http.StatusMultiStatus {
+		t.Fatalf("status = %d, want 207", recorder.Code)
+	}
+
+	body := recorder.Body.String()
+	if strings.Count(body, `data-field="status">success<`) != 2 {
+		t.Errorf("the result table does not report two reloads:\n%s", body)
+	}
+	if !strings.Contains(body, "Some servers reloaded") {
+		t.Errorf("the panel does not explain what a partial reload means:\n%s", body)
+	}
+}
+
+func TestApplyRulesRefusesTheWholeFleet(t *testing.T) {
+	// A reload of every server at once has to be a group somebody built on
+	// purpose, the same way a write does.
+	env := newFleetEnv(t)
+
+	recorder := env.applyRules(t, url.Values{"scope": {"all"}})
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", recorder.Code)
+	}
+	if !strings.Contains(recorder.Body.String(), "A change needs a single server or a group.") {
+		t.Errorf("the refusal does not explain itself:\n%s", recorder.Body.String())
+	}
+	if env.target(1).reloadCount() != 0 {
+		t.Error("a refused target still reached a server")
+	}
+}
+
+func TestApplyRulesIsAuditedPerServer(t *testing.T) {
+	env := newFleetEnv(t)
+	env.applyRules(t, groupForm(url.Values{}))
+
+	rows, err := env.db.Query(
+		"SELECT server_id, details FROM audit_logs WHERE action = 'dns_restart' ORDER BY id")
+	if err != nil {
+		t.Fatalf("cannot read the audit table: %v", err)
+	}
+	defer rows.Close()
+
+	count := 0
+	for rows.Next() {
+		var serverID *int64
+		var details string
+		if err := rows.Scan(&serverID, &details); err != nil {
+			t.Fatalf("cannot read an audit row: %v", err)
+		}
+		count++
+
+		if serverID == nil {
+			t.Error("the row names no server")
+		}
+		if !strings.HasPrefix(details, "Unbound service reloaded. Output: ") {
+			t.Errorf("details = %q", details)
+		}
+	}
+	if count != 3 {
+		t.Errorf("got %d audit rows, want one per server", count)
+	}
+}
+
+func TestTheStatusBarCountsTheServersThatLagBehind(t *testing.T) {
+	env := newFleetEnv(t)
+
+	// Nobody has applied anything yet, so every server carries a file the
+	// resolver has not been told about.
+	body := env.table(t, "scope=group&group_id=1")
+	if !strings.Contains(body, "3 of 3 servers have unapplied changes.") {
+		t.Errorf("the status bar does not count the servers:\n%s", body)
+	}
+
+	if recorder := env.applyRules(t, groupForm(url.Values{})); recorder.Code != http.StatusOK {
+		t.Fatalf("Apply Rules returned %d", recorder.Code)
+	}
+
+	body = env.table(t, "scope=group&group_id=1")
+	if !strings.Contains(body, "Every server has loaded its current file.") {
+		t.Errorf("the status bar still reports unapplied changes:\n%s", body)
+	}
+	if !strings.Contains(body, `data-field="apply-rules"`) || !strings.Contains(body, "disabled") {
+		t.Errorf("the button is not disabled with nothing to apply:\n%s", body)
+	}
+}
+
+func TestAWriteReopensTheUnappliedMarker(t *testing.T) {
+	env := newFleetEnv(t)
+	env.applyRules(t, groupForm(url.Values{}))
+
+	env.adminForm(t, http.MethodPost, "/dns/records", env.cookie, groupForm(url.Values{
+		"fqdn": {"new.example.local"}, "type": {"A"}, "value": {"10.0.0.50"},
+	}))
+
+	body := env.table(t, "scope=group&group_id=1")
+	if !strings.Contains(body, "3 of 3 servers have unapplied changes.") {
+		t.Errorf("a written file does not read as unapplied:\n%s", body)
+	}
+}
+
+func TestTheStatusBarCannotApplyToTheWholeFleet(t *testing.T) {
+	env := newFleetEnv(t)
+
+	body := env.table(t, "")
+	if !strings.Contains(body, "Choose a single server or a group to apply the rules.") {
+		t.Errorf("the status bar does not say why the button is unavailable:\n%s", body)
+	}
+}
+
+func TestTheStatusBarRidesWithTheTable(t *testing.T) {
+	// One request answers about one target. A second request for the status
+	// could arrive with a different one and disagree with the table above it.
+	env := newFleetEnv(t)
+
+	body := env.table(t, "scope=group&group_id=1")
+	if !strings.Contains(body, `id="record-status"`) || !strings.Contains(body, `hx-swap-oob="true"`) {
+		t.Errorf("the table response carries no status bar:\n%s", body)
+	}
+}

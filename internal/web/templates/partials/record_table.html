@@ -82,6 +82,14 @@
 </div>
 {{end}}
 
+{{/* The table as an htmx response. The status bar rides along out of band,
+     because it answers about the same target and a second request for it
+     could arrive with a different one. */}}
+{{define "record-table-swap"}}
+{{template "record-table" .}}
+<div id="record-status" class="mb-4" hx-swap-oob="true">{{template "record-status" .}}</div>
+{{end}}
+
 {{/* One colour per type, so an operator reads the table at a glance. */}}
 {{define "record-type"}}
 {{if eq . "A"}}<span class="badge bg-label-primary">A</span>

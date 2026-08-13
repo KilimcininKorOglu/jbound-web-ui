@@ -1,0 +1,33 @@
+{{/* The Apply Rules bar. A written file and what the resolver answers from are
+     two different things, and this is where the difference becomes visible. */}}
+{{define "record-status"}}
+<div class="card">
+  <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-3">
+    <div>
+      <span data-field="pending-summary">{{.Status.Summary}}</span>
+      {{if .Status.GroupName}}
+      <span class="text-muted small">Target: {{.Status.GroupName}}</span>
+      {{end}}
+      {{if .StaleNote}}
+      <div class="text-muted small" data-field="stale-note">{{.StaleNote}}</div>
+      {{end}}
+      {{if not .Status.CanApply}}
+      <div class="text-muted small" data-field="apply-note">
+        Choose a single server or a group to apply the rules.
+      </div>
+      {{end}}
+    </div>
+
+    {{/* Nothing to apply is a disabled button rather than a hidden one, so the
+         page keeps its shape and the reason sits next to it. */}}
+    <button class="btn btn-warning btn-sm" type="button" data-field="apply-rules"
+            hx-post="/dns/apply" hx-include="#record-controls"
+            hx-target="#record-panel" hx-swap="innerHTML"
+            hx-confirm="Reload the resolver on every targeted server?"
+            data-confirm-title="Apply Rules"
+            {{if not (and .Status.CanApply .Status.Pending)}}disabled{{end}}>
+      <i class="bx bx-refresh"></i> Apply Rules
+    </button>
+  </div>
+</div>
+{{end}}

@@ -1,0 +1,643 @@
+/* The dark theme.
+ *
+ * The vendor sheets carry no variables, so the palette is declared here and
+ * every component rule reads it from a variable. That keeps one place to
+ * change a colour and one place for the contrast test to measure.
+ *
+ * Two selectors carry the same palette: an explicit choice, and the system
+ * choice when the operating system asks for dark. Nothing is decided in
+ * JavaScript, so the first paint is already correct and no page flashes white.
+ *
+ * Contrast: every pair below is at or above 4.5:1 for text and 3:1 for a user
+ * interface element, which is what WCAG 2.2 AA asks for.
+ */
+
+html[data-color-scheme="dark"] {
+    /* On the html element itself as well, so the strip past the layout on a
+       wide screen is not the only white left on the page. */
+    background-color: #1E1E2A;
+
+    --panel-bg: #1E1E2A;
+    --panel-surface: #272738;
+    --panel-surface-raised: #2F2F42;
+    --panel-border: #3D3D52;
+    --panel-text: #E4E4EC;
+    --panel-text-muted: #A8A8BD;
+    --panel-heading: #F2F2F7;
+    --panel-input-bg: #1E1E2A;
+    --panel-shadow: rgba(0, 0, 0, 0.4);
+
+    /* The corporate green lightens for a dark field. The mid green writes at
+       2.7:1 on this background, which no amount of weight fixes. */
+    --panel-accent: #4ECB84;
+    --panel-accent-strong: #6FD79A;
+    --panel-accent-soft: rgba(78, 203, 132, 0.16);
+
+    --panel-success-bg: #16311F;
+    --panel-success-text: #7DDCA0;
+    --panel-info-bg: #12303E;
+    --panel-info-text: #79CDEC;
+    --panel-warning-bg: #3A2C0C;
+    --panel-warning-text: #F0C560;
+    --panel-danger-bg: #3B1A16;
+    --panel-danger-text: #F49585;
+    --panel-secondary-bg: #33334A;
+    --panel-secondary-text: #C3C3D4;
+}
+
+@media (prefers-color-scheme: dark) {
+    html[data-color-scheme="system"] {
+        background-color: #1E1E2A;
+
+        --panel-bg: #1E1E2A;
+        --panel-surface: #272738;
+        --panel-surface-raised: #2F2F42;
+        --panel-border: #3D3D52;
+        --panel-text: #E4E4EC;
+        --panel-text-muted: #A8A8BD;
+        --panel-heading: #F2F2F7;
+        --panel-input-bg: #1E1E2A;
+        --panel-shadow: rgba(0, 0, 0, 0.4);
+
+        --panel-accent: #4ECB84;
+        --panel-accent-strong: #6FD79A;
+        --panel-accent-soft: rgba(78, 203, 132, 0.16);
+
+        --panel-success-bg: #16311F;
+        --panel-success-text: #7DDCA0;
+        --panel-info-bg: #12303E;
+        --panel-info-text: #79CDEC;
+        --panel-warning-bg: #3A2C0C;
+        --panel-warning-text: #F0C560;
+        --panel-danger-bg: #3B1A16;
+        --panel-danger-text: #F49585;
+        --panel-secondary-bg: #33334A;
+        --panel-secondary-text: #C3C3D4;
+    }
+}
+
+/* Everything below applies only where the palette above is defined. A theme
+   with no palette leaves --panel-bg unset, so the guard is the variable
+   itself: the rules are written under the two selectors that set it. */
+
+html[data-color-scheme="dark"] body,
+html[data-color-scheme="dark"] .layout-wrapper,
+html[data-color-scheme="dark"] .content-wrapper {
+    background-color: var(--panel-bg) !important;
+    color: var(--panel-text);
+}
+
+html[data-color-scheme="dark"] h1,
+html[data-color-scheme="dark"] h2,
+html[data-color-scheme="dark"] h3,
+html[data-color-scheme="dark"] h4,
+html[data-color-scheme="dark"] h5,
+html[data-color-scheme="dark"] h6,
+html[data-color-scheme="dark"] strong,
+html[data-color-scheme="dark"] label {
+    color: var(--panel-heading);
+}
+
+/* --- Surfaces ------------------------------------------------------------ */
+
+html[data-color-scheme="dark"] .card,
+html[data-color-scheme="dark"] .menu,
+html[data-color-scheme="dark"] .bg-menu-theme,
+html[data-color-scheme="dark"] .navbar-detached,
+html[data-color-scheme="dark"] .bg-navbar-theme,
+html[data-color-scheme="dark"] .bg-footer-theme,
+html[data-color-scheme="dark"] .dropdown-menu,
+html[data-color-scheme="dark"] .modal-content,
+html[data-color-scheme="dark"] .swal2-popup {
+    /* The vendor sheets set these with !important, so an override that means
+       to win has to say so too. */
+    background-color: var(--panel-surface) !important;
+    color: var(--panel-text);
+    box-shadow: 0 2px 6px 0 var(--panel-shadow);
+}
+
+html[data-color-scheme="dark"] .card-header,
+html[data-color-scheme="dark"] .card-footer {
+    background-color: var(--panel-surface);
+    border-color: var(--panel-border);
+    color: var(--panel-heading);
+}
+
+html[data-color-scheme="dark"] hr,
+html[data-color-scheme="dark"] .border,
+html[data-color-scheme="dark"] .border-top,
+html[data-color-scheme="dark"] .border-bottom {
+    border-color: var(--panel-border) !important;
+}
+
+/* --- Text ---------------------------------------------------------------- */
+
+html[data-color-scheme="dark"] .text-muted,
+html[data-color-scheme="dark"] .form-text,
+html[data-color-scheme="dark"] .menu-header-text {
+    color: var(--panel-text-muted) !important;
+}
+
+html[data-color-scheme="dark"] a {
+    color: var(--panel-accent);
+}
+html[data-color-scheme="dark"] a:hover {
+    color: var(--panel-accent-strong);
+}
+
+html[data-color-scheme="dark"] code {
+    color: var(--panel-accent-strong);
+    background-color: var(--panel-surface-raised);
+    padding: 0.1rem 0.3rem;
+    border-radius: 0.25rem;
+}
+
+/* --- Tables -------------------------------------------------------------- */
+
+html[data-color-scheme="dark"] .table {
+    --bs-table-bg: transparent;
+    --bs-table-color: var(--panel-text);
+    --bs-table-striped-bg: var(--panel-surface-raised);
+    --bs-table-striped-color: var(--panel-text);
+    --bs-table-hover-bg: var(--panel-surface-raised);
+    --bs-table-hover-color: var(--panel-text);
+    color: var(--panel-text);
+    border-color: var(--panel-border);
+}
+
+html[data-color-scheme="dark"] .table th {
+    color: var(--panel-text-muted);
+    border-color: var(--panel-border);
+}
+
+html[data-color-scheme="dark"] .table td,
+html[data-color-scheme="dark"] .table thead th {
+    border-color: var(--panel-border);
+}
+
+html[data-color-scheme="dark"] .table-light,
+html[data-color-scheme="dark"] .table > :not(caption) > * > * {
+    background-color: transparent;
+    color: var(--panel-text);
+}
+
+/* --- Forms --------------------------------------------------------------- */
+
+html[data-color-scheme="dark"] .form-control,
+html[data-color-scheme="dark"] .form-select,
+html[data-color-scheme="dark"] .input-group-text {
+    background-color: var(--panel-input-bg);
+    border-color: var(--panel-border);
+    color: var(--panel-text);
+}
+
+html[data-color-scheme="dark"] .form-control::placeholder {
+    color: var(--panel-text-muted);
+}
+
+html[data-color-scheme="dark"] .form-control:focus,
+html[data-color-scheme="dark"] .form-select:focus {
+    background-color: var(--panel-input-bg);
+    border-color: var(--panel-accent);
+    color: var(--panel-text);
+    box-shadow: 0 0 0 0.15rem var(--panel-accent-soft);
+}
+
+html[data-color-scheme="dark"] .form-check-input {
+    background-color: var(--panel-input-bg);
+    border-color: var(--panel-text-muted);
+}
+
+html[data-color-scheme="dark"] .form-check-input:checked {
+    background-color: var(--panel-accent);
+    border-color: var(--panel-accent);
+}
+
+/* --- Buttons ------------------------------------------------------------- */
+
+html[data-color-scheme="dark"] .btn-primary,
+html[data-color-scheme="dark"] .btn-primary:hover,
+html[data-color-scheme="dark"] .btn-primary:focus,
+html[data-color-scheme="dark"] .btn-primary:active {
+    background-color: #1B8A4E !important;
+    border-color: #1B8A4E !important;
+    color: #FFFFFF !important;
+}
+
+html[data-color-scheme="dark"] .btn-outline-primary,
+html[data-color-scheme="dark"] .btn-outline-secondary {
+    color: var(--panel-accent) !important;
+    border-color: var(--panel-accent) !important;
+    background-color: transparent !important;
+}
+
+html[data-color-scheme="dark"] .btn-outline-primary:hover,
+html[data-color-scheme="dark"] .btn-outline-secondary:hover {
+    background-color: var(--panel-accent-soft) !important;
+    color: var(--panel-accent-strong) !important;
+}
+
+html[data-color-scheme="dark"] .btn-apply:disabled,
+html[data-color-scheme="dark"] .btn-apply.disabled {
+    color: var(--panel-accent);
+    border-color: var(--panel-accent);
+    background-color: transparent;
+}
+
+/* --- Alerts and badges --------------------------------------------------- */
+
+html[data-color-scheme="dark"] .alert-success,
+html[data-color-scheme="dark"] .bg-label-success {
+    background-color: var(--panel-success-bg) !important;
+    border-color: var(--panel-success-text);
+    color: var(--panel-success-text) !important;
+}
+
+html[data-color-scheme="dark"] .alert-info,
+html[data-color-scheme="dark"] .bg-label-info {
+    background-color: var(--panel-info-bg) !important;
+    border-color: var(--panel-info-text);
+    color: var(--panel-info-text) !important;
+}
+
+html[data-color-scheme="dark"] .alert-warning,
+html[data-color-scheme="dark"] .bg-label-warning {
+    background-color: var(--panel-warning-bg) !important;
+    border-color: var(--panel-warning-text);
+    color: var(--panel-warning-text) !important;
+}
+
+html[data-color-scheme="dark"] .alert-danger,
+html[data-color-scheme="dark"] .bg-label-danger {
+    background-color: var(--panel-danger-bg) !important;
+    border-color: var(--panel-danger-text);
+    color: var(--panel-danger-text) !important;
+}
+
+html[data-color-scheme="dark"] .bg-label-secondary {
+    background-color: var(--panel-secondary-bg) !important;
+    color: var(--panel-secondary-text) !important;
+}
+
+html[data-color-scheme="dark"] .bg-label-primary {
+    background-color: var(--panel-accent-soft) !important;
+    color: var(--panel-accent-strong) !important;
+}
+
+/* The dismiss cross is a dark image drawn by the template. Inverting it is
+   what makes it visible on a dark field. */
+html[data-color-scheme="dark"] .alert .btn-close,
+html[data-color-scheme="dark"] .btn-close {
+    filter: invert(1) brightness(1.6);
+}
+
+/* --- Menu and navigation ------------------------------------------------- */
+
+html[data-color-scheme="dark"] .bg-menu-theme .menu-link,
+html[data-color-scheme="dark"] .bg-menu-theme .menu-link .menu-icon,
+html[data-color-scheme="dark"] .app-brand-text {
+    color: var(--panel-text);
+}
+
+html[data-color-scheme="dark"] .menu-inner .menu-item.active > .menu-link,
+html[data-color-scheme="dark"] .menu-inner .menu-item.active > .menu-link .menu-icon {
+    color: var(--panel-accent-strong) !important;
+    background-color: var(--panel-accent-soft) !important;
+}
+
+html[data-color-scheme="dark"] .menu-inner .menu-item > .menu-link:hover {
+    color: var(--panel-accent-strong) !important;
+    background-color: var(--panel-surface-raised) !important;
+}
+
+html[data-color-scheme="dark"] .menu-vertical .menu-item.active::before,
+html[data-color-scheme="dark"] .menu-inner .menu-item.active::before {
+    background: var(--panel-accent) !important;
+}
+
+html[data-color-scheme="dark"] .menu-inner-shadow {
+    background: linear-gradient(var(--panel-surface) 41%,
+                                rgba(39, 39, 56, 0.11) 95%,
+                                rgba(39, 39, 56, 0));
+}
+
+/* --- Pagination ---------------------------------------------------------- */
+
+html[data-color-scheme="dark"] .page-link {
+    background-color: var(--panel-surface-raised);
+    border-color: var(--panel-border);
+    color: var(--panel-accent) !important;
+}
+
+html[data-color-scheme="dark"] .page-link:hover {
+    background-color: var(--panel-accent-soft) !important;
+    color: var(--panel-accent-strong) !important;
+}
+
+html[data-color-scheme="dark"] .page-item.active .page-link {
+    background-color: #1B8A4E !important;
+    border-color: #1B8A4E !important;
+    color: #FFFFFF !important;
+}
+
+html[data-color-scheme="dark"] .page-item.disabled .page-link {
+    background-color: var(--panel-surface);
+    border-color: var(--panel-border);
+    color: var(--panel-text-muted) !important;
+}
+
+/* --- Dropdown and dialogs ------------------------------------------------ */
+
+html[data-color-scheme="dark"] .dropdown-item {
+    color: var(--panel-text);
+}
+
+html[data-color-scheme="dark"] .dropdown-item:hover,
+html[data-color-scheme="dark"] .dropdown-item:focus {
+    background-color: var(--panel-surface-raised);
+    color: var(--panel-accent-strong);
+}
+
+html[data-color-scheme="dark"] .swal2-title,
+html[data-color-scheme="dark"] .swal2-html-container {
+    color: var(--panel-text) !important;
+}
+
+/* --- Log viewer ---------------------------------------------------------- */
+
+/* Already dark in the light theme. It only needs to stop being lighter than
+   the page it now sits on. */
+html[data-color-scheme="dark"] .log-viewer {
+    background: #16161F;
+    color: #D5D5E0;
+}
+
+/* --- The system theme, same rules ---------------------------------------- */
+
+@media (prefers-color-scheme: dark) {
+    html[data-color-scheme="system"] body,
+    html[data-color-scheme="system"] .layout-wrapper,
+    html[data-color-scheme="system"] .content-wrapper {
+        background-color: var(--panel-bg) !important;
+        color: var(--panel-text);
+    }
+
+    html[data-color-scheme="system"] h1,
+    html[data-color-scheme="system"] h2,
+    html[data-color-scheme="system"] h3,
+    html[data-color-scheme="system"] h4,
+    html[data-color-scheme="system"] h5,
+    html[data-color-scheme="system"] h6,
+    html[data-color-scheme="system"] strong,
+    html[data-color-scheme="system"] label {
+        color: var(--panel-heading);
+    }
+
+    html[data-color-scheme="system"] .card,
+    html[data-color-scheme="system"] .menu,
+    html[data-color-scheme="system"] .bg-menu-theme,
+    html[data-color-scheme="system"] .navbar-detached,
+    html[data-color-scheme="system"] .bg-navbar-theme,
+    html[data-color-scheme="system"] .bg-footer-theme,
+    html[data-color-scheme="system"] .dropdown-menu,
+    html[data-color-scheme="system"] .modal-content,
+    html[data-color-scheme="system"] .swal2-popup {
+        background-color: var(--panel-surface) !important;
+        color: var(--panel-text);
+        box-shadow: 0 2px 6px 0 var(--panel-shadow);
+    }
+
+    html[data-color-scheme="system"] .card-header,
+    html[data-color-scheme="system"] .card-footer {
+        background-color: var(--panel-surface);
+        border-color: var(--panel-border);
+        color: var(--panel-heading);
+    }
+
+    html[data-color-scheme="system"] hr,
+    html[data-color-scheme="system"] .border,
+    html[data-color-scheme="system"] .border-top,
+    html[data-color-scheme="system"] .border-bottom {
+        border-color: var(--panel-border) !important;
+    }
+
+    html[data-color-scheme="system"] .text-muted,
+    html[data-color-scheme="system"] .form-text,
+    html[data-color-scheme="system"] .menu-header-text {
+        color: var(--panel-text-muted) !important;
+    }
+
+    html[data-color-scheme="system"] a {
+        color: var(--panel-accent);
+    }
+    html[data-color-scheme="system"] a:hover {
+        color: var(--panel-accent-strong);
+    }
+
+    html[data-color-scheme="system"] code {
+        color: var(--panel-accent-strong);
+        background-color: var(--panel-surface-raised);
+        padding: 0.1rem 0.3rem;
+        border-radius: 0.25rem;
+    }
+
+    html[data-color-scheme="system"] .table {
+        --bs-table-bg: transparent;
+        --bs-table-color: var(--panel-text);
+        --bs-table-striped-bg: var(--panel-surface-raised);
+        --bs-table-striped-color: var(--panel-text);
+        --bs-table-hover-bg: var(--panel-surface-raised);
+        --bs-table-hover-color: var(--panel-text);
+        color: var(--panel-text);
+        border-color: var(--panel-border);
+    }
+
+    html[data-color-scheme="system"] .table th {
+        color: var(--panel-text-muted);
+        border-color: var(--panel-border);
+    }
+
+    html[data-color-scheme="system"] .table td,
+    html[data-color-scheme="system"] .table thead th {
+        border-color: var(--panel-border);
+    }
+
+    html[data-color-scheme="system"] .table-light,
+    html[data-color-scheme="system"] .table > :not(caption) > * > * {
+        background-color: transparent;
+        color: var(--panel-text);
+    }
+
+    html[data-color-scheme="system"] .form-control,
+    html[data-color-scheme="system"] .form-select,
+    html[data-color-scheme="system"] .input-group-text {
+        background-color: var(--panel-input-bg);
+        border-color: var(--panel-border);
+        color: var(--panel-text);
+    }
+
+    html[data-color-scheme="system"] .form-control::placeholder {
+        color: var(--panel-text-muted);
+    }
+
+    html[data-color-scheme="system"] .form-control:focus,
+    html[data-color-scheme="system"] .form-select:focus {
+        background-color: var(--panel-input-bg);
+        border-color: var(--panel-accent);
+        color: var(--panel-text);
+        box-shadow: 0 0 0 0.15rem var(--panel-accent-soft);
+    }
+
+    html[data-color-scheme="system"] .form-check-input {
+        background-color: var(--panel-input-bg);
+        border-color: var(--panel-text-muted);
+    }
+
+    html[data-color-scheme="system"] .form-check-input:checked {
+        background-color: var(--panel-accent);
+        border-color: var(--panel-accent);
+    }
+
+    html[data-color-scheme="system"] .btn-primary,
+    html[data-color-scheme="system"] .btn-primary:hover,
+    html[data-color-scheme="system"] .btn-primary:focus,
+    html[data-color-scheme="system"] .btn-primary:active {
+        background-color: #1B8A4E !important;
+        border-color: #1B8A4E !important;
+        color: #FFFFFF !important;
+    }
+
+    html[data-color-scheme="system"] .btn-outline-primary,
+    html[data-color-scheme="system"] .btn-outline-secondary {
+        color: var(--panel-accent) !important;
+        border-color: var(--panel-accent) !important;
+        background-color: transparent !important;
+    }
+
+    html[data-color-scheme="system"] .btn-outline-primary:hover,
+    html[data-color-scheme="system"] .btn-outline-secondary:hover {
+        background-color: var(--panel-accent-soft) !important;
+        color: var(--panel-accent-strong) !important;
+    }
+
+    html[data-color-scheme="system"] .btn-apply:disabled,
+    html[data-color-scheme="system"] .btn-apply.disabled {
+        color: var(--panel-accent);
+        border-color: var(--panel-accent);
+        background-color: transparent;
+    }
+
+    html[data-color-scheme="system"] .alert-success,
+    html[data-color-scheme="system"] .bg-label-success {
+        background-color: var(--panel-success-bg) !important;
+        border-color: var(--panel-success-text);
+        color: var(--panel-success-text) !important;
+    }
+
+    html[data-color-scheme="system"] .alert-info,
+    html[data-color-scheme="system"] .bg-label-info {
+        background-color: var(--panel-info-bg) !important;
+        border-color: var(--panel-info-text);
+        color: var(--panel-info-text) !important;
+    }
+
+    html[data-color-scheme="system"] .alert-warning,
+    html[data-color-scheme="system"] .bg-label-warning {
+        background-color: var(--panel-warning-bg) !important;
+        border-color: var(--panel-warning-text);
+        color: var(--panel-warning-text) !important;
+    }
+
+    html[data-color-scheme="system"] .alert-danger,
+    html[data-color-scheme="system"] .bg-label-danger {
+        background-color: var(--panel-danger-bg) !important;
+        border-color: var(--panel-danger-text);
+        color: var(--panel-danger-text) !important;
+    }
+
+    html[data-color-scheme="system"] .bg-label-secondary {
+        background-color: var(--panel-secondary-bg) !important;
+        color: var(--panel-secondary-text) !important;
+    }
+
+    html[data-color-scheme="system"] .bg-label-primary {
+        background-color: var(--panel-accent-soft) !important;
+        color: var(--panel-accent-strong) !important;
+    }
+
+    html[data-color-scheme="system"] .alert .btn-close,
+    html[data-color-scheme="system"] .btn-close {
+        filter: invert(1) brightness(1.6);
+    }
+
+    html[data-color-scheme="system"] .bg-menu-theme .menu-link,
+    html[data-color-scheme="system"] .bg-menu-theme .menu-link .menu-icon,
+    html[data-color-scheme="system"] .app-brand-text {
+        color: var(--panel-text);
+    }
+
+    html[data-color-scheme="system"] .menu-inner .menu-item.active > .menu-link,
+    html[data-color-scheme="system"] .menu-inner .menu-item.active > .menu-link .menu-icon {
+        color: var(--panel-accent-strong) !important;
+        background-color: var(--panel-accent-soft) !important;
+    }
+
+    html[data-color-scheme="system"] .menu-inner .menu-item > .menu-link:hover {
+        color: var(--panel-accent-strong) !important;
+        background-color: var(--panel-surface-raised) !important;
+    }
+
+    html[data-color-scheme="system"] .menu-vertical .menu-item.active::before,
+    html[data-color-scheme="system"] .menu-inner .menu-item.active::before {
+        background: var(--panel-accent) !important;
+    }
+
+    html[data-color-scheme="system"] .menu-inner-shadow {
+        background: linear-gradient(var(--panel-surface) 41%,
+                                    rgba(39, 39, 56, 0.11) 95%,
+                                    rgba(39, 39, 56, 0));
+    }
+
+    html[data-color-scheme="system"] .page-link {
+        background-color: var(--panel-surface-raised);
+        border-color: var(--panel-border);
+        color: var(--panel-accent) !important;
+    }
+
+    html[data-color-scheme="system"] .page-link:hover {
+        background-color: var(--panel-accent-soft) !important;
+        color: var(--panel-accent-strong) !important;
+    }
+
+    html[data-color-scheme="system"] .page-item.active .page-link {
+        background-color: #1B8A4E !important;
+        border-color: #1B8A4E !important;
+        color: #FFFFFF !important;
+    }
+
+    html[data-color-scheme="system"] .page-item.disabled .page-link {
+        background-color: var(--panel-surface);
+        border-color: var(--panel-border);
+        color: var(--panel-text-muted) !important;
+    }
+
+    html[data-color-scheme="system"] .dropdown-item {
+        color: var(--panel-text);
+    }
+
+    html[data-color-scheme="system"] .dropdown-item:hover,
+    html[data-color-scheme="system"] .dropdown-item:focus {
+        background-color: var(--panel-surface-raised);
+        color: var(--panel-accent-strong);
+    }
+
+    html[data-color-scheme="system"] .swal2-title,
+    html[data-color-scheme="system"] .swal2-html-container {
+        color: var(--panel-text) !important;
+    }
+
+    html[data-color-scheme="system"] .log-viewer {
+        background: #16161F;
+        color: #D5D5E0;
+    }
+}

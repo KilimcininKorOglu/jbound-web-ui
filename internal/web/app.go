@@ -96,6 +96,8 @@ func (a *App) Router() http.Handler {
 	// Records are open to every signed in user. Which machines they land on is
 	// admin territory, which the map below covers.
 	records := map[string]http.HandlerFunc{
+		"POST /theme": a.handleThemeChange,
+
 		"GET /system":        a.handleSystemPage,
 		"GET /system/status": a.handleSystemStatus,
 

@@ -79,6 +79,18 @@ var funcs = template.FuncMap{
 	"join": func(values []string) string {
 		return strings.Join(values, ", ")
 	},
+	// duration writes a bound the way an operator types it. Go prints 24h as
+	// 24h0m0s, which is three units for a value that has one.
+	"duration": func(d time.Duration) string {
+		text := d.String()
+		if strings.HasSuffix(text, "m0s") {
+			text = strings.TrimSuffix(text, "0s")
+		}
+		if strings.HasSuffix(text, "h0m") {
+			text = strings.TrimSuffix(text, "0m")
+		}
+		return text
+	},
 }
 
 // parseTemplates builds one set per page plus the partial set.
@@ -137,6 +149,11 @@ type PageData struct {
 	ActivePath string
 	Year       int
 	Alert      *Alert
+
+	// Theme is what the html element carries. It is read from the cookie on
+	// every render, so the first paint is already in the chosen theme and
+	// nothing flashes.
+	Theme string
 	// Data carries whatever the page itself needs.
 	Data any
 }
@@ -169,6 +186,7 @@ func (a *App) Render(w http.ResponseWriter, r *http.Request, status int,
 	}
 	data.ActivePath = r.URL.Path
 	data.Year = time.Now().Year()
+	data.Theme = a.theme(r)
 
 	var buf bytes.Buffer
 	if err := tmpl.ExecuteTemplate(&buf, "layout", data); err != nil {

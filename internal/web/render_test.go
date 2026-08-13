@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func TestEveryPageParsesWithItsLayout(t *testing.T) {
@@ -63,5 +64,32 @@ func TestSetTriggerKeepsTheEventsThatCameBefore(t *testing.T) {
 	}
 	if _, ok := triggers["records-changed"]; !ok {
 		t.Error("the second event was dropped")
+	}
+}
+
+// The registry states its bounds as durations, and Go prints 24h as 24h0m0s.
+// The page shows them the way an operator types them.
+func TestADurationBoundIsWrittenTheWayItIsTyped(t *testing.T) {
+	format, ok := funcs["duration"].(func(time.Duration) string)
+	if !ok {
+		t.Fatal("the templates have no duration helper")
+	}
+
+	cases := map[time.Duration]string{
+		time.Second:      "1s",
+		30 * time.Second: "30s",
+		time.Minute:      "1m",
+		90 * time.Second: "1m30s",
+		5 * time.Minute:  "5m",
+		24 * time.Hour:   "24h",
+		168 * time.Hour:  "168h",
+		90 * time.Minute: "1h30m",
+		2*time.Hour + 5*time.Minute + 3*time.Second: "2h5m3s",
+	}
+
+	for value, want := range cases {
+		if got := format(value); got != want {
+			t.Errorf("%s reads %q, want %q", value, got, want)
+		}
 	}
 }

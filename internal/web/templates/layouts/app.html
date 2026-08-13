@@ -1,6 +1,7 @@
 {{define "layout"}}<!DOCTYPE html>
 <html lang="en" class="light-style layout-menu-fixed" dir="ltr"
       data-theme="theme-default" data-assets-path="/static/"
+      data-color-scheme="{{.Theme}}"
       data-template="vertical-menu-template-free">
 <head>
   <meta charset="utf-8">
@@ -17,6 +18,8 @@
   <link rel="stylesheet" href="/static/css/sweetalert2.min.css">
   <link rel="stylesheet" href="/static/css/brand.css">
   <link rel="stylesheet" href="/static/css/panel.css">
+  {{/* Last, because it overrides both the vendor sheets and the panel ones. */}}
+  <link rel="stylesheet" href="/static/css/theme-dark.css">
 </head>
 
 {{/* The CSRF token rides on the body element, so every htmx request carries
@@ -80,8 +83,34 @@
             </div>
           </div>
           <ul class="navbar-nav flex-row align-items-center ms-auto">
+            {{/* The theme is stored in a cookie and nowhere else, so a change
+                 reloads the page rather than swapping a fragment: the choice
+                 sits on the html element. */}}
+            <li class="nav-item me-3">
+              <label class="visually-hidden" for="theme-choice">Theme</label>
+              <select class="form-select form-select-sm" id="theme-choice" name="theme"
+                      data-field="theme-choice"
+                      hx-post="/theme" hx-trigger="change">
+                <option value="system" {{if eq .Theme "system"}}selected{{end}}>System theme</option>
+                <option value="light" {{if eq .Theme "light"}}selected{{end}}>Light</option>
+                <option value="dark" {{if eq .Theme "dark"}}selected{{end}}>Dark</option>
+              </select>
+            </li>
             <li class="nav-item me-2">
+              {{/* The wordmark is drawn in a dark ink, which disappears on a
+                   dark field. An explicit theme picks the file, and the system
+                   theme leaves the choice to the browser. */}}
+              {{if eq .Theme "dark"}}
+              <img src="/static/img/janbound-wordmark-dark.svg" alt="JanBound DNS Panel" class="navbar-logo">
+              {{else if eq .Theme "light"}}
               <img src="/static/img/janbound-wordmark.svg" alt="JanBound DNS Panel" class="navbar-logo">
+              {{else}}
+              <picture>
+                <source media="(prefers-color-scheme: dark)"
+                        srcset="/static/img/janbound-wordmark-dark.svg">
+                <img src="/static/img/janbound-wordmark.svg" alt="JanBound DNS Panel" class="navbar-logo">
+              </picture>
+              {{end}}
             </li>
           </ul>
         </div>

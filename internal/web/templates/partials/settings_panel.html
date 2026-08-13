@@ -57,7 +57,7 @@
                    value="{{.Value}}" spellcheck="false" autocapitalize="none"
                    aria-describedby="{{.Key}}-help" data-field="{{.Key}}">
             <div class="form-text" id="{{.Key}}-help">
-              {{.Help}} Between {{.Min}} and {{.Max}}.
+              {{.Help}} Between {{duration .Min}} and {{duration .Max}}.
             </div>
           </div>
           {{end}}

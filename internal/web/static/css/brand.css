@@ -235,6 +235,19 @@ a:hover {
     opacity: 1;
 }
 
+/* Switches and checkboxes. The template ticks them in its own violet, which
+   next to a green button reads as a second accent nobody chose. */
+.form-check-input:checked,
+.form-check-input:checked[type="checkbox"],
+.form-check-input:checked[type="radio"] {
+    background-color: #1B8A4E;
+    border-color: #1B8A4E;
+}
+.form-check-input:focus {
+    border-color: #1B8A4E;
+    box-shadow: 0 0 0 0.15rem rgba(27, 138, 78, 0.25);
+}
+
 /* The dismiss cross is drawn by the template as a tinted image, one data URI
    per state. Darkening it here keeps the four images and still lifts the
    control over the 3:1 that WCAG AA asks of a user interface element. */

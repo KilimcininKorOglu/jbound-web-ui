@@ -5,6 +5,15 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"unbound-web/internal/settings"
+)
+
+// The limits the registry defaults to, restated so the limiter can be tested
+// without a settings service behind it.
+const (
+	testRateWindow   = 15 * time.Minute
+	testRateMaxTries = 10
 )
 
 type attempt struct {
@@ -53,16 +62,16 @@ func (f *fakeAttemptRepo) DeleteBefore(_ context.Context, before time.Time) erro
 
 func TestRateLimiterAllowsTenAttemptsAndRefusesTheEleventh(t *testing.T) {
 	repo := &fakeAttemptRepo{}
-	limiter := NewRateLimiter(repo, DefaultRateWindow, DefaultRateMaxTries)
+	limiter := NewRateLimiter(repo, settings.Fixed(testRateWindow), settings.Fixed(testRateMaxTries))
 	ctx := context.Background()
 
-	for i := 1; i <= DefaultRateMaxTries; i++ {
+	for i := 1; i <= testRateMaxTries; i++ {
 		allowed, err := limiter.Allow(ctx, "203.0.113.5")
 		if err != nil {
 			t.Fatalf("attempt %d failed: %v", i, err)
 		}
 		if !allowed {
-			t.Fatalf("attempt %d was refused, the limit is %d", i, DefaultRateMaxTries)
+			t.Fatalf("attempt %d was refused, the limit is %d", i, testRateMaxTries)
 		}
 		if err := limiter.Record(ctx, "203.0.113.5", "dnsuser"); err != nil {
 			t.Fatalf("cannot record attempt %d: %v", i, err)
@@ -74,7 +83,7 @@ func TestRateLimiterAllowsTenAttemptsAndRefusesTheEleventh(t *testing.T) {
 		t.Fatalf("Allow returned an error: %v", err)
 	}
 	if allowed {
-		t.Errorf("attempt %d was allowed", DefaultRateMaxTries+1)
+		t.Errorf("attempt %d was allowed", testRateMaxTries+1)
 	}
 }
 
@@ -82,10 +91,10 @@ func TestRateLimiterCountsPerAddress(t *testing.T) {
 	// Keying on the user name instead would let anyone lock out a known
 	// account by guessing at it.
 	repo := &fakeAttemptRepo{}
-	limiter := NewRateLimiter(repo, DefaultRateWindow, DefaultRateMaxTries)
+	limiter := NewRateLimiter(repo, settings.Fixed(testRateWindow), settings.Fixed(testRateMaxTries))
 	ctx := context.Background()
 
-	for range DefaultRateMaxTries {
+	for range testRateMaxTries {
 		if err := limiter.Record(ctx, "203.0.113.5", "dnsuser"); err != nil {
 			t.Fatalf("cannot record the attempt: %v", err)
 		}
@@ -102,19 +111,19 @@ func TestRateLimiterCountsPerAddress(t *testing.T) {
 
 func TestRateLimiterForgetsAttemptsOlderThanTheWindow(t *testing.T) {
 	repo := &fakeAttemptRepo{}
-	limiter := NewRateLimiter(repo, DefaultRateWindow, DefaultRateMaxTries)
+	limiter := NewRateLimiter(repo, settings.Fixed(testRateWindow), settings.Fixed(testRateMaxTries))
 	ctx := context.Background()
 
 	base := time.Date(2026, 8, 13, 12, 0, 0, 0, time.UTC)
 	limiter.now = func() time.Time { return base }
 
-	for range DefaultRateMaxTries {
+	for range testRateMaxTries {
 		if err := limiter.Record(ctx, "203.0.113.5", "dnsuser"); err != nil {
 			t.Fatalf("cannot record the attempt: %v", err)
 		}
 	}
 
-	limiter.now = func() time.Time { return base.Add(DefaultRateWindow + time.Minute) }
+	limiter.now = func() time.Time { return base.Add(testRateWindow + time.Minute) }
 
 	allowed, err := limiter.Allow(ctx, "203.0.113.5")
 	if err != nil {
@@ -135,13 +144,13 @@ func TestRateLimiterReportsStorageFailures(t *testing.T) {
 	ctx := context.Background()
 
 	limiter := NewRateLimiter(&fakeAttemptRepo{countErr: failure},
-		DefaultRateWindow, DefaultRateMaxTries)
+		settings.Fixed(testRateWindow), settings.Fixed(testRateMaxTries))
 	if _, err := limiter.Allow(ctx, "203.0.113.5"); !errors.Is(err, failure) {
 		t.Errorf("Allow returned %v, want the storage failure", err)
 	}
 
 	limiter = NewRateLimiter(&fakeAttemptRepo{recordErr: failure},
-		DefaultRateWindow, DefaultRateMaxTries)
+		settings.Fixed(testRateWindow), settings.Fixed(testRateMaxTries))
 	if err := limiter.Record(ctx, "203.0.113.5", "dnsuser"); !errors.Is(err, failure) {
 		t.Errorf("Record returned %v, want the storage failure", err)
 	}

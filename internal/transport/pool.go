@@ -21,10 +21,14 @@ const keepaliveInterval = 30 * time.Second
 // each server its own write lock, which is what keeps two panel users from
 // overwriting each other on the same host.
 type Pool struct {
-	mu          sync.Mutex
-	entries     map[int64]*poolEntry
-	idleTimeout time.Duration
-	closed      bool
+	mu      sync.Mutex
+	entries map[int64]*poolEntry
+
+	// idleTimeout is read on every sweep, so a shorter value set on the
+	// settings page starts closing connections on the next one.
+	idleTimeout func() time.Duration
+
+	closed bool
 }
 
 type poolEntry struct {
@@ -36,7 +40,7 @@ type poolEntry struct {
 // NewPool builds the pool and starts its maintenance loop.
 //
 // The loop ends with the context, which closes every connection.
-func NewPool(ctx context.Context, idleTimeout time.Duration) *Pool {
+func NewPool(ctx context.Context, idleTimeout func() time.Duration) *Pool {
 	pool := &Pool{
 		entries:     map[int64]*poolEntry{},
 		idleTimeout: idleTimeout,
@@ -135,7 +139,7 @@ func (p *Pool) sweep() {
 	var alive []ping
 
 	for id, entry := range p.entries {
-		if time.Since(entry.lastUsed) > p.idleTimeout {
+		if time.Since(entry.lastUsed) > p.idleTimeout() {
 			entry.transport.Close()
 			delete(p.entries, id)
 			continue

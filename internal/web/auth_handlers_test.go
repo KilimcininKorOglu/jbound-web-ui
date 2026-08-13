@@ -19,6 +19,7 @@ import (
 	"unbound-web/internal/database"
 	"unbound-web/internal/fleet"
 	"unbound-web/internal/server"
+	"unbound-web/internal/settings"
 	"unbound-web/internal/siem"
 	"unbound-web/internal/store"
 	"unbound-web/internal/transport"
@@ -64,6 +65,11 @@ type testEnv struct {
 	siemDir   string
 	// queries lets a test choose what a resolver replies to a name query.
 	queries *stubQuerier
+	// settingsStore is the same store the application reads, so a test can
+	// build a second service over it and see what a restart would.
+	settingsStore *store.Settings
+	// settingsCookie caches the administrator session of the settings tests.
+	settingsCookie *http.Cookie
 }
 
 func newTestEnv(t *testing.T) *testEnv {
@@ -85,12 +91,20 @@ func newTestEnv(t *testing.T) *testEnv {
 	}}
 
 	cfg := &config.Config{
-		SessionTimeout: 30 * time.Minute,
-		CookieSecure:   false,
-		MinUID:         1000,
-		AdminGroup:     "sudo",
-		DBPath:         dbPath,
+		CookieSecure: false,
+		MinUID:       1000,
+		AdminGroup:   "sudo",
+		DBPath:       dbPath,
 	}
+
+	// The panel reads its timing and its limits through this service, so the
+	// harness builds the real one over the test database rather than faking it.
+	settingsStore := store.NewSettings(db.DB)
+	options := settings.NewService(settingsStore)
+	if err := options.Load(context.Background()); err != nil {
+		t.Fatalf("cannot load the settings: %v", err)
+	}
+
 	sessions := store.NewSessions(db.DB)
 	forwarder := &recordingForwarder{}
 	auditLog := audit.NewLogger(store.NewAuditLogs(db.DB), forwarder)
@@ -108,7 +122,7 @@ func newTestEnv(t *testing.T) *testEnv {
 		transport: remote,
 		byID:      map[int64]*stubTransport{1: remote},
 	}
-	timeouts := server.Timeouts{Connect: time.Second, Command: time.Second}
+	timeouts := settings.Fixed(server.Timeouts{Connect: time.Second, Command: time.Second})
 
 	serverStore := store.NewServers(db.DB)
 	servers := server.NewService(
@@ -117,12 +131,12 @@ func newTestEnv(t *testing.T) *testEnv {
 	recordStore := store.NewRecords(db.DB)
 	stateStore := store.NewStates(db.DB)
 	refresher := fleet.NewRefresher(serverStore, recordStore, stateStore,
-		connector, dataDir, timeouts, 2)
+		connector, dataDir, timeouts, settings.Fixed(2))
 	writer := fleet.NewWriter(serverStore, servers, connector, refresher,
-		auditLog, dataDir, timeouts, 2)
+		auditLog, dataDir, timeouts, settings.Fixed(2))
 	queries := &stubQuerier{answers: map[string][]string{}}
 	records := fleet.NewService(recordStore, stateStore, writer, refresher,
-		queries, auditLog, 15*time.Minute)
+		queries, auditLog, settings.Fixed(15*time.Minute))
 
 	siemDir := t.TempDir()
 	rsyslog := siem.NewManager(
@@ -134,9 +148,12 @@ func newTestEnv(t *testing.T) *testEnv {
 		Auth: auth.NewService(authenticator, auth.Policy{
 			MinUID: cfg.MinUID, AdminGroup: cfg.AdminGroup,
 		}),
-		Sessions: auth.NewSessionManager(sessions, cfg.SessionTimeout, cfg.CookieSecure),
+		Settings: options,
+		Sessions: auth.NewSessionManager(sessions,
+			options.DurationOf(settings.SessionIdleTimeout), cfg.CookieSecure),
 		Limiter: auth.NewRateLimiter(store.NewLoginAttempts(db.DB),
-			auth.DefaultRateWindow, auth.DefaultRateMaxTries),
+			options.DurationOf(settings.LoginRateWindow),
+			options.IntOf(settings.LoginRateMaxAttempts)),
 		Audit:     auditLog,
 		Servers:   servers,
 		Records:   records,
@@ -163,6 +180,8 @@ func newTestEnv(t *testing.T) *testEnv {
 		queries:   queries,
 		forwarder: forwarder,
 		siemDir:   siemDir,
+
+		settingsStore: settingsStore,
 	}
 }
 
@@ -505,7 +524,11 @@ func TestAFailedLoginIsAudited(t *testing.T) {
 func TestLoginRefusesTheEleventhAttempt(t *testing.T) {
 	env := newTestEnv(t)
 
-	for i := 1; i <= auth.DefaultRateMaxTries; i++ {
+	// The limit is a setting now, so the test asks the panel what it is rather
+	// than restating a number that can move.
+	settingsMaxLoginAttempts := env.app.Settings.Int(settings.LoginRateMaxAttempts)
+
+	for i := 1; i <= settingsMaxLoginAttempts; i++ {
 		recorder := env.do(t, postForm("/login", "username=dnsadmin&password=wrong"))
 		if recorder.Code != http.StatusUnauthorized {
 			t.Fatalf("attempt %d returned %d, want 401", i, recorder.Code)
@@ -515,7 +538,7 @@ func TestLoginRefusesTheEleventhAttempt(t *testing.T) {
 	recorder := env.do(t, postForm("/login", "username=dnsadmin&password=wrong"))
 	if recorder.Code != http.StatusTooManyRequests {
 		t.Fatalf("attempt %d returned %d, want 429",
-			auth.DefaultRateMaxTries+1, recorder.Code)
+			settingsMaxLoginAttempts+1, recorder.Code)
 	}
 
 	// The correct password must not slip past the limit either.

@@ -57,20 +57,24 @@ type SessionRepository interface {
 
 // SessionManager applies the session rules to HTTP requests.
 type SessionManager struct {
-	repo         SessionRepository
-	timeout      time.Duration
+	repo SessionRepository
+
+	// idle is read on every request rather than held as a value, so a change
+	// made on the settings page applies to the sessions that are already open.
+	idle func() time.Duration
+
 	cookieSecure bool
 	// now is replaceable so tests can move past the timeout without sleeping.
 	now func() time.Time
 }
 
 // NewSessionManager builds the manager.
-func NewSessionManager(repo SessionRepository, timeout time.Duration,
+func NewSessionManager(repo SessionRepository, idle func() time.Duration,
 	cookieSecure bool) *SessionManager {
 
 	return &SessionManager{
 		repo:         repo,
-		timeout:      timeout,
+		idle:         idle,
 		cookieSecure: cookieSecure,
 		now:          time.Now,
 	}
@@ -134,7 +138,7 @@ func (m *SessionManager) Load(ctx context.Context, w http.ResponseWriter,
 
 	now := m.now().UTC()
 
-	if now.Sub(session.LastActive) > m.timeout {
+	if now.Sub(session.LastActive) > m.idle() {
 		m.destroy(ctx, w, session.ID)
 		return Session{}, ErrSessionExpired
 	}

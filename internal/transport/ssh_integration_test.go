@@ -20,6 +20,8 @@ import (
 	"time"
 
 	"golang.org/x/crypto/ssh"
+
+	"unbound-web/internal/settings"
 )
 
 const (
@@ -503,7 +505,7 @@ func TestPoolReusesOneConnectionPerServer(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	pool := NewPool(ctx, time.Minute)
+	pool := NewPool(ctx, settings.Fixed(time.Minute))
 	defer pool.Close()
 
 	cfg := approvedConfig(t)
@@ -531,7 +533,7 @@ func TestPoolReplacesAConnectionWhenTheRecordChanges(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	pool := NewPool(ctx, time.Minute)
+	pool := NewPool(ctx, settings.Fixed(time.Minute))
 	defer pool.Close()
 
 	cfg := approvedConfig(t)

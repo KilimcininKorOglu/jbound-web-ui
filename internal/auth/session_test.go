@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"unbound-web/internal/settings"
 )
 
 // fakeSessionRepo keeps sessions in memory so the timing rules can be tested
@@ -109,7 +111,7 @@ func findCookie(t *testing.T, cookies []*http.Cookie, name string) *http.Cookie 
 
 func TestStartCreatesASessionAndSetsAHardenedCookie(t *testing.T) {
 	repo := newFakeSessionRepo()
-	manager := NewSessionManager(repo, 30*time.Minute, true)
+	manager := NewSessionManager(repo, settings.Fixed(30*time.Minute), true)
 
 	session, cookie := startSession(t, manager)
 
@@ -140,7 +142,7 @@ func TestStartCreatesASessionAndSetsAHardenedCookie(t *testing.T) {
 
 func TestLoadReturnsTheSessionAndRecordsActivity(t *testing.T) {
 	repo := newFakeSessionRepo()
-	manager := NewSessionManager(repo, 30*time.Minute, false)
+	manager := NewSessionManager(repo, settings.Fixed(30*time.Minute), false)
 	session, cookie := startSession(t, manager)
 
 	later := session.LastActive.Add(time.Minute)
@@ -164,7 +166,7 @@ func TestLoadReturnsTheSessionAndRecordsActivity(t *testing.T) {
 
 func TestLoadRejectsAMissingOrUnknownSession(t *testing.T) {
 	repo := newFakeSessionRepo()
-	manager := NewSessionManager(repo, 30*time.Minute, false)
+	manager := NewSessionManager(repo, settings.Fixed(30*time.Minute), false)
 
 	t.Run("no cookie", func(t *testing.T) {
 		_, err := manager.Load(context.Background(), httptest.NewRecorder(),
@@ -187,7 +189,7 @@ func TestLoadRejectsAMissingOrUnknownSession(t *testing.T) {
 
 func TestLoadExpiresAnIdleSession(t *testing.T) {
 	repo := newFakeSessionRepo()
-	manager := NewSessionManager(repo, 30*time.Minute, false)
+	manager := NewSessionManager(repo, settings.Fixed(30*time.Minute), false)
 	session, cookie := startSession(t, manager)
 
 	manager.now = func() time.Time { return session.LastActive.Add(31 * time.Minute) }
@@ -206,7 +208,7 @@ func TestLoadExpiresAnIdleSession(t *testing.T) {
 
 func TestLoadDropsTheSessionWhenTheUserAgentChanges(t *testing.T) {
 	repo := newFakeSessionRepo()
-	manager := NewSessionManager(repo, 30*time.Minute, false)
+	manager := NewSessionManager(repo, settings.Fixed(30*time.Minute), false)
 	session, cookie := startSession(t, manager)
 
 	r := testRequest("curl/8.0 (stolen cookie)", "203.0.113.5:1000")
@@ -223,7 +225,7 @@ func TestLoadDropsTheSessionWhenTheUserAgentChanges(t *testing.T) {
 
 func TestLoadDropsTheSessionWhenTheAddressChanges(t *testing.T) {
 	repo := newFakeSessionRepo()
-	manager := NewSessionManager(repo, 30*time.Minute, false)
+	manager := NewSessionManager(repo, settings.Fixed(30*time.Minute), false)
 	_, cookie := startSession(t, manager)
 
 	r := testRequest(testUserAgent, "198.51.100.9:1000")
@@ -237,7 +239,7 @@ func TestLoadDropsTheSessionWhenTheAddressChanges(t *testing.T) {
 
 func TestLoadRotatesTheIdentifierAfterFiveMinutes(t *testing.T) {
 	repo := newFakeSessionRepo()
-	manager := NewSessionManager(repo, 30*time.Minute, false)
+	manager := NewSessionManager(repo, settings.Fixed(30*time.Minute), false)
 	session, cookie := startSession(t, manager)
 
 	manager.now = func() time.Time { return session.RegeneratedAt.Add(rotateInterval) }
@@ -269,7 +271,7 @@ func TestLoadRotatesTheIdentifierAfterFiveMinutes(t *testing.T) {
 
 func TestDestroyRemovesTheSession(t *testing.T) {
 	repo := newFakeSessionRepo()
-	manager := NewSessionManager(repo, 30*time.Minute, false)
+	manager := NewSessionManager(repo, settings.Fixed(30*time.Minute), false)
 	session, cookie := startSession(t, manager)
 
 	r := testRequest(testUserAgent, "203.0.113.5:1000")

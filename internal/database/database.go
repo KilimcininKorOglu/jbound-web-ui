@@ -130,25 +130,35 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 
 // Cleanup removes expired sessions and stale login attempts.
 //
-// Login attempts older than fifteen minutes no longer count towards the rate
-// limit, so keeping them serves no purpose.
-func (db *DB) Cleanup(ctx context.Context, sessionTimeout time.Duration) error {
-	cutoff := fmt.Sprintf("-%d seconds", int(sessionTimeout.Seconds()))
+// A login attempt older than the rate limit window no longer counts towards
+// the limit, so keeping it serves no purpose.
+func (db *DB) Cleanup(ctx context.Context, sessionTimeout,
+	attemptWindow time.Duration) error {
 
 	if _, err := db.ExecContext(ctx,
-		"DELETE FROM sessions WHERE last_active < datetime('now', ?)", cutoff); err != nil {
+		"DELETE FROM sessions WHERE last_active < datetime('now', ?)",
+		secondsAgo(sessionTimeout)); err != nil {
 		return fmt.Errorf("cannot delete expired sessions: %w", err)
 	}
 	if _, err := db.ExecContext(ctx,
-		"DELETE FROM login_attempts WHERE attempted_at < datetime('now', '-15 minutes')"); err != nil {
+		"DELETE FROM login_attempts WHERE attempted_at < datetime('now', ?)",
+		secondsAgo(attemptWindow)); err != nil {
 		return fmt.Errorf("cannot delete stale login attempts: %w", err)
 	}
 	return nil
 }
 
+// secondsAgo renders a duration as the modifier SQLite reads.
+func secondsAgo(d time.Duration) string {
+	return fmt.Sprintf("-%d seconds", int(d.Seconds()))
+}
+
 // RunCleanupLoop calls Cleanup on a ticker until the context is cancelled.
+//
+// The two durations are accessors, because both are settings now and a value
+// read once at startup would keep rows the operator asked the panel to drop.
 func (db *DB) RunCleanupLoop(ctx context.Context, every time.Duration,
-	sessionTimeout time.Duration, onError func(error)) {
+	sessionTimeout, attemptWindow func() time.Duration, onError func(error)) {
 
 	ticker := time.NewTicker(every)
 	defer ticker.Stop()
@@ -158,7 +168,7 @@ func (db *DB) RunCleanupLoop(ctx context.Context, every time.Duration,
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if err := db.Cleanup(ctx, sessionTimeout); err != nil && onError != nil {
+			if err := db.Cleanup(ctx, sessionTimeout(), attemptWindow()); err != nil && onError != nil {
 				onError(err)
 			}
 		}

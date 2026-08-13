@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -11,6 +12,7 @@ import (
 
 	"unbound-web/internal/dnsfile"
 	"unbound-web/internal/server"
+	"unbound-web/internal/settings"
 	"unbound-web/internal/transport"
 )
 
@@ -113,9 +115,7 @@ func (f *fakeStates) List(context.Context) (map[int64]State, error) {
 	defer f.mu.Unlock()
 
 	copied := make(map[int64]State, len(f.states))
-	for id, state := range f.states {
-		copied[id] = state
-	}
+	maps.Copy(copied, f.states)
 	return copied, nil
 }
 
@@ -229,7 +229,8 @@ func newHarness(t *testing.T, targets ...*fakeTransport) *harness {
 
 	return &harness{
 		refresher: NewRefresher(servers, records, states, connector, "/data",
-			server.Timeouts{Connect: time.Second, Command: time.Second}, 2),
+			settings.Fixed(server.Timeouts{Connect: time.Second, Command: time.Second}),
+			settings.Fixed(2)),
 		servers:   servers,
 		records:   records,
 		states:    states,

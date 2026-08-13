@@ -6,12 +6,6 @@ import (
 	"time"
 )
 
-// Rate limit defaults: ten attempts per address in a fifteen minute window.
-const (
-	DefaultRateWindow   = 15 * time.Minute
-	DefaultRateMaxTries = 10
-)
-
 // AttemptRepository stores login attempts.
 type AttemptRepository interface {
 	Record(ctx context.Context, ip, username string, at time.Time) error
@@ -24,14 +18,21 @@ type AttemptRepository interface {
 // The address is the key rather than the user name. Keying on the name would
 // let anyone lock a known account out by guessing at it.
 type RateLimiter struct {
-	repo     AttemptRepository
-	window   time.Duration
-	maxTries int
-	now      func() time.Time
+	repo AttemptRepository
+
+	// window and maxTries are read on every attempt, so a limit raised on the
+	// settings page takes effect without a restart. That matters most when an
+	// operator is locked out and is trying to let themselves back in.
+	window   func() time.Duration
+	maxTries func() int
+
+	now func() time.Time
 }
 
 // NewRateLimiter builds the limiter.
-func NewRateLimiter(repo AttemptRepository, window time.Duration, maxTries int) *RateLimiter {
+func NewRateLimiter(repo AttemptRepository, window func() time.Duration,
+	maxTries func() int) *RateLimiter {
+
 	return &RateLimiter{repo: repo, window: window, maxTries: maxTries, now: time.Now}
 }
 
@@ -40,7 +41,7 @@ func NewRateLimiter(repo AttemptRepository, window time.Duration, maxTries int) 
 // Rows older than the window are removed first. The cleanup loop does the same
 // on a timer, so this only bounds the count of a single burst.
 func (l *RateLimiter) Allow(ctx context.Context, ip string) (bool, error) {
-	cutoff := l.now().UTC().Add(-l.window)
+	cutoff := l.now().UTC().Add(-l.window())
 
 	if err := l.repo.DeleteBefore(ctx, cutoff); err != nil {
 		return false, fmt.Errorf("cannot prune login attempts: %w", err)
@@ -50,7 +51,7 @@ func (l *RateLimiter) Allow(ctx context.Context, ip string) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("cannot count login attempts: %w", err)
 	}
-	return count < l.maxTries, nil
+	return count < l.maxTries(), nil
 }
 
 // Record stores one attempt.

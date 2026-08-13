@@ -22,6 +22,7 @@ import (
 	"unbound-web/internal/dnsquery"
 	"unbound-web/internal/fleet"
 	"unbound-web/internal/server"
+	"unbound-web/internal/settings"
 	"unbound-web/internal/store"
 	"unbound-web/internal/transport"
 )
@@ -61,13 +62,13 @@ func newHarness(t *testing.T) *harness {
 		t.Fatalf("cannot create the key store: %v", err)
 	}
 
-	pool := transport.NewPool(ctx, 30*time.Second)
+	pool := transport.NewPool(ctx, settings.Fixed(30*time.Second))
 	t.Cleanup(pool.Close)
 
 	servers := store.NewServers(db.DB)
 	records := store.NewRecords(db.DB)
 	states := store.NewStates(db.DB)
-	timeouts := server.Timeouts{Connect: 5 * time.Second, Command: 15 * time.Second}
+	timeouts := settings.Fixed(server.Timeouts{Connect: 5 * time.Second, Command: 15 * time.Second})
 
 	auditLog := audit.NewLogger(store.NewAuditLogs(db.DB), nil)
 	service := server.NewService(servers, store.NewGroups(db.DB), keys, pool,
@@ -102,14 +103,15 @@ func newHarness(t *testing.T) *harness {
 	}
 	record.HostKey = offer.AuthorizedKey
 
-	refresher := fleet.NewRefresher(servers, records, states, pool, dataDir, timeouts, 2)
+	refresher := fleet.NewRefresher(servers, records, states, pool, dataDir, timeouts, settings.Fixed(2))
 	writer := fleet.NewWriter(servers, service, pool, refresher, auditLog,
-		dataDir, timeouts, 2)
+		dataDir, timeouts, settings.Fixed(2))
 
 	return &harness{
 		refresher: refresher,
 		service: fleet.NewService(records, states, writer, refresher,
-			dnsquery.New("dig", 10*time.Second), auditLog, 15*time.Minute),
+			dnsquery.New("dig", settings.Fixed(10*time.Second)), auditLog,
+			settings.Fixed(15*time.Minute)),
 		servers: servers,
 		records: records,
 		states:  states,

@@ -44,8 +44,11 @@ func (a Answer) Empty() bool { return a.Err == nil && len(a.Records) == 0 }
 
 // Querier asks one resolver at a time.
 type Querier struct {
-	dig     string
-	timeout time.Duration
+	dig string
+
+	// timeout is read per query, so a value changed on the settings page
+	// applies to the next question rather than to the next restart.
+	timeout func() time.Duration
 
 	// run is the command runner, replaced in tests so the package can be
 	// covered without a dig on the host running them.
@@ -53,7 +56,7 @@ type Querier struct {
 }
 
 // New builds the querier.
-func New(digPath string, timeout time.Duration) *Querier {
+func New(digPath string, timeout func() time.Duration) *Querier {
 	return &Querier{dig: digPath, timeout: timeout, run: runCommand}
 }
 
@@ -77,7 +80,7 @@ func (q *Querier) Ask(ctx context.Context, host, domain, recordType string) ([]s
 	}
 	args = append(args, "+short", "+timeout=2", "+tries=1")
 
-	ctx, cancel := context.WithTimeout(ctx, q.timeout)
+	ctx, cancel := context.WithTimeout(ctx, q.timeout())
 	defer cancel()
 
 	output, err := q.run(ctx, q.dig, args...)

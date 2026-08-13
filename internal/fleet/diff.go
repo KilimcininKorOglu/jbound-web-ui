@@ -220,7 +220,7 @@ func (s *Service) Diff(ctx context.Context, query Query, onlyMismatches bool) (D
 			ID:      record.ID,
 			Name:    record.Name,
 			Enabled: record.Enabled,
-			Stale:   state.Stale(now, s.staleAfter),
+			Stale:   state.Stale(now, s.staleAfter()),
 		})
 	}
 
@@ -280,8 +280,7 @@ func (w *Writer) repairOne(ctx context.Context, actor server.Actor,
 	lock.Lock()
 	defer lock.Unlock()
 
-	client, err := w.pool.Get(record.TransportConfig(
-		w.dataDir, w.timeouts.Connect, w.timeouts.Command))
+	client, err := w.pool.Get(w.transportConfig(record))
 	if err != nil {
 		result.Status = StatusFailed
 		result.Message = err.Error()

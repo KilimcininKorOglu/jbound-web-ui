@@ -31,13 +31,14 @@ const authLayout = "auth"
 // A page without an entry is a mistake rather than a default, so a new page
 // cannot silently render without navigation.
 var pageLayouts = map[string]string{
-	"login":   authLayout,
-	"dns":     "app",
-	"diff":    "app",
-	"servers": "app",
-	"logs":    "app",
-	"siem":    "app",
-	"system":  "app",
+	"login":    authLayout,
+	"dns":      "app",
+	"diff":     "app",
+	"servers":  "app",
+	"logs":     "app",
+	"siem":     "app",
+	"settings": "app",
+	"system":   "app",
 }
 
 // templateSet holds the parsed templates.

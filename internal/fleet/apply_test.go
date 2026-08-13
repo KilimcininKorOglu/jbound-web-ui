@@ -12,6 +12,7 @@ import (
 	"unbound-web/internal/audit"
 	"unbound-web/internal/dnsfile"
 	"unbound-web/internal/server"
+	"unbound-web/internal/settings"
 	"unbound-web/internal/transport"
 )
 
@@ -200,9 +201,10 @@ func newWriteHarness(t *testing.T, count int) *writeHarness {
 	// The connector answers with the writable targets, which the fake
 	// transport map cannot hold, so it is replaced wholesale.
 	pool := &writableConnector{byHost: writable}
-	refresher := NewRefresher(servers, records, states, pool, "/data", timeouts, 2)
+	refresher := NewRefresher(servers, records, states, pool, "/data",
+		settings.Fixed(timeouts), settings.Fixed(2))
 	harness.writer = NewWriter(servers, groups, pool, refresher,
-		audit.NewLogger(auditRepo, nil), "/data", timeouts, 2)
+		audit.NewLogger(auditRepo, nil), "/data", settings.Fixed(timeouts), settings.Fixed(2))
 
 	return harness
 }
@@ -592,12 +594,10 @@ func TestTwoChangesToOneServerBothLand(t *testing.T) {
 	errs := make([]error, 2)
 
 	for i, op := range []Operation{first, second} {
-		wait.Add(1)
-		go func() {
-			defer wait.Done()
+		wait.Go(func() {
 			reports[i], errs[i] = h.writer.Apply(
 				context.Background(), testActor(), groupTarget(), op)
-		}()
+		})
 	}
 	wait.Wait()
 

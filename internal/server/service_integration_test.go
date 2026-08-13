@@ -22,6 +22,7 @@ import (
 	"unbound-web/internal/audit"
 	"unbound-web/internal/database"
 	"unbound-web/internal/server"
+	"unbound-web/internal/settings"
 	"unbound-web/internal/store"
 	"unbound-web/internal/transport"
 )
@@ -54,14 +55,14 @@ func newHarness(t *testing.T) *harness {
 		t.Fatalf("cannot create the key store: %v", err)
 	}
 
-	pool := transport.NewPool(ctx, 30*time.Second)
+	pool := transport.NewPool(ctx, settings.Fixed(30*time.Second))
 	t.Cleanup(pool.Close)
 
 	servers := store.NewServers(db.DB)
 	return &harness{
 		service: server.NewService(servers, store.NewGroups(db.DB), keys, pool,
 			audit.NewLogger(store.NewAuditLogs(db.DB), nil), dataDir,
-			server.Timeouts{Connect: 10 * time.Second, Command: 30 * time.Second}),
+			settings.Fixed(server.Timeouts{Connect: 10 * time.Second, Command: 30 * time.Second})),
 		servers: servers,
 		dataDir: dataDir,
 	}

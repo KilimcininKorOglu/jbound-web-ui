@@ -45,19 +45,23 @@ type Refresher struct {
 	states   StateStore
 	pool     Connector
 	dataDir  string
-	timeouts server.Timeouts
+	timeouts func() server.Timeouts
 
 	// concurrent bounds how many servers are read at once. A fleet larger than
 	// the panel host can hold connections for would otherwise take it down
 	// rather than take longer.
-	concurrent int
+	concurrent func() int
 
 	now func() time.Time
 }
 
 // NewRefresher builds the refresher.
+//
+// The timeouts and the concurrency arrive as accessors, so a pass that starts
+// after a settings change reads the new values without a restart.
 func NewRefresher(servers ServerSource, records RecordStore, states StateStore,
-	pool Connector, dataDir string, timeouts server.Timeouts, concurrent int) *Refresher {
+	pool Connector, dataDir string, timeouts func() server.Timeouts,
+	concurrent func() int) *Refresher {
 
 	return &Refresher{
 		servers:    servers,
@@ -66,7 +70,7 @@ func NewRefresher(servers ServerSource, records RecordStore, states StateStore,
 		pool:       pool,
 		dataDir:    dataDir,
 		timeouts:   timeouts,
-		concurrent: max(1, concurrent),
+		concurrent: concurrent,
 		now:        time.Now,
 	}
 }
@@ -112,19 +116,16 @@ func (r *Refresher) All(ctx context.Context) ([]Result, error) {
 	}
 
 	results := make([]Result, len(servers))
-	slots := make(chan struct{}, r.concurrent)
+	slots := make(chan struct{}, max(1, r.concurrent()))
 
 	var wait sync.WaitGroup
 	for i, record := range servers {
-		wait.Add(1)
-		go func() {
-			defer wait.Done()
-
+		wait.Go(func() {
 			slots <- struct{}{}
 			defer func() { <-slots }()
 
 			results[i] = r.refresh(ctx, record)
-		}()
+		})
 	}
 	wait.Wait()
 
@@ -143,8 +144,9 @@ func (r *Refresher) refresh(ctx context.Context, record server.Server) Result {
 		return result
 	}
 
+	timeouts := r.timeouts()
 	client, err := r.pool.Get(record.TransportConfig(
-		r.dataDir, r.timeouts.Connect, r.timeouts.Command))
+		r.dataDir, timeouts.Connect, timeouts.Command))
 	if err != nil {
 		result.Err = err
 		r.markUnreachable(ctx, record.ID, err)
@@ -213,19 +215,24 @@ func (r *Refresher) markUnreachable(ctx context.Context, serverID int64, cause e
 // The first pass runs straight away, because the panel is more useful with a
 // filled cache than with an empty one and the first page load should not have
 // to wait for the interval.
-func (r *Refresher) Start(ctx context.Context, interval time.Duration) {
+//
+// A timer rather than a ticker, because the interval is read again before
+// every wait. An operator who shortens it on the settings page waits out the
+// current round and no longer.
+func (r *Refresher) Start(ctx context.Context, interval func() time.Duration) {
 	go func() {
 		r.run(ctx)
 
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
+		timer := time.NewTimer(interval())
+		defer timer.Stop()
 
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case <-ticker.C:
+			case <-timer.C:
 				r.run(ctx)
+				timer.Reset(interval())
 			}
 		}
 	}()

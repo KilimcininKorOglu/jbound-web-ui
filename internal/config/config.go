@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"unbound-web/internal/server"
 )
@@ -30,19 +29,9 @@ type Config struct {
 	MinUID            int
 	AuthMaxConcurrent int
 
-	SessionTimeout time.Duration
-	CookieSecure   bool
+	CookieSecure bool
 
-	SSHConnectTimeout time.Duration
-	SSHCommandTimeout time.Duration
-	SSHIdleTimeout    time.Duration
-
-	FleetMaxConcurrent   int
-	CacheRefreshInterval time.Duration
-	CacheStaleAfter      time.Duration
-
-	DigPath         string
-	DNSQueryTimeout time.Duration
+	DigPath string
 
 	RsyslogRestartCmd  Command
 	RsyslogStatusCmd   Command
@@ -93,33 +82,8 @@ func Load() (*Config, error) {
 	if cfg.AuthMaxConcurrent, err = envInt("AUTH_MAX_CONCURRENT", 4); err != nil {
 		fail("%v", err)
 	}
-	if cfg.FleetMaxConcurrent, err = envInt("FLEET_MAX_CONCURRENT", 4); err != nil {
-		fail("%v", err)
-	}
 	if cfg.CookieSecure, err = envBool("COOKIE_SECURE", true); err != nil {
 		fail("%v", err)
-	}
-
-	durations := []struct {
-		key    string
-		def    string
-		target *time.Duration
-	}{
-		{"SESSION_TIMEOUT", "30m", &cfg.SessionTimeout},
-		{"SSH_CONNECT_TIMEOUT", "10s", &cfg.SSHConnectTimeout},
-		{"SSH_COMMAND_TIMEOUT", "30s", &cfg.SSHCommandTimeout},
-		{"SSH_IDLE_TIMEOUT", "5m", &cfg.SSHIdleTimeout},
-		{"CACHE_REFRESH_INTERVAL", "5m", &cfg.CacheRefreshInterval},
-		{"CACHE_STALE_AFTER", "15m", &cfg.CacheStaleAfter},
-		{"DNS_QUERY_TIMEOUT", "10s", &cfg.DNSQueryTimeout},
-	}
-	for _, d := range durations {
-		value, derr := envDuration(d.key, d.def)
-		if derr != nil {
-			fail("%v", derr)
-			continue
-		}
-		*d.target = value
 	}
 
 	commands := []struct {
@@ -145,13 +109,6 @@ func Load() (*Config, error) {
 	}
 	if cfg.AuthMaxConcurrent < 1 {
 		fail("AUTH_MAX_CONCURRENT must be at least 1, got %d", cfg.AuthMaxConcurrent)
-	}
-	if cfg.FleetMaxConcurrent < 1 {
-		fail("FLEET_MAX_CONCURRENT must be at least 1, got %d", cfg.FleetMaxConcurrent)
-	}
-	if cfg.CacheStaleAfter <= cfg.CacheRefreshInterval {
-		fail("CACHE_STALE_AFTER (%s) must be longer than CACHE_REFRESH_INTERVAL (%s)",
-			cfg.CacheStaleAfter, cfg.CacheRefreshInterval)
 	}
 
 	if len(errs) > 0 {
@@ -201,18 +158,6 @@ func envBool(key string, def bool) (bool, error) {
 	value, err := strconv.ParseBool(strings.TrimSpace(raw))
 	if err != nil {
 		return false, fmt.Errorf("%s must be a boolean, got %q", key, raw)
-	}
-	return value, nil
-}
-
-func envDuration(key, def string) (time.Duration, error) {
-	raw := env(key, def)
-	value, err := time.ParseDuration(strings.TrimSpace(raw))
-	if err != nil {
-		return 0, fmt.Errorf("%s must be a duration such as 30m, got %q", key, raw)
-	}
-	if value <= 0 {
-		return 0, fmt.Errorf("%s must be positive, got %q", key, raw)
 	}
 	return value, nil
 }

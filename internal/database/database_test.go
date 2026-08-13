@@ -281,7 +281,7 @@ func TestCleanupRemovesExpiredSessionsAndStaleAttempts(t *testing.T) {
 		t.Fatalf("insert failed: %v", err)
 	}
 
-	if err := db.Cleanup(context.Background(), 30*time.Minute); err != nil {
+	if err := db.Cleanup(context.Background(), 30*time.Minute, 15*time.Minute); err != nil {
 		t.Fatalf("Cleanup returned an error: %v", err)
 	}
 

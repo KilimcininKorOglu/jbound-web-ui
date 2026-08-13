@@ -34,6 +34,7 @@ import (
 	"unbound-web/internal/fleet"
 	"unbound-web/internal/preflight"
 	"unbound-web/internal/server"
+	"unbound-web/internal/settings"
 	"unbound-web/internal/siem"
 	"unbound-web/internal/store"
 	"unbound-web/internal/transport"
@@ -116,12 +117,20 @@ func newLiveApp(t *testing.T) *App {
 	if err != nil {
 		t.Fatalf("cannot create the key store: %v", err)
 	}
-	pool := transport.NewPool(context.Background(), cfg.SSHIdleTimeout)
+	options := settings.NewService(store.NewSettings(db.DB))
+	if err := options.Load(context.Background()); err != nil {
+		t.Fatalf("cannot load the settings: %v", err)
+	}
+
+	pool := transport.NewPool(context.Background(),
+		options.DurationOf(settings.SSHIdleTimeout))
 	t.Cleanup(pool.Close)
 
-	timeouts := server.Timeouts{
-		Connect: cfg.SSHConnectTimeout,
-		Command: cfg.SSHCommandTimeout,
+	timeouts := func() server.Timeouts {
+		return server.Timeouts{
+			Connect: options.Duration(settings.SSHConnectTimeout),
+			Command: options.Duration(settings.SSHCommandTimeout),
+		}
 	}
 	serverStore := store.NewServers(db.DB)
 	servers := server.NewService(serverStore, store.NewGroups(db.DB), keys, pool,
@@ -130,12 +139,12 @@ func newLiveApp(t *testing.T) *App {
 	recordStore := store.NewRecords(db.DB)
 	stateStore := store.NewStates(db.DB)
 	refresher := fleet.NewRefresher(serverStore, recordStore, stateStore, pool,
-		dataDir, timeouts, cfg.FleetMaxConcurrent)
+		dataDir, timeouts, options.IntOf(settings.FleetMaxConcurrent))
 	records := fleet.NewService(recordStore, stateStore,
 		fleet.NewWriter(serverStore, servers, pool, refresher, auditLog,
-			dataDir, timeouts, cfg.FleetMaxConcurrent),
-		refresher, dnsquery.New(cfg.DigPath, cfg.DNSQueryTimeout),
-		auditLog, cfg.CacheStaleAfter)
+			dataDir, timeouts, options.IntOf(settings.FleetMaxConcurrent)),
+		refresher, dnsquery.New(cfg.DigPath, options.DurationOf(settings.DNSQueryTimeout)),
+		auditLog, options.DurationOf(settings.CacheStaleAfter))
 
 	app, err := NewApp(Deps{
 		Config: cfg,
@@ -144,10 +153,12 @@ func newLiveApp(t *testing.T) *App {
 			AdminGroup:   cfg.AdminGroup,
 			AllowedGroup: cfg.AllowedGroup,
 		}),
-		Sessions: auth.NewSessionManager(
-			store.NewSessions(db.DB), cfg.SessionTimeout, cfg.CookieSecure),
+		Settings: options,
+		Sessions: auth.NewSessionManager(store.NewSessions(db.DB),
+			options.DurationOf(settings.SessionIdleTimeout), cfg.CookieSecure),
 		Limiter: auth.NewRateLimiter(store.NewLoginAttempts(db.DB),
-			auth.DefaultRateWindow, auth.DefaultRateMaxTries),
+			options.DurationOf(settings.LoginRateWindow),
+			options.IntOf(settings.LoginRateMaxAttempts)),
 		Audit:   auditLog,
 		Servers: servers,
 		Records: records,

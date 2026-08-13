@@ -64,9 +64,13 @@ type Service struct {
 	keys     *KeyStore
 	pool     Connector
 	audit    *audit.Logger
-	dataDir  string
-	timeouts Timeouts
-	now      func() time.Time
+	dataDir string
+
+	// timeouts is an accessor rather than a value, so a change made on the
+	// settings page reaches the next connection attempt.
+	timeouts func() Timeouts
+
+	now func() time.Time
 }
 
 // Timeouts bounds the connection attempts the service makes.
@@ -77,7 +81,9 @@ type Timeouts struct {
 
 // NewService builds the service.
 func NewService(servers Repository, groups GroupRepository, keys *KeyStore,
-	pool Connector, auditLog *audit.Logger, dataDir string, timeouts Timeouts) *Service {
+	pool Connector, auditLog *audit.Logger, dataDir string,
+	timeouts func() Timeouts) *Service {
+
 
 	return &Service{
 		servers:  servers,
@@ -253,8 +259,9 @@ func (s *Service) ScanHostKey(ctx context.Context, id int64) (HostKeyOffer, erro
 		return HostKeyOffer{}, err
 	}
 
+	timeouts := s.timeouts()
 	fingerprint, authorized, err := transport.ScanHostKey(
-		record.TransportConfig(s.dataDir, s.timeouts.Connect, s.timeouts.Command))
+		record.TransportConfig(s.dataDir, timeouts.Connect, timeouts.Command))
 	if err != nil {
 		return HostKeyOffer{}, err
 	}
@@ -319,8 +326,9 @@ func (s *Service) TestConnection(ctx context.Context, id int64) (TestResult, err
 		return TestResult{}, err
 	}
 
+	timeouts := s.timeouts()
 	client, err := s.pool.Get(record.TransportConfig(
-		s.dataDir, s.timeouts.Connect, s.timeouts.Command))
+		s.dataDir, timeouts.Connect, timeouts.Command))
 	if err != nil {
 		return TestResult{Step: transport.StepConnect, Message: err.Error()}, nil
 	}

@@ -1,0 +1,77 @@
+{{/* One form for every group. The panel reads these values through accessors,
+     so a saved change applies without a restart. */}}
+{{define "settings-panel"}}
+<form hx-post="/settings" hx-target="#settings-panel" hx-swap="innerHTML">
+  {{if .Problem}}{{template "alert" (alert "error" .Problem)}}{{end}}
+
+  <div class="row g-4">
+    {{range .Groups}}
+    <div class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-header">
+          <h6 class="mb-0">{{.Title}}</h6>
+        </div>
+        <div class="card-body">
+          <p class="form-text mt-0 mb-4">{{.Help}}</p>
+
+          {{range .Fields}}
+          {{if eq .Kind "bool"}}
+          <div class="form-check form-switch mb-4">
+            <input class="form-check-input" type="checkbox" role="switch"
+                   id="{{.Key}}" name="{{.Key}}"
+                   aria-describedby="{{.Key}}-help"
+                   {{if .Checked}}checked{{end}} data-field="{{.Key}}">
+            <label class="form-check-label" for="{{.Key}}">{{.Label}}</label>
+            <div class="form-text" id="{{.Key}}-help">{{.Help}}</div>
+          </div>
+
+          {{else if eq .Kind "enum"}}
+          <div class="mb-4">
+            <label class="form-label" for="{{.Key}}">{{.Label}}</label>
+            <select class="form-select" id="{{.Key}}" name="{{.Key}}"
+                    aria-describedby="{{.Key}}-help" data-field="{{.Key}}">
+              {{$current := .Value}}
+              {{range .Options}}
+              <option value="{{.}}" {{if eq . $current}}selected{{end}}>{{.}}</option>
+              {{end}}
+            </select>
+            <div class="form-text" id="{{.Key}}-help">{{.Help}}</div>
+          </div>
+
+          {{else if eq .Kind "int"}}
+          <div class="mb-4">
+            <label class="form-label" for="{{.Key}}">{{.Label}}</label>
+            <input class="form-control" type="number" inputmode="numeric"
+                   id="{{.Key}}" name="{{.Key}}" value="{{.Value}}"
+                   min="{{.MinInt}}" max="{{.MaxInt}}"
+                   aria-describedby="{{.Key}}-help" data-field="{{.Key}}">
+            <div class="form-text" id="{{.Key}}-help">
+              {{.Help}} Between {{.MinInt}} and {{.MaxInt}}.
+            </div>
+          </div>
+
+          {{else}}
+          <div class="mb-4">
+            <label class="form-label" for="{{.Key}}">{{.Label}}</label>
+            <input class="form-control" type="text" id="{{.Key}}" name="{{.Key}}"
+                   value="{{.Value}}" spellcheck="false" autocapitalize="none"
+                   aria-describedby="{{.Key}}-help" data-field="{{.Key}}">
+            <div class="form-text" id="{{.Key}}-help">
+              {{.Help}} Between {{.Min}} and {{.Max}}.
+            </div>
+          </div>
+          {{end}}
+          {{end}}
+        </div>
+      </div>
+    </div>
+    {{end}}
+  </div>
+
+  <div class="dns-toolbar mt-4">
+    <button class="btn btn-primary" type="submit" data-field="save-settings">
+      Save settings
+    </button>
+  </div>
+</form>
+{{end}}

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"unbound-web/internal/dnsfile"
+	"unbound-web/internal/settings"
 )
 
 // recorder captures what the querier would have run.
@@ -25,7 +26,7 @@ func (r *recorder) run(_ context.Context, name string, args ...string) ([]byte, 
 }
 
 func newQuerier(rec *recorder) *Querier {
-	q := New("/usr/bin/dig", time.Second)
+	q := New("/usr/bin/dig", settings.Fixed(time.Second))
 	q.run = rec.run
 	return q
 }

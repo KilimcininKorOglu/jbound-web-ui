@@ -89,5 +89,6 @@ func Actions() []string {
 		ActionServerCreate, ActionServerUpdate, ActionServerDelete, ActionServerTrust,
 		ActionGroupCreate, ActionGroupUpdate, ActionGroupDelete,
 		ActionSIEMConfig, ActionSIEMTest,
+		ActionSettingsUpdate,
 	}
 }

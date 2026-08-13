@@ -9,6 +9,7 @@ import (
 	"unbound-web/internal/audit"
 	"unbound-web/internal/dnsfile"
 	"unbound-web/internal/server"
+	"unbound-web/internal/transport"
 )
 
 // Operation kinds. A record change is one of exactly three things.
@@ -168,9 +169,9 @@ type Writer struct {
 	refresh  *Refresher
 	audit    *audit.Logger
 	dataDir  string
-	timeouts server.Timeouts
+	timeouts func() server.Timeouts
 
-	concurrent int
+	concurrent func() int
 
 	// locks serialise the read, change and write of one server. The optimistic
 	// digest already refuses a lost update, but two panel users editing the
@@ -192,7 +193,7 @@ type GroupSource interface {
 // NewWriter builds the writer.
 func NewWriter(servers ServerSource, groups GroupSource, pool Connector,
 	refresh *Refresher, auditLog *audit.Logger, dataDir string,
-	timeouts server.Timeouts, concurrent int) *Writer {
+	timeouts func() server.Timeouts, concurrent func() int) *Writer {
 
 	return &Writer{
 		servers:    servers,
@@ -202,9 +203,18 @@ func NewWriter(servers ServerSource, groups GroupSource, pool Connector,
 		audit:      auditLog,
 		dataDir:    dataDir,
 		timeouts:   timeouts,
-		concurrent: max(1, concurrent),
+		concurrent: concurrent,
 		locks:      map[int64]*sync.Mutex{},
 	}
+}
+
+// transportConfig builds the connection settings of one server.
+//
+// The timeouts are read here rather than held, so an operation that starts
+// after a settings change uses the values the operator just saved.
+func (w *Writer) transportConfig(record server.Server) transport.Config {
+	timeouts := w.timeouts()
+	return record.TransportConfig(w.dataDir, timeouts.Connect, timeouts.Command)
 }
 
 // Targets resolves a target into the servers an operation will reach.
@@ -289,19 +299,16 @@ func (w *Writer) fanOut(ctx context.Context, targets []server.Server,
 	job func(context.Context, server.Server) ServerResult) []ServerResult {
 
 	results := make([]ServerResult, len(targets))
-	slots := make(chan struct{}, w.concurrent)
+	slots := make(chan struct{}, max(1, w.concurrent()))
 
 	var wait sync.WaitGroup
 	for i, record := range targets {
-		wait.Add(1)
-		go func() {
-			defer wait.Done()
-
+		wait.Go(func() {
 			slots <- struct{}{}
 			defer func() { <-slots }()
 
 			results[i] = job(ctx, record)
-		}()
+		})
 	}
 	wait.Wait()
 
@@ -364,8 +371,7 @@ func refuse(record server.Server) (ServerResult, bool) {
 
 // write performs the read, change and write of one server.
 func (w *Writer) write(ctx context.Context, record server.Server, op Operation) error {
-	client, err := w.pool.Get(record.TransportConfig(
-		w.dataDir, w.timeouts.Connect, w.timeouts.Command))
+	client, err := w.pool.Get(w.transportConfig(record))
 	if err != nil {
 		return err
 	}

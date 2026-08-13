@@ -11,6 +11,7 @@ import (
 	"unbound-web/internal/audit"
 	"unbound-web/internal/dnsfile"
 	"unbound-web/internal/server"
+	"unbound-web/internal/settings"
 )
 
 // fakeLister answers with a fixed cache, so the service can be driven without
@@ -69,10 +70,11 @@ func (s *stubQuerier) questions() []string {
 func (h *writeHarness) service(lister *fakeLister, queries NameQuerier) *Service {
 	refresher := NewRefresher(h.servers, &fakeRecords{byID: map[int64][]dnsfile.Record{}},
 		h.states, &writableConnector{byHost: h.targets}, "/data",
-		server.Timeouts{Connect: time.Second, Command: time.Second}, 2)
+		settings.Fixed(server.Timeouts{Connect: time.Second, Command: time.Second}),
+		settings.Fixed(2))
 
 	return NewService(lister, h.states, h.writer, refresher, queries,
-		audit.NewLogger(h.audit, nil), 15*time.Minute)
+		audit.NewLogger(h.audit, nil), settings.Fixed(15*time.Minute))
 }
 
 func TestAStaleRowIsMarkedRatherThanHidden(t *testing.T) {

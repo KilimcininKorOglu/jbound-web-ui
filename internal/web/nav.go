@@ -43,6 +43,7 @@ var menu = []MenuSection{
 		Items: []MenuItem{
 			{Label: "Audit Logs", Path: "/logs", Icon: "bx-list-ul"},
 			{Label: "SIEM Config", Path: "/siem", Icon: "bx-transfer", AdminOnly: true},
+			{Label: "Settings", Path: "/settings", Icon: "bx-cog", AdminOnly: true},
 			{Label: "System Info", Path: "/system", Icon: "bx-info-circle"},
 		},
 	},

@@ -3,7 +3,6 @@ package config
 import (
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestParseCommandSplitsIntoArgv(t *testing.T) {
@@ -77,11 +76,8 @@ func TestParseCommandRejectsEmpty(t *testing.T) {
 var settableKeys = []string{
 	"LISTEN_ADDR", "DATA_DIR", "DB_PATH",
 	"AUTH_HELPER_PATH", "PAM_SERVICE", "ADMIN_GROUP", "ALLOWED_GROUP",
-	"MIN_UID", "AUTH_MAX_CONCURRENT", "FLEET_MAX_CONCURRENT",
-	"COOKIE_SECURE", "SESSION_TIMEOUT",
-	"SSH_CONNECT_TIMEOUT", "SSH_COMMAND_TIMEOUT", "SSH_IDLE_TIMEOUT",
-	"CACHE_REFRESH_INTERVAL", "CACHE_STALE_AFTER",
-	"DIG_PATH", "DNS_QUERY_TIMEOUT",
+	"MIN_UID", "AUTH_MAX_CONCURRENT",
+	"COOKIE_SECURE", "DIG_PATH",
 	"RSYSLOG_RESTART_CMD", "RSYSLOG_STATUS_CMD", "RSYSLOG_VALIDATE_CMD",
 	"RSYSLOG_CONF_PATH", "SYSLOG_LOG_PATH",
 }
@@ -108,8 +104,8 @@ func TestLoadUsesProductionDefaults(t *testing.T) {
 	if cfg.ListenAddr != "127.0.0.1:8080" {
 		t.Errorf("ListenAddr = %q, want 127.0.0.1:8080", cfg.ListenAddr)
 	}
-	if cfg.SessionTimeout != 30*time.Minute {
-		t.Errorf("SessionTimeout = %s, want 30m", cfg.SessionTimeout)
+	if cfg.DigPath != "dig" {
+		t.Errorf("DigPath = %q, want dig", cfg.DigPath)
 	}
 	if cfg.MinUID != 1000 {
 		t.Errorf("MinUID = %d, want 1000", cfg.MinUID)
@@ -142,14 +138,9 @@ func TestLoadRejectsBadValues(t *testing.T) {
 		{"non numeric MIN_UID", map[string]string{"MIN_UID": "abc"}, "MIN_UID"},
 		{"negative MIN_UID", map[string]string{"MIN_UID": "-1"}, "MIN_UID"},
 		{"zero concurrency", map[string]string{"AUTH_MAX_CONCURRENT": "0"}, "AUTH_MAX_CONCURRENT"},
-		{"bad duration", map[string]string{"SESSION_TIMEOUT": "half an hour"}, "SESSION_TIMEOUT"},
-		{"zero duration", map[string]string{"SSH_CONNECT_TIMEOUT": "0s"}, "SSH_CONNECT_TIMEOUT"},
 		{"bad boolean", map[string]string{"COOKIE_SECURE": "yes please"}, "COOKIE_SECURE"},
 		{"injected command", map[string]string{"RSYSLOG_RESTART_CMD": "systemctl restart rsyslog; id"},
 			"RSYSLOG_RESTART_CMD"},
-		{"stale window not longer than refresh",
-			map[string]string{"CACHE_REFRESH_INTERVAL": "10m", "CACHE_STALE_AFTER": "5m"},
-			"CACHE_STALE_AFTER"},
 	}
 
 	for _, tc := range cases {
@@ -174,14 +165,14 @@ func TestLoadRejectsBadValues(t *testing.T) {
 func TestLoadReportsEveryProblemAtOnce(t *testing.T) {
 	clearEnvironment(t)
 	t.Setenv("MIN_UID", "abc")
-	t.Setenv("SESSION_TIMEOUT", "nope")
+	t.Setenv("AUTH_MAX_CONCURRENT", "nope")
 	t.Setenv("RSYSLOG_STATUS_CMD", "id; whoami")
 
 	_, err := Load()
 	if err == nil {
 		t.Fatal("Load accepted three broken values")
 	}
-	for _, want := range []string{"MIN_UID", "SESSION_TIMEOUT", "RSYSLOG_STATUS_CMD"} {
+	for _, want := range []string{"MIN_UID", "AUTH_MAX_CONCURRENT", "RSYSLOG_STATUS_CMD"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error does not mention %s:\n%v", want, err)
 		}

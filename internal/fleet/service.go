@@ -30,14 +30,14 @@ type Service struct {
 	queries NameQuerier
 	audit   *audit.Logger
 
-	staleAfter time.Duration
+	staleAfter func() time.Duration
 	now        func() time.Time
 }
 
 // NewService builds the record service.
 func NewService(records RecordLister, states StateStore, writer *Writer,
 	refresh *Refresher, queries NameQuerier, auditLog *audit.Logger,
-	staleAfter time.Duration) *Service {
+	staleAfter func() time.Duration) *Service {
 
 	return &Service{
 		records:    records,
@@ -89,7 +89,7 @@ func (s *Service) Page(ctx context.Context, query Query) (Page, error) {
 	now := s.now()
 	for i := range page.Rows {
 		for _, id := range page.Rows[i].Holders {
-			if states[id].Stale(now, s.staleAfter) {
+			if states[id].Stale(now, s.staleAfter()) {
 				page.Rows[i].Stale = true
 				break
 			}
@@ -109,7 +109,7 @@ func (s *Service) Stale(ctx context.Context) (map[int64]bool, error) {
 	now := s.now()
 	stale := map[int64]bool{}
 	for id, state := range states {
-		stale[id] = state.Stale(now, s.staleAfter)
+		stale[id] = state.Stale(now, s.staleAfter())
 	}
 	return stale, nil
 }
@@ -153,7 +153,7 @@ func (s *Service) Status(ctx context.Context, query Query) (Status, error) {
 			Name:          record.Name,
 			Enabled:       record.Enabled,
 			Pending:       state.Pending(),
-			Stale:         state.Stale(now, s.staleAfter),
+			Stale:         state.Stale(now, s.staleAfter()),
 			Reachable:     state.Reachable,
 			UnboundActive: state.UnboundActive,
 			LastError:     state.LastError,

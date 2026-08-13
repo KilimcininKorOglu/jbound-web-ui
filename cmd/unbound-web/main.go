@@ -20,6 +20,7 @@ import (
 	"unbound-web/internal/fleet"
 	"unbound-web/internal/preflight"
 	"unbound-web/internal/server"
+	"unbound-web/internal/settings"
 	"unbound-web/internal/siem"
 	"unbound-web/internal/store"
 	"unbound-web/internal/transport"
@@ -76,11 +77,21 @@ func run() error {
 	defer db.Close()
 	slog.Info("database ready", "path", db.Path())
 
+	// The settings the operator can change without a restart. Everything the
+	// panel reads through an accessor below comes from here.
+	options := settings.NewService(store.NewSettings(db.DB))
+	if err := options.Load(ctx); err != nil {
+		return err
+	}
+
 	// Runs for the life of the process. Sessions idle past the timeout and
 	// login attempts older than the rate limit window serve no purpose.
-	go db.RunCleanupLoop(ctx, cleanupInterval, cfg.SessionTimeout, func(err error) {
-		slog.Error("cleanup failed", "error", err)
-	})
+	go db.RunCleanupLoop(ctx, cleanupInterval,
+		options.DurationOf(settings.SessionIdleTimeout),
+		options.DurationOf(settings.LoginRateWindow),
+		func(err error) {
+			slog.Error("cleanup failed", "error", err)
+		})
 
 	authenticator, err := auth.NewHelperAuthenticator(cfg.AuthHelperPath, cfg.AuthMaxConcurrent)
 	if err != nil {
@@ -91,10 +102,11 @@ func run() error {
 		AdminGroup:   cfg.AdminGroup,
 		AllowedGroup: cfg.AllowedGroup,
 	})
-	sessions := auth.NewSessionManager(
-		store.NewSessions(db.DB), cfg.SessionTimeout, cfg.CookieSecure)
-	limiter := auth.NewRateLimiter(
-		store.NewLoginAttempts(db.DB), auth.DefaultRateWindow, auth.DefaultRateMaxTries)
+	sessions := auth.NewSessionManager(store.NewSessions(db.DB),
+		options.DurationOf(settings.SessionIdleTimeout), cfg.CookieSecure)
+	limiter := auth.NewRateLimiter(store.NewLoginAttempts(db.DB),
+		options.DurationOf(settings.LoginRateWindow),
+		options.IntOf(settings.LoginRateMaxAttempts))
 	// The panel host name travels with every forwarded event, so a receiver
 	// collecting several panels can tell them apart.
 	panelHost, err := os.Hostname()
@@ -104,7 +116,8 @@ func run() error {
 	forwarder := siem.NewForwarder(panelHost)
 	defer forwarder.Close()
 
-	auditLog := audit.NewLogger(store.NewAuditLogs(db.DB), forwarder)
+	auditLog := audit.NewLogger(store.NewAuditLogs(db.DB), forwarder).
+		WithForwarding(options.BoolOf(settings.SIEMForwardingEnabled))
 
 	keys, err := server.NewKeyStore(cfg.DataDir)
 	if err != nil {
@@ -112,12 +125,14 @@ func run() error {
 	}
 	// The pool closes with the process, which is what releases every SSH
 	// connection on shutdown.
-	pool := transport.NewPool(ctx, cfg.SSHIdleTimeout)
+	pool := transport.NewPool(ctx, options.DurationOf(settings.SSHIdleTimeout))
 	defer pool.Close()
 
-	timeouts := server.Timeouts{
-		Connect: cfg.SSHConnectTimeout,
-		Command: cfg.SSHCommandTimeout,
+	timeouts := func() server.Timeouts {
+		return server.Timeouts{
+			Connect: options.Duration(settings.SSHConnectTimeout),
+			Command: options.Duration(settings.SSHCommandTimeout),
+		}
 	}
 	servers := store.NewServers(db.DB)
 
@@ -129,21 +144,23 @@ func run() error {
 
 	// The first pass runs as soon as the panel is up, so the first page load
 	// reads a filled cache instead of waiting for the interval.
+	concurrent := options.IntOf(settings.FleetMaxConcurrent)
 	refresher := fleet.NewRefresher(servers, records, states,
-		pool, cfg.DataDir, timeouts, cfg.FleetMaxConcurrent)
-	refresher.Start(ctx, cfg.CacheRefreshInterval)
+		pool, cfg.DataDir, timeouts, concurrent)
+	refresher.Start(ctx, options.DurationOf(settings.CacheRefreshInterval))
 
 	writer := fleet.NewWriter(servers, serverService, pool, refresher, auditLog,
-		cfg.DataDir, timeouts, cfg.FleetMaxConcurrent)
-	queries := dnsquery.New(cfg.DigPath, cfg.DNSQueryTimeout)
+		cfg.DataDir, timeouts, concurrent)
+	queries := dnsquery.New(cfg.DigPath, options.DurationOf(settings.DNSQueryTimeout))
 	recordService := fleet.NewService(records, states, writer, refresher,
-		queries, auditLog, cfg.CacheStaleAfter)
+		queries, auditLog, options.DurationOf(settings.CacheStaleAfter))
 
 	rsyslog := siem.NewManager(cfg.RsyslogConfPath, cfg.SyslogLogPath,
 		cfg.RsyslogValidateCmd, cfg.RsyslogRestartCmd, cfg.RsyslogStatusCmd)
 
 	app, err := web.NewApp(web.Deps{
 		Config:    cfg,
+		Settings:  options,
 		Auth:      authService,
 		Sessions:  sessions,
 		Limiter:   limiter,

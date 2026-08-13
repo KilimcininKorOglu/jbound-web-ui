@@ -39,6 +39,8 @@ const (
 
 	ActionSIEMConfig = "siem_config"
 	ActionSIEMTest   = "siem_test"
+
+	ActionSettingsUpdate = "settings_update"
 )
 
 // Entry is one audit row. ServerID stays nil for actions that target no
@@ -86,13 +88,34 @@ type Forwarder interface {
 type Logger struct {
 	repo      Repository
 	forwarder Forwarder
-	now       func() time.Time
+
+	// forwarding reports whether the mirror is switched on. It is read per
+	// entry, so an operator can stop the flow to a noisy receiver without
+	// touching the forwarding rules and without a restart. A nil accessor
+	// means on, which is what every caller with no settings service wants.
+	forwarding func() bool
+
+	now func() time.Time
 }
 
 // NewLogger builds the audit logger. A nil forwarder keeps the database as the
 // only record, which is what a panel without a SIEM runs with.
 func NewLogger(repo Repository, forwarder Forwarder) *Logger {
 	return &Logger{repo: repo, forwarder: forwarder, now: time.Now}
+}
+
+// WithForwarding returns the logger with the mirror switch attached.
+//
+// It is a separate call rather than a constructor parameter, because the
+// panel builds the logger before it knows whether the settings are readable.
+func (l *Logger) WithForwarding(enabled func() bool) *Logger {
+	l.forwarding = enabled
+	return l
+}
+
+// forwards reports whether this entry should reach the mirror.
+func (l *Logger) forwards() bool {
+	return l.forwarder != nil && (l.forwarding == nil || l.forwarding())
 }
 
 // Write stores one entry and mirrors it.
@@ -116,7 +139,7 @@ func (l *Logger) Write(ctx context.Context, entry Entry) error {
 			"action", entry.Action, "username", entry.Username, "error", err)
 	}
 
-	if l.forwarder != nil {
+	if l.forwards() {
 		if forwardErr := l.forwarder.Forward(entry); forwardErr != nil {
 			// The entry is in the database. Failing the action over a syslog
 			// socket would be worse than reporting that the mirror is down.

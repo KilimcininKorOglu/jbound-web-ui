@@ -13,6 +13,7 @@ import (
 	"unbound-web/internal/config"
 	"unbound-web/internal/fleet"
 	"unbound-web/internal/server"
+	"unbound-web/internal/settings"
 	"unbound-web/internal/siem"
 )
 
@@ -25,6 +26,7 @@ var templateFS embed.FS
 // where a caller could tell two adjacent arguments apart.
 type Deps struct {
 	Config   *config.Config
+	Settings *settings.Service
 	Auth     *auth.Service
 	Sessions *auth.SessionManager
 	Limiter  *auth.RateLimiter
@@ -137,6 +139,9 @@ func (a *App) Router() http.Handler {
 		"GET /servers/{id}/key":    a.handleServerKey,
 		"POST /servers/{id}/test":  a.handleServerTest,
 		"POST /servers/{id}/trust": a.handleServerTrust,
+
+		"GET /settings":  a.handleSettingsPage,
+		"POST /settings": a.handleSettingsSave,
 
 		"GET /siem":       a.handleSIEMPage,
 		"GET /siem/panel": a.handleSIEMPanel,

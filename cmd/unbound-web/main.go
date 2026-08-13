@@ -13,12 +13,20 @@ import (
 	"time"
 
 	"unbound-web/internal/config"
+	"unbound-web/internal/database"
 	"unbound-web/internal/preflight"
 	"unbound-web/internal/web"
 )
 
-// shutdownGrace bounds how long in flight requests may finish after a signal.
-const shutdownGrace = 15 * time.Second
+const (
+	// shutdownGrace bounds how long in flight requests may finish after a
+	// signal.
+	shutdownGrace = 15 * time.Second
+
+	// cleanupInterval controls how often expired sessions and stale login
+	// attempts are removed.
+	cleanupInterval = 10 * time.Minute
+)
 
 func main() {
 	if err := run(); err != nil {
@@ -45,6 +53,22 @@ func run() error {
 		return err
 	}
 
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	db, err := database.Open(ctx, cfg.DBPath)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	slog.Info("database ready", "path", db.Path())
+
+	// Runs for the life of the process. Sessions idle past the timeout and
+	// login attempts older than the rate limit window serve no purpose.
+	go db.RunCleanupLoop(ctx, cleanupInterval, cfg.SessionTimeout, func(err error) {
+		slog.Error("cleanup failed", "error", err)
+	})
+
 	handler := web.NewRouter(cfg)
 
 	server := &http.Server{
@@ -55,9 +79,6 @@ func run() error {
 		WriteTimeout:      60 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
 
 	serverErr := make(chan error, 1)
 	go func() {

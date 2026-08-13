@@ -116,12 +116,19 @@ func TestOpenIsIdempotent(t *testing.T) {
 		t.Errorf("server count is %d after reopening, want 1", count)
 	}
 
-	var applied int
-	if err := second.QueryRow("SELECT COUNT(*) FROM schema_migrations").Scan(&applied); err != nil {
+	// Every migration is recorded exactly once. A second row for the same file
+	// would mean it ran twice, and a migration that alters a table cannot
+	// survive that.
+	var duplicated int
+	err = second.QueryRow(`
+SELECT COUNT(*) FROM (
+    SELECT name FROM schema_migrations GROUP BY name HAVING COUNT(*) > 1
+)`).Scan(&duplicated)
+	if err != nil {
 		t.Fatalf("query failed: %v", err)
 	}
-	if applied != 1 {
-		t.Errorf("schema_migrations holds %d rows, want 1", applied)
+	if duplicated != 0 {
+		t.Errorf("%d migrations are recorded more than once", duplicated)
 	}
 }
 

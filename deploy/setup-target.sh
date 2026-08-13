@@ -61,8 +61,8 @@ resolve() {
 
 TEE_PATH=$(resolve tee)
 MV_PATH=$(resolve mv)
-CAT_PATH=$(resolve cat)
 BASE64_PATH=$(resolve base64)
+SHA256_PATH=$(resolve sha256sum)
 SERVICE_PATH=$(resolve service)
 
 # --- SSH account -------------------------------------------------------------
@@ -136,10 +136,10 @@ Enter these values in the panel server record:
 
   ssh_user           $SSH_USER
   host_entries_path  $HOST_ENTRIES_PATH
-  cat_path           $CAT_PATH
   base64_path        $BASE64_PATH
   tee_path           $TEE_PATH
   mv_path            $MV_PATH
+  sha256_path        $SHA256_PATH
   reload_cmd         sudo $SERVICE_PATH unbound reload
   status_cmd         systemctl is-active unbound
 

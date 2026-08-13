@@ -79,8 +79,9 @@ func (db *DB) Path() string { return db.path }
 
 // migrate applies every embedded migration in name order.
 //
-// Each file is idempotent, so a second start is a no operation. The applied
-// list is recorded anyway, so a future migration can tell what already ran.
+// The applied list is what makes a second start a no operation. The first file
+// is idempotent on its own, but a migration that alters a table cannot be, so
+// the record of what already ran is the mechanism rather than a convenience.
 func (db *DB) migrate(ctx context.Context) error {
 	const createTable = `
 CREATE TABLE IF NOT EXISTS schema_migrations (

@@ -1,0 +1,32 @@
+/* Public Sans, the typeface of the reference interface.
+ *
+ * Served from the panel rather than from a font provider. A panel that manages
+ * DNS infrastructure should not make every page view a request to a third
+ * party, and an air gapped install has no route to one.
+ *
+ * Two subsets. Latin covers the interface itself, and latin-ext carries the
+ * dotted and dotless i, the cedilla forms and the breve that Turkish needs.
+ * Both files are variable fonts, so one file serves the whole weight range.
+ */
+
+@font-face {
+  font-family: 'Public Sans';
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url(../fonts/publicsans/publicsans-latin-ext.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'Public Sans';
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url(../fonts/publicsans/publicsans-latin.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}

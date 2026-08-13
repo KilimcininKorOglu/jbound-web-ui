@@ -137,8 +137,15 @@ func securityHeaders(next http.Handler) http.Handler {
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Referrer-Policy", "same-origin")
+		// script-src stays strict. No inline script, no eval, which is why the
+		// vendor bundles that wrap every module in eval were replaced.
+		//
+		// style-src allows inline. The layout helper of the template measures
+		// the navbar and writes the resulting padding into a style element,
+		// and the layout collapses without it. Injected CSS cannot reach
+		// another host either, because default-src and img-src permit none.
 		h.Set("Content-Security-Policy",
-			"default-src 'self'; img-src 'self' data:; style-src 'self'; "+
+			"default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "+
 				"script-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
 		next.ServeHTTP(w, r)
 	})

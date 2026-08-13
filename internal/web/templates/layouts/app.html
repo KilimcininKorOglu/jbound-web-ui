@@ -1,0 +1,122 @@
+{{define "layout"}}<!DOCTYPE html>
+<html lang="en" class="light-style layout-menu-fixed" dir="ltr"
+      data-theme="theme-default" data-assets-path="/static/"
+      data-template="vertical-menu-template-free">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{.Title}} - JanBound DNS Panel</title>
+  <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
+
+  <link rel="stylesheet" href="/static/css/publicsans.css">
+  <link rel="stylesheet" href="/static/css/boxicons.css">
+  <link rel="stylesheet" href="/static/css/core.css" class="template-customizer-core-css">
+  <link rel="stylesheet" href="/static/css/theme-default.css" class="template-customizer-theme-css">
+  <link rel="stylesheet" href="/static/css/demo.css">
+  <link rel="stylesheet" href="/static/css/perfect-scrollbar.css">
+  <link rel="stylesheet" href="/static/css/sweetalert2.min.css">
+  <link rel="stylesheet" href="/static/css/brand.css">
+  <link rel="stylesheet" href="/static/css/panel.css">
+</head>
+
+{{/* The CSRF token rides on the body element, so every htmx request carries
+     it without per form wiring. */}}
+<body hx-headers='{"X-CSRF-Token": "{{.CSRFToken}}"}'>
+<div class="layout-wrapper layout-content-navbar">
+  <div class="layout-container">
+
+    <aside id="layout-menu" class="layout-menu menu-vertical menu bg-menu-theme">
+      <div class="app-brand demo">
+        <a href="/dns" class="app-brand-link">
+          <span class="app-brand-text demo menu-text fw-bolder ms-2">Unbound DNS</span>
+        </a>
+        {{/* The reference markup uses a javascript: URI here, which the
+             content security policy blocks. main.js binds the click and
+             cancels the default, so the fragment never navigates. */}}
+        <a href="#"
+           class="layout-menu-toggle menu-link text-large ms-auto d-block d-xl-none">
+          <i class="bx bx-chevron-left bx-sm align-middle"></i>
+        </a>
+      </div>
+
+      <div class="menu-inner-shadow"></div>
+
+      <ul class="menu-inner py-1">
+        {{range .Menu}}
+        <li class="menu-header small text-uppercase">
+          <span class="menu-header-text">{{.Title}}</span>
+        </li>
+        {{range .Items}}
+        <li class="menu-item{{if .Active}} active{{end}}">
+          <a href="{{.Path}}" class="menu-link">
+            <i class="menu-icon tf-icons bx {{.Icon}}"></i>
+            <div>{{.Label}}</div>
+          </a>
+        </li>
+        {{end}}
+        {{end}}
+
+        <li class="menu-item">
+          <a href="#" class="menu-link" data-action="logout">
+            <i class="menu-icon tf-icons bx bx-log-out"></i>
+            <div>Logout</div>
+          </a>
+        </li>
+      </ul>
+    </aside>
+
+    <div class="layout-page">
+      <nav class="layout-navbar container-xxl navbar navbar-expand-xl navbar-detached align-items-center bg-navbar-theme"
+           id="layout-navbar">
+        <div class="navbar-nav-right d-flex align-items-center" id="navbar-collapse">
+          <div class="d-flex align-items-center">
+            <div class="nav-item d-flex align-items-center me-3">
+              <span class="text-muted small">
+                Signed in as <strong data-field="username">{{.Session.Username}}</strong>
+                <span class="text-muted">(uid {{.Session.UID}})</span>
+                {{if .Session.IsAdmin}}<span class="badge bg-label-primary ms-1" data-field="role">Admin</span>
+                {{else}}<span class="badge bg-label-info ms-1" data-field="role">User</span>{{end}}
+              </span>
+            </div>
+          </div>
+          <ul class="navbar-nav flex-row align-items-center ms-auto">
+            <li class="nav-item me-2">
+              <img src="/static/img/janbound-wordmark.svg" alt="JanBound DNS Panel" class="navbar-logo">
+            </li>
+          </ul>
+        </div>
+      </nav>
+
+      <div class="content-wrapper">
+        <div class="container-xxl flex-grow-1 container-p-y">
+          {{if .Alert}}{{template "alert" .Alert}}{{end}}
+          {{template "content" .}}
+        </div>
+
+        <footer class="content-footer footer bg-footer-theme">
+          <div class="container-xxl d-flex flex-wrap justify-content-between py-2 flex-md-row flex-column">
+            <div class="mb-2 mb-md-0">&copy; {{.Year}} JanBound DNS Panel</div>
+          </div>
+        </footer>
+
+        <div class="content-backdrop fade"></div>
+      </div>
+    </div>
+  </div>
+  <div class="layout-overlay layout-menu-toggle"></div>
+</div>
+
+{{/* No jQuery. The reference interface needs it for its ajax calls, and htmx
+     replaces all of them.
+
+     layout.js is a module, so it runs after the classic scripts below it no
+     matter where it sits. It is listed first to keep the reading order. */}}
+<script type="module" src="/static/js/layout.js"></script>
+<script src="/static/js/bootstrap.bundle.min.js"></script>
+<script src="/static/js/perfect-scrollbar.min.js"></script>
+<script src="/static/js/sweetalert2.min.js"></script>
+<script src="/static/js/htmx.min.js"></script>
+<script src="/static/js/app.js"></script>
+</body>
+</html>
+{{end}}

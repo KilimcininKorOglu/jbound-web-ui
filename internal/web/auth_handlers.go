@@ -22,25 +22,23 @@ const (
 	msgInternalError = "The panel could not process the request."
 )
 
-// loginPageData feeds the login template.
-type loginPageData struct {
-	Alert string
-}
-
 // handleLoginPage serves the login form.
 func (a *App) handleLoginPage(w http.ResponseWriter, r *http.Request) {
-	// A live session belongs on the dashboard rather than on the login form.
-	// Load renews the session, which is why it runs even here.
+	// A live session belongs on the records page rather than on the login
+	// form. Load renews the session, which is why it runs even here.
 	if _, err := a.sessions.Load(r.Context(), w, r); err == nil {
-		redirect(w, r, "/dashboard")
+		redirect(w, r, "/dns")
 		return
 	}
 
-	data := loginPageData{}
+	data := PageData{Title: "Sign in"}
 	if r.URL.Query().Get("timeout") == "1" {
-		data.Alert = "Your session expired. Sign in again."
+		data.Alert = &Alert{
+			Severity: ToastWarning,
+			Message:  "Your session has expired. Please sign in again.",
+		}
 	}
-	a.render(w, http.StatusOK, "login", data)
+	a.Render(w, r, http.StatusOK, "login", data)
 }
 
 // handleLogin authenticates a user.
@@ -126,11 +124,10 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	slog.Info("login", "username", user.Username, "role", user.Role, "ip", ip)
 
-	w.Header().Set("HX-Redirect", "/dashboard")
-	a.render(w, http.StatusOK, "loggedin", loggedInData{
-		Username:  session.Username,
-		Role:      session.Role,
-		CSRFToken: session.CSRFToken,
+	w.Header().Set("HX-Redirect", "/dns")
+	a.RenderPartial(w, http.StatusOK, "loggedin", loggedInData{
+		Username: session.Username,
+		Role:     session.Role,
 	})
 }
 
@@ -139,9 +136,8 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 // htmx navigates on the HX-Redirect header, so this body is what a client
 // without htmx sees. It carries the role, which is what the phase gate reads.
 type loggedInData struct {
-	Username  string
-	Role      string
-	CSRFToken string
+	Username string
+	Role     string
 }
 
 // handleLogout ends the session.
@@ -173,11 +169,14 @@ func (a *App) handleLogout(w http.ResponseWriter, r *http.Request) {
 // loginFailure answers a rejected login.
 //
 // htmx swaps the alert fragment into the form, so the response is the fragment
-// rather than the whole page.
+// rather than the whole page. A client without htmx gets the page back with the
+// same message inside it.
 func (a *App) loginFailure(w http.ResponseWriter, r *http.Request, status int, message string) {
+	alert := &Alert{Severity: ToastError, Message: message}
+
 	if r.Header.Get("HX-Request") == "true" {
-		a.render(w, status, "alert", message)
+		a.RenderPartial(w, status, "alert", alert)
 		return
 	}
-	a.render(w, status, "login", loginPageData{Alert: message})
+	a.Render(w, r, status, "login", PageData{Title: "Sign in", Alert: alert})
 }

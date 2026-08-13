@@ -1,0 +1,137 @@
+/* Panel styles.
+ *
+ * The reference interface keeps these rules in a style element inside the page
+ * head. They live in a file here, because the content security policy allows
+ * no inline style and a shared file is cached once instead of arriving with
+ * every page.
+ */
+
+/* --- Toolbars ----------------------------------------------------------- */
+
+.dns-toolbar {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.dns-toolbar .form-control,
+.dns-toolbar .form-select {
+  max-width: 220px;
+}
+
+/* --- Tables and pagination ---------------------------------------------- */
+
+.pagination {
+  margin-bottom: 0;
+}
+
+.pagination .page-link {
+  min-width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.875rem;
+}
+
+.pagination .page-link i {
+  font-size: 1rem;
+}
+
+.table th {
+  font-weight: 600;
+  font-size: 0.8125rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.card {
+  border: none;
+  box-shadow: 0 2px 6px 0 rgba(67, 89, 113, 0.12);
+}
+
+/* --- Status ------------------------------------------------------------- */
+
+.badge-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.status-indicator .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.status-indicator .dot.green {
+  background: #71dd37;
+}
+
+.status-indicator .dot.orange {
+  background: #ffab00;
+}
+
+.status-indicator .dot.red {
+  background: #ff3e1d;
+}
+
+/* --- Dialogs ------------------------------------------------------------ */
+
+.swal2-popup {
+  font-size: 0.9rem !important;
+}
+
+.swal2-container {
+  z-index: 99999 !important;
+}
+
+/* --- Corporate colour, the parts the theme override misses --------------- */
+
+/* The template marks the active menu item with a bar in its own primary
+   colour. The corporate stylesheet recolours the label and the background of
+   that item but not the bar, which then sits in purple next to green text. */
+.menu-vertical .menu-item.active::before,
+.menu-inner .menu-item.active::before {
+  background: #1B8A4E !important;
+}
+
+/* --- Layout details ----------------------------------------------------- */
+
+.navbar-logo {
+  height: 36px;
+  width: auto;
+}
+
+.brand-title {
+  font-size: 1.25rem;
+}
+
+/* --- htmx --------------------------------------------------------------- */
+
+/* htmx would inject these rules as a style element on load. The content
+   security policy blocks that, so they are declared here instead. */
+
+.htmx-indicator {
+  opacity: 0;
+  transition: opacity 200ms ease-in;
+}
+
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator {
+  opacity: 1;
+}
+
+/* A request in flight should look busy without the layout moving. */
+.htmx-request[disabled],
+.htmx-request:disabled {
+  cursor: progress;
+}

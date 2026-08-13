@@ -1,0 +1,43 @@
+{{define "content"}}
+<div class="card">
+  <div class="card-body">
+    <div class="app-brand justify-content-center mb-4">
+      <span class="app-brand-text demo text-body fw-bolder brand-title">UNBOUND DNS PANEL</span>
+    </div>
+    <p class="mb-4 text-center">Please sign in with a local account of this host.</p>
+
+    <div id="login-alert">{{if .Alert}}{{template "alert" .Alert}}{{end}}</div>
+
+    <form id="login-form" class="mb-3" method="post" action="/login"
+          hx-post="/login" hx-target="#login-alert" hx-swap="innerHTML"
+          hx-disabled-elt="#login-button">
+      <div class="mb-3">
+        <label for="username" class="form-label">Username</label>
+        <input type="text" class="form-control" id="username" name="username"
+               placeholder="Enter your username" autocomplete="username"
+               autocapitalize="none" spellcheck="false" autofocus required>
+      </div>
+
+      <div class="mb-3 form-password-toggle">
+        <label for="password" class="form-label">Password</label>
+        <div class="input-group input-group-merge">
+          <input type="password" id="password" name="password" class="form-control"
+                 placeholder="&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;"
+                 autocomplete="current-password" required>
+          <span class="input-group-text cursor-pointer" data-action="toggle-password"
+                data-target="password" role="button" tabindex="0"
+                aria-label="Show or hide the password">
+            <i class="bx bx-hide" data-role="toggle-icon"></i>
+          </span>
+        </div>
+      </div>
+
+      <div class="mb-3">
+        <button class="btn btn-primary d-grid w-100" type="submit" id="login-button">
+          <span>Sign in</span>
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{{end}}

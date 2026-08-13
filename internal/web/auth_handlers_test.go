@@ -180,8 +180,8 @@ func TestLoginSucceedsAndRecordsAnAuditRow(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", recorder.Code)
 	}
-	if got := recorder.Header().Get("HX-Redirect"); got != "/dashboard" {
-		t.Errorf("HX-Redirect = %q, want /dashboard", got)
+	if got := recorder.Header().Get("HX-Redirect"); got != "/dns" {
+		t.Errorf("HX-Redirect = %q, want /dns", got)
 	}
 	if !strings.Contains(recorder.Body.String(), "admin") {
 		t.Error("the response does not report the role")
@@ -241,7 +241,7 @@ func TestLoginRefusesTheEleventhAttempt(t *testing.T) {
 func TestProtectedRoutesRedirectWithoutASession(t *testing.T) {
 	env := newTestEnv(t)
 
-	recorder := env.do(t, httptest.NewRequest(http.MethodGet, "/dashboard", nil))
+	recorder := env.do(t, httptest.NewRequest(http.MethodGet, "/dns", nil))
 
 	if recorder.Code != http.StatusSeeOther {
 		t.Fatalf("status = %d, want 303", recorder.Code)
@@ -256,7 +256,7 @@ func TestExpiredSessionRedirectsToTheTimeoutPage(t *testing.T) {
 
 	// The row is written directly with an old timestamp. Waiting out a real
 	// thirty minute timeout would be the only alternative.
-	probe := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
+	probe := httptest.NewRequest(http.MethodGet, "/dns", nil)
 	probe.Header.Set("User-Agent", browserAgent)
 	probe.RemoteAddr = clientAddress
 
@@ -270,7 +270,7 @@ func TestExpiredSessionRedirectsToTheTimeoutPage(t *testing.T) {
 		t.Fatalf("cannot create the stale session: %v", err)
 	}
 
-	recorder := env.do(t, httptest.NewRequest(http.MethodGet, "/dashboard", nil),
+	recorder := env.do(t, httptest.NewRequest(http.MethodGet, "/dns", nil),
 		&http.Cookie{Name: auth.SessionCookieName, Value: session.ID})
 
 	if recorder.Code != http.StatusSeeOther {
@@ -289,7 +289,7 @@ func TestSessionDropsWhenTheUserAgentChanges(t *testing.T) {
 	env := newTestEnv(t)
 	cookie := env.login(t, "dnsadmin")
 
-	r := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
+	r := httptest.NewRequest(http.MethodGet, "/dns", nil)
 	r.AddCookie(cookie)
 	r.Header.Set("User-Agent", "curl/8.0 (stolen cookie)")
 	r.RemoteAddr = clientAddress
@@ -326,7 +326,7 @@ func TestLogoutNeedsACSRFToken(t *testing.T) {
 	}
 
 	// The session must be gone, otherwise the cookie still works after logout.
-	recorder = env.do(t, httptest.NewRequest(http.MethodGet, "/dashboard", nil), cookie)
+	recorder = env.do(t, httptest.NewRequest(http.MethodGet, "/dns", nil), cookie)
 	if got := recorder.Header().Get("Location"); got != "/" {
 		t.Errorf("the session survived the logout, Location = %q", got)
 	}
@@ -386,7 +386,7 @@ func TestAdminRoutesAcceptAnAdmin(t *testing.T) {
 	}
 }
 
-func TestLoginPageSendsALiveSessionToTheDashboard(t *testing.T) {
+func TestLoginPageSendsALiveSessionToTheRecordsPage(t *testing.T) {
 	env := newTestEnv(t)
 	cookie := env.login(t, "dnsuser")
 
@@ -395,8 +395,8 @@ func TestLoginPageSendsALiveSessionToTheDashboard(t *testing.T) {
 	if recorder.Code != http.StatusSeeOther {
 		t.Fatalf("status = %d, want 303", recorder.Code)
 	}
-	if got := recorder.Header().Get("Location"); got != "/dashboard" {
-		t.Errorf("Location = %q, want /dashboard", got)
+	if got := recorder.Header().Get("Location"); got != "/dns" {
+		t.Errorf("Location = %q, want /dns", got)
 	}
 }
 
@@ -408,7 +408,7 @@ func TestLoginPageShowsTheTimeoutNotice(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", recorder.Code)
 	}
-	if !strings.Contains(recorder.Body.String(), "session expired") {
+	if !strings.Contains(recorder.Body.String(), "session has expired") {
 		t.Error("the login page does not explain the timeout")
 	}
 }
@@ -418,7 +418,7 @@ func TestHtmxRequestsGetTheRedirectHeader(t *testing.T) {
 	// layout instead of navigating to it.
 	env := newTestEnv(t)
 
-	r := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
+	r := httptest.NewRequest(http.MethodGet, "/dns", nil)
 	r.Header.Set("HX-Request", "true")
 
 	recorder := env.do(t, r)

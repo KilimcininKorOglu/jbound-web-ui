@@ -12,6 +12,12 @@ tmp_dir = "tmp"
   exclude_dir = ["tmp", "dist", "docker", "deploy", "scripts", "helper-projects", ".git"]
   exclude_regex = ["_test\\.go"]
   delay = 500
+  # Poll instead of waiting for file system events. The source arrives through
+  # a bind mount, and a mount on macOS or Windows does not deliver an event for
+  # every change, so an edit to a template or an asset would go unnoticed until
+  # the next Go change forced a rebuild.
+  poll = true
+  poll_interval = 1000
   stop_on_error = true
   send_interrupt = true
   kill_delay = "5s"

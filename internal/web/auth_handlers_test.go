@@ -19,6 +19,7 @@ import (
 	"unbound-web/internal/database"
 	"unbound-web/internal/fleet"
 	"unbound-web/internal/server"
+	"unbound-web/internal/siem"
 	"unbound-web/internal/store"
 	"unbound-web/internal/transport"
 )
@@ -58,6 +59,9 @@ type testEnv struct {
 	keyDir    string
 	// transport lets a test choose what a managed server answers.
 	transport *stubTransport
+	// forwarder holds what was sent to the SIEM.
+	forwarder *recordingForwarder
+	siemDir   string
 	// queries lets a test choose what a resolver replies to a name query.
 	queries *stubQuerier
 }
@@ -86,7 +90,8 @@ func newTestEnv(t *testing.T) *testEnv {
 		AdminGroup:     "sudo",
 	}
 	sessions := store.NewSessions(db.DB)
-	auditLog := audit.NewLogger(store.NewAuditLogs(db.DB), nil)
+	forwarder := &recordingForwarder{}
+	auditLog := audit.NewLogger(store.NewAuditLogs(db.DB), forwarder)
 
 	dataDir := t.TempDir()
 	keys, err := server.NewKeyStore(dataDir)
@@ -117,15 +122,25 @@ func newTestEnv(t *testing.T) *testEnv {
 	records := fleet.NewService(recordStore, stateStore, writer, refresher,
 		queries, auditLog, 15*time.Minute)
 
-	app, err := NewApp(cfg,
-		auth.NewService(authenticator, auth.Policy{
+	siemDir := t.TempDir()
+	rsyslog := siem.NewManager(
+		filepath.Join(siemDir, "60-panel.conf"), filepath.Join(siemDir, "panel.log"),
+		[]string{"true"}, []string{"true"}, []string{"true"})
+
+	app, err := NewApp(Deps{
+		Config: cfg,
+		Auth: auth.NewService(authenticator, auth.Policy{
 			MinUID: cfg.MinUID, AdminGroup: cfg.AdminGroup,
 		}),
-		auth.NewSessionManager(sessions, cfg.SessionTimeout, cfg.CookieSecure),
-		auth.NewRateLimiter(store.NewLoginAttempts(db.DB),
+		Sessions: auth.NewSessionManager(sessions, cfg.SessionTimeout, cfg.CookieSecure),
+		Limiter: auth.NewRateLimiter(store.NewLoginAttempts(db.DB),
 			auth.DefaultRateWindow, auth.DefaultRateMaxTries),
-		auditLog, servers, records,
-	)
+		Audit:     auditLog,
+		Servers:   servers,
+		Records:   records,
+		SIEM:      rsyslog,
+		Forwarder: forwarder,
+	})
 	if err != nil {
 		t.Fatalf("cannot build the application: %v", err)
 	}
@@ -144,7 +159,33 @@ func newTestEnv(t *testing.T) *testEnv {
 		keyDir:    keys.Dir(),
 		transport: remote,
 		queries:   queries,
+		forwarder: forwarder,
+		siemDir:   siemDir,
 	}
+}
+
+// recordingForwarder keeps what the panel sent to the SIEM.
+type recordingForwarder struct {
+	mu      sync.Mutex
+	entries []audit.Entry
+	err     error
+}
+
+func (f *recordingForwarder) Forward(entry audit.Entry) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if f.err != nil {
+		return f.err
+	}
+	f.entries = append(f.entries, entry)
+	return nil
+}
+
+func (f *recordingForwarder) sent() []audit.Entry {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]audit.Entry(nil), f.entries...)
 }
 
 // stubQuerier answers a name query, so the record page can be covered without

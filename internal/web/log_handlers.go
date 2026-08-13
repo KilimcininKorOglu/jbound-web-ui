@@ -50,11 +50,11 @@ func (a *App) logsPageData(r *http.Request) (logsPageData, error) {
 	}
 	query := auditQuery(r.Form)
 
-	page, err := a.audit.List(r.Context(), query)
+	page, err := a.Audit.List(r.Context(), query)
 	if err != nil {
 		return logsPageData{}, err
 	}
-	servers, err := a.servers.List(r.Context())
+	servers, err := a.Servers.List(r.Context())
 	if err != nil {
 		return logsPageData{}, err
 	}

@@ -29,7 +29,7 @@ func SessionFrom(ctx context.Context) (auth.Session, bool) {
 // that just passed its timeout.
 func (a *App) requireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		session, err := a.sessions.Load(r.Context(), w, r)
+		session, err := a.Sessions.Load(r.Context(), w, r)
 		if err != nil {
 			switch {
 			case errors.Is(err, auth.ErrSessionExpired):

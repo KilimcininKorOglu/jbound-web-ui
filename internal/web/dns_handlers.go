@@ -142,20 +142,20 @@ func (a *App) dnsPageData(r *http.Request) (dnsPageData, error) {
 	}
 	query := listingFrom(r.Form)
 
-	page, err := a.records.Page(r.Context(), query)
+	page, err := a.Records.Page(r.Context(), query)
 	if err != nil {
 		return dnsPageData{}, err
 	}
 
-	servers, err := a.servers.List(r.Context())
+	servers, err := a.Servers.List(r.Context())
 	if err != nil {
 		return dnsPageData{}, err
 	}
-	groups, err := a.servers.ListGroups(r.Context())
+	groups, err := a.Servers.ListGroups(r.Context())
 	if err != nil {
 		return dnsPageData{}, err
 	}
-	status, err := a.records.Status(r.Context(), query)
+	status, err := a.Records.Status(r.Context(), query)
 	if err != nil {
 		return dnsPageData{}, err
 	}
@@ -299,12 +299,12 @@ func (a *App) handleRecordForm(w http.ResponseWriter, r *http.Request) {
 		data.Old = data.Record
 	}
 
-	servers, err := a.servers.List(r.Context())
+	servers, err := a.Servers.List(r.Context())
 	if err != nil {
 		a.dnsError(w, "cannot load the servers", err)
 		return
 	}
-	groups, err := a.servers.ListGroups(r.Context())
+	groups, err := a.Servers.ListGroups(r.Context())
 	if err != nil {
 		a.dnsError(w, "cannot load the groups", err)
 		return
@@ -347,7 +347,7 @@ func (a *App) applyOperation(w http.ResponseWriter, r *http.Request, kind string
 		return
 	}
 
-	report, err := a.records.Apply(r.Context(), a.actor(r), target, op)
+	report, err := a.Records.Apply(r.Context(), a.actor(r), target, op)
 	if err != nil {
 		a.recordProblem(w, r, kind, recordMessage(err), dnsStatus(err))
 		return
@@ -372,7 +372,7 @@ func (a *App) handleRecordApply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	report, err := a.records.Reload(r.Context(), a.actor(r), target)
+	report, err := a.Records.Reload(r.Context(), a.actor(r), target)
 	if err != nil {
 		a.reportProblem(w, recordMessage(err), dnsStatus(err))
 		return
@@ -462,7 +462,7 @@ func (a *App) handleQuery(w http.ResponseWriter, r *http.Request) {
 		target = fleet.Target{Scope: fleet.ScopeAll}
 	}
 
-	report, err := a.records.Query(r.Context(), a.actor(r), target, data.Domain, data.Type)
+	report, err := a.Records.Query(r.Context(), a.actor(r), target, data.Domain, data.Type)
 	if err != nil {
 		data.Problem = recordMessage(err)
 		a.RenderPartial(w, dnsStatus(err), "record-query", data)
@@ -488,11 +488,11 @@ func (a *App) queryData(r *http.Request) (queryFormData, error) {
 		Types: dnsfile.Types,
 	}
 
-	servers, err := a.servers.List(r.Context())
+	servers, err := a.Servers.List(r.Context())
 	if err != nil {
 		return queryFormData{}, err
 	}
-	groups, err := a.servers.ListGroups(r.Context())
+	groups, err := a.Servers.ListGroups(r.Context())
 	if err != nil {
 		return queryFormData{}, err
 	}
@@ -503,7 +503,7 @@ func (a *App) queryData(r *http.Request) (queryFormData, error) {
 
 // handleRecordRefresh reads every server again.
 func (a *App) handleRecordRefresh(w http.ResponseWriter, r *http.Request) {
-	results, err := a.records.Refresh(r.Context())
+	results, err := a.Records.Refresh(r.Context())
 	if err != nil {
 		a.dnsError(w, "cannot refresh the records", err)
 		return
@@ -542,7 +542,7 @@ func (a *App) auditRefresh(r *http.Request, read, total int) {
 	details := fmt.Sprintf("Refreshed the record cache: %d of %d servers read", read, total)
 	actor := a.actor(r)
 
-	_ = a.audit.Write(r.Context(), audit.Entry{
+	_ = a.Audit.Write(r.Context(), audit.Entry{
 		UID:       actor.UID,
 		Username:  actor.Username,
 		Action:    audit.ActionCacheRefresh,
@@ -654,10 +654,10 @@ func (a *App) recordProblem(w http.ResponseWriter, r *http.Request,
 		data.Old = oldRecordFromValues(r.Form)
 	}
 
-	if servers, err := a.servers.List(r.Context()); err == nil {
+	if servers, err := a.Servers.List(r.Context()); err == nil {
 		data.Servers = servers
 	}
-	if groups, err := a.servers.ListGroups(r.Context()); err == nil {
+	if groups, err := a.Servers.ListGroups(r.Context()); err == nil {
 		data.Groups = groups
 	}
 

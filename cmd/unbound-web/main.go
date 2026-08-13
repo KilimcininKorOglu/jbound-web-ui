@@ -139,8 +139,20 @@ func run() error {
 	recordService := fleet.NewService(records, states, writer, refresher,
 		queries, auditLog, cfg.CacheStaleAfter)
 
-	app, err := web.NewApp(cfg, authService, sessions, limiter, auditLog,
-		serverService, recordService)
+	rsyslog := siem.NewManager(cfg.RsyslogConfPath, cfg.SyslogLogPath,
+		cfg.RsyslogValidateCmd, cfg.RsyslogRestartCmd, cfg.RsyslogStatusCmd)
+
+	app, err := web.NewApp(web.Deps{
+		Config:    cfg,
+		Auth:      authService,
+		Sessions:  sessions,
+		Limiter:   limiter,
+		Audit:     auditLog,
+		Servers:   serverService,
+		Records:   recordService,
+		SIEM:      rsyslog,
+		Forwarder: forwarder,
+	})
 	if err != nil {
 		return err
 	}

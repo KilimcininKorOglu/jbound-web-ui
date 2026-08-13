@@ -20,6 +20,23 @@
   max-width: 220px;
 }
 
+/* --- Log viewer ---------------------------------------------------------- */
+
+/* The syslog viewer. A dark block, because the lines are machine output and
+   the eye needs the block to end somewhere. */
+.log-viewer {
+  max-height: 24rem;
+  overflow: auto;
+  background: #232333;
+  color: #d5d5e0;
+  padding: 1rem;
+  border-radius: 0.375rem;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
 /* --- Tables and pagination ---------------------------------------------- */
 
 .pagination {

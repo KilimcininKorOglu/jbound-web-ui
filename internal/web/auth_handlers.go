@@ -26,7 +26,7 @@ const (
 func (a *App) handleLoginPage(w http.ResponseWriter, r *http.Request) {
 	// A live session belongs on the records page rather than on the login
 	// form. Load renews the session, which is why it runs even here.
-	if _, err := a.sessions.Load(r.Context(), w, r); err == nil {
+	if _, err := a.Sessions.Load(r.Context(), w, r); err == nil {
 		redirect(w, r, "/dns")
 		return
 	}
@@ -68,7 +68,7 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	allowed, err := a.limiter.Allow(r.Context(), ip)
+	allowed, err := a.Limiter.Allow(r.Context(), ip)
 	if err != nil {
 		slog.Error("rate limit check failed", "ip", ip, "error", err)
 		a.loginFailure(w, r, http.StatusInternalServerError, msgInternalError)
@@ -80,7 +80,7 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := a.limiter.Record(r.Context(), ip, username); err != nil {
+	if err := a.Limiter.Record(r.Context(), ip, username); err != nil {
 		// Continuing here would let an attacker defeat the limiter by making
 		// the insert fail, so the request stops instead.
 		slog.Error("cannot record the login attempt", "ip", ip, "error", err)
@@ -88,7 +88,7 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := a.auth.Login(r.Context(), username, password)
+	user, err := a.Auth.Login(r.Context(), username, password)
 	if err != nil {
 		if !errors.Is(err, auth.ErrLoginFailed) {
 			slog.Error("login could not be processed", "ip", ip, "error", err)
@@ -98,7 +98,7 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 		// A failed login is what a break-in attempt looks like from here, so it
 		// is recorded and forwarded like any other event. The submitted name is
 		// stored; the password never is.
-		if auditErr := a.audit.Write(r.Context(), audit.Entry{
+		if auditErr := a.Audit.Write(r.Context(), audit.Entry{
 			Username:  username,
 			Action:    audit.ActionLoginFailed,
 			Details:   fmt.Sprintf("Failed login attempt for '%s' from %s", username, ip),
@@ -112,14 +112,14 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session, err := a.sessions.Start(r.Context(), w, r, user)
+	session, err := a.Sessions.Start(r.Context(), w, r, user)
 	if err != nil {
 		slog.Error("cannot start the session", "username", user.Username, "error", err)
 		a.loginFailure(w, r, http.StatusInternalServerError, msgInternalError)
 		return
 	}
 
-	if err := a.audit.Write(r.Context(), audit.Entry{
+	if err := a.Audit.Write(r.Context(), audit.Entry{
 		UID:       user.UID,
 		Username:  user.Username,
 		Action:    audit.ActionLogin,
@@ -159,11 +159,11 @@ func (a *App) handleLogout(w http.ResponseWriter, r *http.Request) {
 	}
 	ip := auth.ClientIP(r)
 
-	if err := a.sessions.Destroy(r.Context(), w, r); err != nil {
+	if err := a.Sessions.Destroy(r.Context(), w, r); err != nil {
 		slog.Error("cannot destroy the session", "username", session.Username, "error", err)
 	}
 
-	if err := a.audit.Write(r.Context(), audit.Entry{
+	if err := a.Audit.Write(r.Context(), audit.Entry{
 		UID:       session.UID,
 		Username:  session.Username,
 		Action:    audit.ActionLogout,

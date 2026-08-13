@@ -99,16 +99,16 @@ func (a *App) handleServerTable(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) serversPageData(r *http.Request) (serversPageData, error) {
-	servers, err := a.servers.List(r.Context())
+	servers, err := a.Servers.List(r.Context())
 	if err != nil {
 		return serversPageData{}, err
 	}
-	groups, err := a.servers.ListGroups(r.Context())
+	groups, err := a.Servers.ListGroups(r.Context())
 	if err != nil {
 		return serversPageData{}, err
 	}
 
-	states, err := a.records.States(r.Context())
+	states, err := a.Records.States(r.Context())
 	if err != nil {
 		return serversPageData{}, err
 	}
@@ -170,7 +170,7 @@ func (a *App) handleServerForm(w http.ResponseWriter, r *http.Request) {
 			http.NotFound(w, r)
 			return
 		}
-		record, err := a.servers.Get(r.Context(), id)
+		record, err := a.Servers.Get(r.Context(), id)
 		if err != nil {
 			a.notFoundOrError(w, "cannot load the server", err)
 			return
@@ -188,7 +188,7 @@ func (a *App) handleServerCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	created, pair, err := a.servers.Create(r.Context(), a.actor(r), server.CreateInput{
+	created, pair, err := a.Servers.Create(r.Context(), a.actor(r), server.CreateInput{
 		Server:     record,
 		PrivateKey: strings.TrimSpace(r.PostFormValue("private_key")),
 	})
@@ -221,7 +221,7 @@ func (a *App) handleServerUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	record.ID = id
 
-	if err := a.servers.Update(r.Context(), a.actor(r), record); err != nil {
+	if err := a.Servers.Update(r.Context(), a.actor(r), record); err != nil {
 		a.RenderPartial(w, formStatus(err), "server-form",
 			serverFormData{Server: record, Problem: userMessage(err)})
 		return
@@ -237,7 +237,7 @@ func (a *App) handleServerDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := a.servers.Delete(r.Context(), a.actor(r), id); err != nil {
+	if err := a.Servers.Delete(r.Context(), a.actor(r), id); err != nil {
 		a.notFoundOrError(w, "cannot delete the server", err)
 		return
 	}
@@ -252,12 +252,12 @@ func (a *App) handleServerKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	record, err := a.servers.Get(r.Context(), id)
+	record, err := a.Servers.Get(r.Context(), id)
 	if err != nil {
 		a.notFoundOrError(w, "cannot load the server", err)
 		return
 	}
-	pair, err := a.servers.PublicKey(r.Context(), id)
+	pair, err := a.Servers.PublicKey(r.Context(), id)
 	if err != nil {
 		a.internalError(w, "cannot read the public key", err)
 		return
@@ -271,13 +271,13 @@ func (a *App) handleServerTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	record, err := a.servers.Get(r.Context(), id)
+	record, err := a.Servers.Get(r.Context(), id)
 	if err != nil {
 		a.notFoundOrError(w, "cannot load the server", err)
 		return
 	}
 
-	result, err := a.servers.TestConnection(r.Context(), id)
+	result, err := a.Servers.TestConnection(r.Context(), id)
 	if err != nil {
 		a.internalError(w, "cannot run the connection test", err)
 		return
@@ -313,7 +313,7 @@ func (a *App) handleServerTrust(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := a.servers.TrustHostKey(r.Context(), a.actor(r), id, fingerprint); err != nil {
+	if err := a.Servers.TrustHostKey(r.Context(), a.actor(r), id, fingerprint); err != nil {
 		a.RenderPartial(w, formStatus(err), "alert",
 			&Alert{Severity: ToastError, Message: userMessage(err)})
 		return
@@ -326,7 +326,7 @@ func (a *App) handleServerTrust(w http.ResponseWriter, r *http.Request) {
 // --- Groups ----------------------------------------------------------------
 
 func (a *App) handleGroupForm(w http.ResponseWriter, r *http.Request) {
-	servers, err := a.servers.List(r.Context())
+	servers, err := a.Servers.List(r.Context())
 	if err != nil {
 		a.internalError(w, "cannot load the servers", err)
 		return
@@ -340,7 +340,7 @@ func (a *App) handleGroupForm(w http.ResponseWriter, r *http.Request) {
 			http.NotFound(w, r)
 			return
 		}
-		group, err := a.servers.GetGroup(r.Context(), id)
+		group, err := a.Servers.GetGroup(r.Context(), id)
 		if err != nil {
 			a.notFoundOrError(w, "cannot load the group", err)
 			return
@@ -357,7 +357,7 @@ func (a *App) handleGroupForm(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleGroupCreate(w http.ResponseWriter, r *http.Request) {
 	group := groupFromForm(r)
 
-	created, err := a.servers.CreateGroup(r.Context(), a.actor(r), group)
+	created, err := a.Servers.CreateGroup(r.Context(), a.actor(r), group)
 	if err != nil {
 		a.renderGroupProblem(w, r, group, true, err)
 		return
@@ -376,7 +376,7 @@ func (a *App) handleGroupUpdate(w http.ResponseWriter, r *http.Request) {
 	group := groupFromForm(r)
 	group.ID = id
 
-	if err := a.servers.UpdateGroup(r.Context(), a.actor(r), group); err != nil {
+	if err := a.Servers.UpdateGroup(r.Context(), a.actor(r), group); err != nil {
 		a.renderGroupProblem(w, r, group, false, err)
 		return
 	}
@@ -391,7 +391,7 @@ func (a *App) handleGroupDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := a.servers.DeleteGroup(r.Context(), a.actor(r), id); err != nil {
+	if err := a.Servers.DeleteGroup(r.Context(), a.actor(r), id); err != nil {
 		a.notFoundOrError(w, "cannot delete the group", err)
 		return
 	}
@@ -404,7 +404,7 @@ func (a *App) handleGroupDelete(w http.ResponseWriter, r *http.Request) {
 func (a *App) renderGroupProblem(w http.ResponseWriter, r *http.Request,
 	group server.Group, isNew bool, cause error) {
 
-	servers, err := a.servers.List(r.Context())
+	servers, err := a.Servers.List(r.Context())
 	if err != nil {
 		a.internalError(w, "cannot load the servers", err)
 		return

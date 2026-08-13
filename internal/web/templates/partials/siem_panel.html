@@ -1,0 +1,96 @@
+{{/* The panel forwards its own audit trail. This page manages the rsyslog
+     configuration of the panel host and never that of a managed server. */}}
+{{define "siem-panel"}}
+<div class="row g-4">
+  <div class="col-lg-7">
+    <div class="card mb-4">
+      <div class="card-header d-flex flex-wrap align-items-center justify-content-between">
+        <h6 class="mb-0">Forwarding rules</h6>
+        <div>
+          {{if eq .Settings.Status "active"}}
+          <span class="badge bg-label-success" data-field="rsyslog-status">rsyslog active</span>
+          {{else}}
+          <span class="badge bg-label-danger" data-field="rsyslog-status">rsyslog {{.Settings.Status}}</span>
+          {{end}}
+          {{if .Settings.HasActiveRules}}
+          <span class="badge bg-label-success ms-1" data-field="forwarding">forwarding</span>
+          {{else}}
+          <span class="badge bg-label-secondary ms-1" data-field="forwarding">not forwarding</span>
+          {{end}}
+        </div>
+      </div>
+
+      <div class="card-body">
+        {{if .Problem}}{{template "alert" (alert "error" .Problem)}}{{end}}
+        {{if .Notice}}{{template "alert" (alert "success" .Notice)}}{{end}}
+
+        <form hx-post="/siem" hx-target="#siem-panel" hx-swap="innerHTML">
+          <label class="form-label" for="rules">Rules</label>
+          <textarea class="form-control font-monospace" id="rules" name="rules"
+                    rows="6" spellcheck="false" autocapitalize="none"
+                    placeholder="local6.*    @@siem.example.net:514">{{.Rules}}</textarea>
+
+          <div class="form-text">
+            One rule per line. <code>@@</code> forwards over TCP and <code>@</code>
+            over UDP. A line starting with <code>#</code> is kept and ignored,
+            which is how a rule is parked without losing it.
+          </div>
+
+          <div class="dns-toolbar mt-4">
+            <button class="btn btn-primary" type="submit">Save and restart rsyslog</button>
+            <button class="btn btn-outline-secondary" type="button"
+                    data-field="send-test"
+                    hx-post="/siem/test" hx-target="#siem-panel" hx-swap="innerHTML">
+              Send test logs
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="card mb-4">
+      <div class="card-header">
+        <h6 class="mb-0">How this works</h6>
+      </div>
+      <div class="card-body">
+        <p class="mb-2">
+          Every audit entry leaves the panel as a CEF line on facility
+          <code>{{.Settings.Facility}}</code>, tagged
+          <code>unbound-dns-panel</code>.
+        </p>
+        <p class="mb-2">
+          The <code>dhost</code> field carries the DNS server the action was
+          aimed at, and <code>dvchost</code> carries this panel. A change across
+          a group therefore arrives as one line per server.
+        </p>
+        <p class="mb-0">
+          A copy is written to <code>{{.Settings.LogFile}}</code>, which is what
+          the viewer below reads.
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header d-flex flex-wrap align-items-center justify-content-between">
+    <h6 class="mb-0">Recent events</h6>
+    <button class="btn btn-outline-secondary btn-sm" type="button"
+            hx-get="/siem/panel" hx-target="#siem-panel" hx-swap="innerHTML">
+      <i class="bx bx-refresh"></i> Refresh
+    </button>
+  </div>
+  <div class="card-body">
+    {{if .Lines}}
+    <pre class="log-viewer mb-0" data-field="log-viewer">{{range .Lines}}{{.}}
+{{end}}</pre>
+    {{else}}
+    <p class="text-muted mb-0">
+      No events yet. Send the test logs to check that the daemon writes them.
+    </p>
+    {{end}}
+  </div>
+</div>
+{{end}}

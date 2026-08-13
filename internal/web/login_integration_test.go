@@ -34,6 +34,7 @@ import (
 	"unbound-web/internal/fleet"
 	"unbound-web/internal/preflight"
 	"unbound-web/internal/server"
+	"unbound-web/internal/siem"
 	"unbound-web/internal/store"
 	"unbound-web/internal/transport"
 )
@@ -104,7 +105,9 @@ func newLiveApp(t *testing.T) *App {
 		t.Fatalf("cannot build the authenticator: %v", err)
 	}
 
-	auditLog := audit.NewLogger(store.NewAuditLogs(db.DB), nil)
+	forwarder := siem.NewForwarder("panel.test")
+	t.Cleanup(func() { forwarder.Close() })
+	auditLog := audit.NewLogger(store.NewAuditLogs(db.DB), forwarder)
 
 	// The login path does not reach a managed server, so the service is here
 	// only because the application needs one to build.
@@ -134,17 +137,24 @@ func newLiveApp(t *testing.T) *App {
 		refresher, dnsquery.New(cfg.DigPath, cfg.DNSQueryTimeout),
 		auditLog, cfg.CacheStaleAfter)
 
-	app, err := NewApp(cfg,
-		auth.NewService(authenticator, auth.Policy{
+	app, err := NewApp(Deps{
+		Config: cfg,
+		Auth: auth.NewService(authenticator, auth.Policy{
 			MinUID:       cfg.MinUID,
 			AdminGroup:   cfg.AdminGroup,
 			AllowedGroup: cfg.AllowedGroup,
 		}),
-		auth.NewSessionManager(store.NewSessions(db.DB), cfg.SessionTimeout, cfg.CookieSecure),
-		auth.NewRateLimiter(store.NewLoginAttempts(db.DB),
+		Sessions: auth.NewSessionManager(
+			store.NewSessions(db.DB), cfg.SessionTimeout, cfg.CookieSecure),
+		Limiter: auth.NewRateLimiter(store.NewLoginAttempts(db.DB),
 			auth.DefaultRateWindow, auth.DefaultRateMaxTries),
-		auditLog, servers, records,
-	)
+		Audit:   auditLog,
+		Servers: servers,
+		Records: records,
+		SIEM: siem.NewManager(cfg.RsyslogConfPath, cfg.SyslogLogPath,
+			cfg.RsyslogValidateCmd, cfg.RsyslogRestartCmd, cfg.RsyslogStatusCmd),
+		Forwarder: forwarder,
+	})
 	if err != nil {
 		t.Fatalf("cannot build the application: %v", err)
 	}

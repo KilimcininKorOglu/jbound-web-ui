@@ -67,16 +67,16 @@ func (a *App) diffPageData(r *http.Request) (diffPageData, error) {
 		only = true
 	}
 
-	diff, err := a.records.Diff(r.Context(), query, only)
+	diff, err := a.Records.Diff(r.Context(), query, only)
 	if err != nil {
 		return diffPageData{}, err
 	}
 
-	groups, err := a.servers.ListGroups(r.Context())
+	groups, err := a.Servers.ListGroups(r.Context())
 	if err != nil {
 		return diffPageData{}, err
 	}
-	servers, err := a.servers.List(r.Context())
+	servers, err := a.Servers.List(r.Context())
 	if err != nil {
 		return diffPageData{}, err
 	}
@@ -150,7 +150,7 @@ func (a *App) handleDiffRepair(w http.ResponseWriter, r *http.Request) {
 		want.Priority = dnsfile.DefaultMXPriority
 	}
 
-	report, err := a.records.Repair(r.Context(), a.actor(r), target, want)
+	report, err := a.Records.Repair(r.Context(), a.actor(r), target, want)
 	if err != nil {
 		a.reportProblem(w, recordMessage(err), dnsStatus(err))
 		return

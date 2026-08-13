@@ -142,9 +142,35 @@ func TestTheTableListsWhatTheServersHold(t *testing.T) {
 			t.Errorf("the table does not show %q", want)
 		}
 	}
-	// Three servers holding two records each.
-	if !strings.Contains(body, "Showing 6 of 6 records (Page 1/1)") {
+	// Three servers holding the same two records. One row each, because a
+	// change through the panel reaches all three at once.
+	if !strings.Contains(body, "Showing 2 of 2 records (Page 1/1)") {
 		t.Errorf("the summary is wrong:\n%s", body)
+	}
+	if count := strings.Count(body, `data-field="holders">3/3<`); count != 2 {
+		t.Errorf("%d rows report every server, want 2:\n%s", count, body)
+	}
+}
+
+func TestARecordOneServerMissesIsMarked(t *testing.T) {
+	// The count is the whole point of folding the rows: anything below the
+	// size of the target is drift.
+	env := newFleetEnv(t)
+
+	env.target(3).setFile("# managed by the panel\n")
+	if _, err := env.records.RefreshOne(context.Background(), 3); err != nil {
+		t.Fatalf("cannot refresh: %v", err)
+	}
+
+	body := env.table(t, "")
+	if count := strings.Count(body, `data-field="holders"`); count != 2 {
+		t.Fatalf("%d rows came back, want 2:\n%s", count, body)
+	}
+	if !strings.Contains(body, `data-field="holders">2/3<`) {
+		t.Errorf("the table does not report the server that misses the record:\n%s", body)
+	}
+	if strings.Contains(body, `data-field="holders">3/3<`) {
+		t.Errorf("a record only two servers hold reads as complete:\n%s", body)
 	}
 }
 
@@ -189,11 +215,11 @@ func TestTheTablePagesAndSummarises(t *testing.T) {
 	env := newFleetEnv(t)
 
 	body := env.table(t, "per_page=10&page=1")
-	if !strings.Contains(body, "Showing 6 of 6 records (Page 1/1)") {
+	if !strings.Contains(body, "Showing 2 of 2 records (Page 1/1)") {
 		t.Errorf("summary = %s", body)
 	}
 
-	// Ten per page over six records leaves one page, so no links are drawn.
+	// Ten per page over two records leaves one page, so no links are drawn.
 	if strings.Contains(body, "page-link") {
 		t.Error("pagination is drawn for a single page")
 	}
@@ -520,7 +546,7 @@ func TestTheQueryFallsBackRatherThanFailing(t *testing.T) {
 	env := newFleetEnv(t)
 
 	body := env.table(t, "scope=server&server_id=&type=SRV&page=notanumber&per_page=9999")
-	if !strings.Contains(body, "Showing 6 of 6 records") {
+	if !strings.Contains(body, "Showing 2 of 2 records") {
 		t.Errorf("an unreadable query did not fall back to the default view:\n%s", body)
 	}
 }

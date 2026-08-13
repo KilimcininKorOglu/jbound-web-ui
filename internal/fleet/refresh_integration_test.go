@@ -152,8 +152,8 @@ func TestRefreshReadsTheSeededTarget(t *testing.T) {
 		if row.FQDN == "ns1.example.local" && row.Type == "A" {
 			seen = true
 		}
-		if row.ServerName != testTarget {
-			t.Errorf("a row is attributed to %q", row.ServerName)
+		if len(row.HolderNames) != 1 || row.HolderNames[0] != testTarget {
+			t.Errorf("a row is attributed to %v", row.HolderNames)
 		}
 	}
 	if !seen {

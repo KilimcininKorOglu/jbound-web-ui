@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"path"
+	"strings"
 	"time"
 
 	"unbound-web/internal/auth"
@@ -71,6 +72,11 @@ var funcs = template.FuncMap{
 	// raise one without the handler assembling it first.
 	"alert": func(severity, message string) *Alert {
 		return &Alert{Severity: severity, Message: message}
+	},
+	// join renders a list of names as a sentence fragment. Printing the slice
+	// itself would put Go's bracket syntax in front of the reader.
+	"join": func(values []string) string {
+		return strings.Join(values, ", ")
 	},
 }
 

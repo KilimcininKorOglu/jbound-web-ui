@@ -92,9 +92,11 @@ func TestAStaleRowIsMarkedRatherThanHidden(t *testing.T) {
 		t.Fatalf("cannot record the state: %v", err)
 	}
 
+	// The first record sits on the server read a moment ago. The second sits
+	// on both, and one of the two is a day old.
 	lister := &fakeLister{page: Page{Rows: []Row{
-		{ServerID: 1, ServerName: "dns1"},
-		{ServerID: 2, ServerName: "dns2"},
+		{Holders: []int64{1}, HolderNames: []string{"dns1"}},
+		{Holders: []int64{1, 2}, HolderNames: []string{"dns1", "dns2"}},
 	}}}
 	service := harness.service(lister, &stubQuerier{})
 
@@ -103,10 +105,10 @@ func TestAStaleRowIsMarkedRatherThanHidden(t *testing.T) {
 		t.Fatalf("cannot read the page: %v", err)
 	}
 	if page.Rows[0].Stale {
-		t.Error("the row of the server read a moment ago is marked stale")
+		t.Error("a row held only by the server read a moment ago is marked stale")
 	}
 	if !page.Rows[1].Stale {
-		t.Error("the row of the server read a day ago is not marked stale")
+		t.Error("a row held by the server read a day ago is not marked stale")
 	}
 
 	stale, err := service.Stale(context.Background())
@@ -439,5 +441,50 @@ func TestAPageBeyondTheEndComesBackAsTheLastOne(t *testing.T) {
 	}
 	if page.Offset() != 50 {
 		t.Errorf("offset = %d, want 50", page.Offset())
+	}
+}
+
+func TestThePageCountsTheServersOfTheTarget(t *testing.T) {
+	// The count is the denominator of every row's holder count, so a row that
+	// two of three servers hold reads as drift rather than as agreement.
+	harness := newWriteHarness(t, 3)
+	lister := &fakeLister{page: Page{Rows: []Row{
+		{Holders: []int64{1, 2, 3}},
+		{Holders: []int64{1, 2}},
+	}}}
+	service := harness.service(lister, &stubQuerier{})
+
+	page, err := service.Page(context.Background(), Query{Scope: ScopeGroup, GroupID: 1})
+	if err != nil {
+		t.Fatalf("cannot read the page: %v", err)
+	}
+
+	if page.TargetServers != 3 {
+		t.Fatalf("target = %d servers, want 3", page.TargetServers)
+	}
+	if !page.Rows[0].Complete(page.TargetServers) {
+		t.Error("a record every server holds reads as incomplete")
+	}
+	if page.Rows[1].Complete(page.TargetServers) {
+		t.Error("a record one server misses reads as complete")
+	}
+}
+
+func TestADisabledServerIsNotPartOfTheTargetCount(t *testing.T) {
+	// A disabled server is left out of every operation, so counting it would
+	// make a record every working server holds read as incomplete.
+	harness := newWriteHarness(t, 3)
+
+	members := harness.groups.members[1]
+	members[len(members)-1].Enabled = false
+
+	service := harness.service(&fakeLister{}, &stubQuerier{})
+
+	page, err := service.Page(context.Background(), Query{Scope: ScopeGroup, GroupID: 1})
+	if err != nil {
+		t.Fatalf("cannot read the page: %v", err)
+	}
+	if page.TargetServers != 2 {
+		t.Errorf("target = %d servers, want the two that are enabled", page.TargetServers)
 	}
 }

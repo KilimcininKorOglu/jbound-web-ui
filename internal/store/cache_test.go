@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -78,7 +79,10 @@ func TestReplaceStoresEveryField(t *testing.T) {
 		row.Value != "mx1.example.net" || row.Priority != 20 {
 		t.Errorf("got %+v", row)
 	}
-	if row.ServerID != f.first.ID || row.ServerName != "dns1" {
+	if len(row.Holders) != 1 || row.Holders[0] != f.first.ID {
+		t.Errorf("the row does not name its server: %+v", row)
+	}
+	if len(row.HolderNames) != 1 || row.HolderNames[0] != "dns1" {
 		t.Errorf("the row does not name its server: %+v", row)
 	}
 	if row.Raw == "" {
@@ -163,8 +167,8 @@ func TestListScopesToAGroup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("List returned an error: %v", err)
 	}
-	if len(page.Rows) != 1 || page.Rows[0].ServerName != "dns1" {
-		t.Errorf("got %+v, want only the member of the group", page.Rows)
+	if len(page.Rows) != 1 || page.Rows[0].FQDN != "one.example.net" {
+		t.Errorf("got %+v, want only the record of the member", page.Rows)
 	}
 }
 
@@ -299,10 +303,9 @@ func TestListKeepsAStableOrder(t *testing.T) {
 		t.Fatalf("List returned an error: %v", err)
 	}
 
-	want := []string{"dns1/a.example.net", "dns1/c.example.net", "dns2/b.example.net"}
+	want := []string{"a.example.net", "b.example.net", "c.example.net"}
 	for i, expected := range want {
-		got := page.Rows[i].ServerName + "/" + page.Rows[i].FQDN
-		if got != expected {
+		if got := page.Rows[i].FQDN; got != expected {
 			t.Errorf("position %d is %s, want %s", i, got, expected)
 		}
 	}
@@ -469,4 +472,106 @@ func TestListStatesIsKeyedByServer(t *testing.T) {
 // fqdnFor builds a name that sorts in the order it was created.
 func fqdnFor(i int) string {
 	return string(rune('a'+(i-1)/10)) + string(rune('0'+(i-1)%10)) + ".example.net"
+}
+
+func TestListFoldsARecordTheServersAgreeOn(t *testing.T) {
+	// One row per server would repeat the same record once per machine, while
+	// a change through the panel reaches the whole target at once.
+	f := newCacheFixture(t)
+	shared := cached(1, "www.example.net", "A", "192.0.2.10")
+
+	f.fill(t, f.first.ID, shared)
+	f.fill(t, f.second.ID, shared)
+
+	page, err := f.records.List(context.Background(), fleet.Query{})
+	if err != nil {
+		t.Fatalf("List returned an error: %v", err)
+	}
+
+	if len(page.Rows) != 1 || page.Total != 1 {
+		t.Fatalf("got %d rows and a total of %d, want one of each",
+			len(page.Rows), page.Total)
+	}
+	row := page.Rows[0]
+	if len(row.Holders) != 2 {
+		t.Errorf("the row names %d servers, want 2: %+v", len(row.Holders), row)
+	}
+	if row.Holders[0] != f.first.ID || row.Holders[1] != f.second.ID {
+		t.Errorf("the holders are not sorted: %v", row.Holders)
+	}
+	if len(row.HolderNames) != 2 || row.HolderNames[0] != "dns1" {
+		t.Errorf("the row does not name the servers: %v", row.HolderNames)
+	}
+}
+
+func TestListKeepsTwoValuesApart(t *testing.T) {
+	// Two servers answering differently for one name is drift. Folding the two
+	// into one row would hide exactly what the panel exists to show.
+	f := newCacheFixture(t)
+	f.fill(t, f.first.ID, cached(1, "www.example.net", "A", "192.0.2.10"))
+	f.fill(t, f.second.ID, cached(1, "www.example.net", "A", "192.0.2.99"))
+
+	page, err := f.records.List(context.Background(), fleet.Query{})
+	if err != nil {
+		t.Fatalf("List returned an error: %v", err)
+	}
+
+	if len(page.Rows) != 2 {
+		t.Fatalf("got %d rows, want one per value: %+v", len(page.Rows), page.Rows)
+	}
+	for _, row := range page.Rows {
+		if len(row.Holders) != 1 {
+			t.Errorf("a value held by one server names %d: %+v", len(row.Holders), row)
+		}
+	}
+}
+
+func TestListKeepsTwoPrioritiesApart(t *testing.T) {
+	// An MX that differs only in its priority is a different record.
+	f := newCacheFixture(t)
+
+	first := dnsfile.Record{Line: 1, FQDN: "mail.example.net", Type: "MX",
+		Value: "mx1.example.net", Priority: 10}
+	first.Raw = first.BuildLine()
+	second := first
+	second.Priority = 20
+	second.Raw = second.BuildLine()
+
+	f.fill(t, f.first.ID, first)
+	f.fill(t, f.second.ID, second)
+
+	page, err := f.records.List(context.Background(), fleet.Query{})
+	if err != nil {
+		t.Fatalf("List returned an error: %v", err)
+	}
+	if len(page.Rows) != 2 {
+		t.Fatalf("got %d rows, want one per priority: %+v", len(page.Rows), page.Rows)
+	}
+}
+
+func TestTheTotalCountsFoldedRows(t *testing.T) {
+	// The page numbers have to match the rows the page shows, so the count is
+	// over the folded rows rather than over the cached ones.
+	f := newCacheFixture(t)
+
+	var records []dnsfile.Record
+	for i := range 30 {
+		records = append(records,
+			cached(i+1, fmt.Sprintf("host%02d.example.net", i), "A", "192.0.2.10"))
+	}
+	f.fill(t, f.first.ID, records...)
+	f.fill(t, f.second.ID, records...)
+
+	page, err := f.records.List(context.Background(),
+		fleet.Query{Page: 2, PerPage: 25})
+	if err != nil {
+		t.Fatalf("List returned an error: %v", err)
+	}
+
+	if page.Total != 30 || page.TotalPages != 2 {
+		t.Fatalf("total = %d over %d pages, want 30 over 2", page.Total, page.TotalPages)
+	}
+	if len(page.Rows) != 5 {
+		t.Errorf("the second page holds %d rows, want 5", len(page.Rows))
+	}
 }

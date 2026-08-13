@@ -18,11 +18,21 @@
         {{range .Page.Rows}}
         <tr>
           {{if $.ShowServer}}
-          <td class="text-muted">
-            {{.ServerName}}
+          {{/* The count is the record's, not a server's. A record the whole
+               target agrees on reads 3/3, and anything below that is drift the
+               diff view explains server by server. */}}
+          <td>
+            {{if .Complete $.Page.TargetServers}}
+            <span class="badge bg-label-secondary" title="{{join .HolderNames}}"
+                  data-field="holders">{{len .Holders}}/{{$.Page.TargetServers}}</span>
+            {{else}}
+            <a class="badge bg-label-warning text-decoration-none" href="/diff"
+               title="Only on {{join .HolderNames}}. Open the diff view."
+               data-field="holders">{{len .Holders}}/{{$.Page.TargetServers}}</a>
+            {{end}}
             {{if .Stale}}
             <span class="badge bg-label-warning ms-1" data-field="stale"
-                  title="The panel could not read this server recently.">stale</span>
+                  title="The panel could not read one of these servers recently.">stale</span>
             {{end}}
           </td>
           {{end}}

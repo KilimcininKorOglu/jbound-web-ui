@@ -55,7 +55,14 @@ func NewService(records RecordLister, states StateStore, writer *Writer,
 //
 // A stale row is shown rather than hidden. An empty page would say less than
 // old records with a warning next to them.
+//
+// The page also carries how many servers the target covers, because a row
+// reports the servers that hold it and that count is the denominator.
 func (s *Service) Page(ctx context.Context, query Query) (Page, error) {
+	// The scope is read here as well as in the store, so an empty query counts
+	// the whole fleet rather than reaching Members with no scope at all.
+	query.Normalise()
+
 	page, err := s.records.List(ctx, query)
 	if err != nil {
 		return Page{}, err
@@ -66,10 +73,27 @@ func (s *Service) Page(ctx context.Context, query Query) (Page, error) {
 		return Page{}, err
 	}
 
+	members, _, err := s.writer.Members(ctx,
+		Target{Scope: query.Scope, ServerID: query.ServerID, GroupID: query.GroupID})
+	if err != nil {
+		return Page{}, err
+	}
+	// A disabled server is left out of every operation, so counting it would
+	// make a record every working server holds read as incomplete.
+	for _, record := range members {
+		if record.Enabled {
+			page.TargetServers++
+		}
+	}
+
 	now := s.now()
 	for i := range page.Rows {
-		state := states[page.Rows[i].ServerID]
-		page.Rows[i].Stale = state.Stale(now, s.staleAfter)
+		for _, id := range page.Rows[i].Holders {
+			if states[id].Stale(now, s.staleAfter) {
+				page.Rows[i].Stale = true
+				break
+			}
+		}
 	}
 	return page, nil
 }

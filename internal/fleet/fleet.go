@@ -97,17 +97,30 @@ func (q *Query) Normalise() {
 	q.Page = max(1, q.Page)
 }
 
-// Row is one cached record together with the server it came from.
+// Row is one record as the target holds it.
+//
+// The same record usually sits on every server of a target, and a change
+// through the panel reaches all of them at once. One row per server would
+// therefore repeat the same record N times and offer N buttons that do the
+// same thing, so the listing groups by the record and counts the servers.
 type Row struct {
 	dnsfile.Record
 
-	ServerID   int64
-	ServerName string
+	// Holders are the servers of the target whose file carries this record.
+	// A count below the size of the target is drift, which the diff view
+	// explains server by server.
+	Holders []int64
 
-	// Stale marks a row whose server has not been read recently, so the view
-	// can say so rather than presenting old records as current.
+	// HolderNames carries the same servers by name, for the reader.
+	HolderNames []string
+
+	// Stale marks a row where at least one holder has not been read recently,
+	// so the view can say so rather than presenting old records as current.
 	Stale bool
 }
+
+// Complete reports whether every server of the target holds this record.
+func (r Row) Complete(target int) bool { return target > 0 && len(r.Holders) >= target }
 
 // Page is one page of a listing.
 type Page struct {
@@ -116,6 +129,10 @@ type Page struct {
 	Page       int
 	PerPage    int
 	TotalPages int
+
+	// TargetServers is how many servers the listing covers, which is the
+	// denominator of every row's holder count.
+	TargetServers int
 }
 
 // NewPage clamps the requested page against the total, because a page number

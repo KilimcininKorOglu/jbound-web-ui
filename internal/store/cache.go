@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -64,18 +66,33 @@ func (r *Records) Clear(ctx context.Context, serverID int64) error {
 	return nil
 }
 
-// List returns one page of cached records.
+// recordKey groups the rows of one record across the servers of a target.
 //
-// The order is by server, name and type. The order of a file says nothing
-// once several servers are shown at once.
+// The priority belongs in the key, because an MX that differs only in its
+// priority is a different record and merging the two would hide the drift.
+const recordKey = " GROUP BY c.fqdn, c.type, c.value, c.priority"
+
+// List returns one page of cached records, one row per record.
+//
+// The rows of a record are folded together across the servers of the target,
+// and each row carries the servers that hold it. A listing of one row per
+// server would repeat the same record once per machine, while a change through
+// the panel reaches the whole target at once.
+//
+// The order is by name, type and value. The order of a file says nothing once
+// several servers are shown at once.
 func (r *Records) List(ctx context.Context, query fleet.Query) (fleet.Page, error) {
 	query.Normalise()
 
 	where, args := recordFilter(query)
 
+	// The count is over the groups rather than the rows, because the page
+	// numbers have to match the rows the page shows.
 	var total int
-	if err := r.db.QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM record_cache c JOIN servers s ON s.id = c.server_id"+where,
+	if err := r.db.QueryRowContext(ctx, `
+SELECT COUNT(*) FROM (SELECT 1
+  FROM record_cache c
+  JOIN servers s ON s.id = c.server_id`+where+recordKey+")",
 		args...).Scan(&total); err != nil {
 		return fleet.Page{}, fmt.Errorf("cannot count the cached records: %w", err)
 	}
@@ -86,10 +103,11 @@ func (r *Records) List(ctx context.Context, query fleet.Query) (fleet.Page, erro
 	}
 
 	rows, err := r.db.QueryContext(ctx, `
-SELECT c.server_id, s.name, c.line, c.fqdn, c.type, c.value, c.priority, c.raw
+SELECT c.fqdn, c.type, c.value, c.priority, MIN(c.raw), MIN(c.line),
+       GROUP_CONCAT(DISTINCT c.server_id), GROUP_CONCAT(DISTINCT s.name)
   FROM record_cache c
-  JOIN servers s ON s.id = c.server_id`+where+`
- ORDER BY s.name, c.fqdn, c.type, c.value
+  JOIN servers s ON s.id = c.server_id`+where+recordKey+`
+ ORDER BY c.fqdn, c.type, c.value
  LIMIT ? OFFSET ?`, append(args, page.PerPage, page.Offset())...)
 	if err != nil {
 		return fleet.Page{}, fmt.Errorf("cannot read the cached records: %w", err)
@@ -97,18 +115,46 @@ SELECT c.server_id, s.name, c.line, c.fqdn, c.type, c.value, c.priority, c.raw
 	defer rows.Close()
 
 	for rows.Next() {
-		var row fleet.Row
-		err := rows.Scan(&row.ServerID, &row.ServerName, &row.Line,
-			&row.FQDN, &row.Type, &row.Value, &row.Priority, &row.Raw)
+		var (
+			row     fleet.Row
+			holders string
+			names   string
+		)
+		err := rows.Scan(&row.FQDN, &row.Type, &row.Value, &row.Priority,
+			&row.Raw, &row.Line, &holders, &names)
 		if err != nil {
 			return fleet.Page{}, fmt.Errorf("cannot read a cached record: %w", err)
 		}
+
+		if row.Holders, err = serverIDs(holders); err != nil {
+			return fleet.Page{}, err
+		}
+		row.HolderNames = strings.Split(names, ",")
+		slices.Sort(row.HolderNames)
+
 		page.Rows = append(page.Rows, row)
 	}
 	if err := rows.Err(); err != nil {
 		return fleet.Page{}, fmt.Errorf("cannot read the cached record rows: %w", err)
 	}
 	return page, nil
+}
+
+// serverIDs reads the identifiers GROUP_CONCAT folded into one column.
+func serverIDs(joined string) ([]int64, error) {
+	parts := strings.Split(joined, ",")
+	ids := make([]int64, 0, len(parts))
+
+	for _, part := range parts {
+		id, err := strconv.ParseInt(part, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("cannot read the server list %q: %w", joined, err)
+		}
+		ids = append(ids, id)
+	}
+
+	slices.Sort(ids)
+	return ids, nil
 }
 
 // ByServer returns every cached record of a target, keyed by server.

@@ -110,6 +110,12 @@ build: ## Build the static panel binary
 build-helper: ## Build the setuid PAM helper
 	$(MAKE) -C authhelper
 
+.PHONY: install
+install: build build-helper ## Install the panel, the helper and the unit (needs root)
+	# The script is the single description of the install. Doing half of it
+	# here would give two answers to what the file modes are.
+	./deploy/install.sh
+
 .PHONY: test
 test: ## Run the unit tests on the host
 	go test ./... $(GO_TEST_FLAGS)
@@ -147,6 +153,14 @@ cppcheck: ## Analyse the setuid helper
 	cppcheck --enable=warning,style,performance,portability \
 		--error-exitcode=1 --inline-suppr --std=c11 \
 		--suppress=missingIncludeSystem authhelper/authhelper.c
+
+.PHONY: shellcheck
+shellcheck: ## Analyse the install and setup scripts
+	# The install and setup scripts run as root on a production host, so they
+	# are read by an analyser like the rest of the code.
+	@command -v shellcheck >/dev/null 2>&1 \
+		|| { echo "shellcheck is not installed"; exit 1; }
+	shellcheck --severity=warning deploy/*.sh scripts/*.sh docker/*.sh
 
 .PHONY: coverage
 coverage: ## Report the test coverage of every package

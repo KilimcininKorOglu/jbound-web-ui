@@ -126,3 +126,85 @@ func TestAFailingClientIsReportedAsOne(t *testing.T) {
 		t.Errorf("the reason was lost: %v", err)
 	}
 }
+
+func TestAnAnswerReportsWhatCameBack(t *testing.T) {
+	cases := []struct {
+		name   string
+		answer Answer
+		ok     bool
+		empty  bool
+	}{
+		{
+			name:   "a resolver that replied",
+			answer: Answer{Records: []string{"10.0.0.1"}},
+			ok:     true,
+		},
+		{
+			// The case worth seeing after a record was added and the rules
+			// were never applied.
+			name:   "a resolver that knows the name but holds no record",
+			answer: Answer{},
+			ok:     true,
+			empty:  true,
+		},
+		{
+			name:   "a resolver that could not be asked",
+			answer: Answer{Err: errors.New("connection refused")},
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			if got := testCase.answer.OK(); got != testCase.ok {
+				t.Errorf("OK = %v, want %v", got, testCase.ok)
+			}
+			if got := testCase.answer.Empty(); got != testCase.empty {
+				t.Errorf("Empty = %v, want %v", got, testCase.empty)
+			}
+		})
+	}
+}
+
+func TestTheRunnerKeepsTheTwoStreamsApart(t *testing.T) {
+	// dig writes its answers to stdout and its complaints to stderr. Mixing
+	// them would turn a warning into an answer.
+	output, err := runCommand(context.Background(),
+		"/bin/sh", "-c", "echo 10.0.0.1; echo warning >&2")
+	if err != nil {
+		t.Fatalf("the command failed: %v", err)
+	}
+	if strings.TrimSpace(string(output)) != "10.0.0.1" {
+		t.Errorf("output = %q, want the answer alone", output)
+	}
+}
+
+func TestAFailedCommandCarriesItsComplaint(t *testing.T) {
+	_, err := runCommand(context.Background(),
+		"/bin/sh", "-c", "echo no servers could be reached >&2; exit 9")
+	if err == nil {
+		t.Fatal("the runner reported success")
+	}
+	if !strings.Contains(err.Error(), "no servers could be reached") {
+		t.Errorf("the reason was dropped: %v", err)
+	}
+}
+
+func TestAFailureThatOnlyWroteToStdoutIsStillReadable(t *testing.T) {
+	_, err := runCommand(context.Background(), "/bin/sh", "-c", "echo bad flag; exit 1")
+	if err == nil {
+		t.Fatal("the runner reported success")
+	}
+	if !strings.Contains(err.Error(), "bad flag") {
+		t.Errorf("the reason was dropped: %v", err)
+	}
+}
+
+func TestASilentFailureReportsTheExitStatus(t *testing.T) {
+	_, err := runCommand(context.Background(), "/bin/sh", "-c", "exit 2")
+	if err == nil {
+		t.Fatal("the runner reported success")
+	}
+	if !strings.Contains(err.Error(), "exit status 2") {
+		t.Errorf("the exit status was dropped: %v", err)
+	}
+}

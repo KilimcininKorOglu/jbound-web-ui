@@ -609,3 +609,66 @@ func TestPublicKeyNeverExposesThePrivateHalf(t *testing.T) {
 		t.Errorf("fingerprint = %q", pair.Fingerprint)
 	}
 }
+
+func TestTheReadsGoStraightToTheStore(t *testing.T) {
+	// The service adds nothing to a read. The test exists so a future guard on
+	// one of them cannot be added without a test noticing.
+	h := newHarness(t)
+	ctx := context.Background()
+
+	created, _, err := h.service.Create(ctx, testActor(), newServerInput("dns1"))
+	if err != nil {
+		t.Fatalf("cannot create the server: %v", err)
+	}
+
+	found, err := h.service.Get(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("cannot read the server: %v", err)
+	}
+	if found.Name != "dns1" {
+		t.Errorf("name = %q, want dns1", found.Name)
+	}
+
+	all, err := h.service.List(ctx)
+	if err != nil {
+		t.Fatalf("cannot list the servers: %v", err)
+	}
+	if len(all) != 1 {
+		t.Errorf("%d servers came back, want 1", len(all))
+	}
+
+	if _, err := h.service.Get(ctx, 404); err == nil {
+		t.Error("a server that does not exist was read")
+	}
+}
+
+func TestTheGroupReadsGoStraightToTheStore(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+
+	created, _, err := h.service.Create(ctx, testActor(), newServerInput("dns1"))
+	if err != nil {
+		t.Fatalf("cannot create the server: %v", err)
+	}
+	group, err := h.service.CreateGroup(ctx, testActor(), Group{
+		Name: "resolvers", ServerIDs: []int64{created.ID}})
+	if err != nil {
+		t.Fatalf("cannot create the group: %v", err)
+	}
+
+	found, err := h.service.GetGroup(ctx, group.ID)
+	if err != nil {
+		t.Fatalf("cannot read the group: %v", err)
+	}
+	if found.Name != "resolvers" {
+		t.Errorf("name = %q, want resolvers", found.Name)
+	}
+
+	all, err := h.service.ListGroups(ctx)
+	if err != nil {
+		t.Fatalf("cannot list the groups: %v", err)
+	}
+	if len(all) != 1 {
+		t.Errorf("%d groups came back, want 1", len(all))
+	}
+}

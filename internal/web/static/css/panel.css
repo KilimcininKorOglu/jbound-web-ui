@@ -162,6 +162,47 @@ button.layout-menu-toggle {
   color: #FFFFFF;
 }
 
+/* The link is green and so is the ring, so this one is drawn in white and
+   inside the link, where the page behind it cannot swallow it. */
+.skip-link:focus-visible {
+  outline-color: #FFFFFF;
+  outline-offset: -6px;
+}
+
+/* --- Keyboard focus ------------------------------------------------------ */
+
+/* The vendor sheets drop the browser outline and put a pale shadow in its
+   place, which vanishes on a coloured field. A ring is drawn instead, and only
+   for a keyboard, so a pointer does not leave one behind after every click.
+   The colour comes from the theme, because the ring has to keep its 3:1
+   against whatever sits behind it. */
+:focus-visible,
+.btn:focus-visible,
+.btn-close:focus-visible,
+.form-control:focus-visible,
+.form-select:focus-visible,
+.form-check-input:focus-visible,
+.page-link:focus-visible,
+.menu-link:focus-visible,
+.menu-toggle:focus-visible,
+.dropdown-item:focus-visible {
+  outline: 3px solid var(--panel-focus, #15703F);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+/* --- Target size --------------------------------------------------------- */
+
+/* WCAG 2.5.8 asks for 24 by 24 CSS pixels. The icon buttons and the pagination
+   links are the controls that fall under it; a checkbox reaches the size
+   through its label, which toggles it as well. */
+.btn-sm,
+.btn-icon,
+.pagination .page-link {
+  min-width: 24px;
+  min-height: 24px;
+}
+
 /* --- Layout details ----------------------------------------------------- */
 
 .navbar-logo {
@@ -192,4 +233,19 @@ button.layout-menu-toggle {
 .htmx-request[disabled],
 .htmx-request:disabled {
   cursor: progress;
+}
+
+/* --- Reduced motion ------------------------------------------------------ */
+
+/* A reader who asked the system for less movement gets none. The indicator
+   still appears and the page still scrolls, both without the animation. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

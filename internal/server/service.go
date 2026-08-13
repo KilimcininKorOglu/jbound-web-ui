@@ -59,11 +59,11 @@ var ErrNameTaken = errors.New("the name is already in use")
 
 // Service holds the server and group operations.
 type Service struct {
-	servers  Repository
-	groups   GroupRepository
-	keys     *KeyStore
-	pool     Connector
-	audit    *audit.Logger
+	servers Repository
+	groups  GroupRepository
+	keys    *KeyStore
+	pool    Connector
+	audit   *audit.Logger
 	dataDir string
 
 	// timeouts is an accessor rather than a value, so a change made on the
@@ -83,7 +83,6 @@ type Timeouts struct {
 func NewService(servers Repository, groups GroupRepository, keys *KeyStore,
 	pool Connector, auditLog *audit.Logger, dataDir string,
 	timeouts func() Timeouts) *Service {
-
 
 	return &Service{
 		servers:  servers,

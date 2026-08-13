@@ -72,7 +72,34 @@ func TestParseCommandRejectsEmpty(t *testing.T) {
 	}
 }
 
+// settableKeys is every variable Load reads. Load treats an empty value as
+// unset, so blanking them all is how a test asks for the pure defaults.
+var settableKeys = []string{
+	"LISTEN_ADDR", "DATA_DIR", "DB_PATH",
+	"AUTH_HELPER_PATH", "PAM_SERVICE", "ADMIN_GROUP", "ALLOWED_GROUP",
+	"MIN_UID", "AUTH_MAX_CONCURRENT", "FLEET_MAX_CONCURRENT",
+	"COOKIE_SECURE", "SESSION_TIMEOUT",
+	"SSH_CONNECT_TIMEOUT", "SSH_COMMAND_TIMEOUT", "SSH_IDLE_TIMEOUT",
+	"CACHE_REFRESH_INTERVAL", "CACHE_STALE_AFTER",
+	"DIG_PATH", "DNS_QUERY_TIMEOUT",
+	"RSYSLOG_RESTART_CMD", "RSYSLOG_STATUS_CMD", "RSYSLOG_VALIDATE_CMD",
+	"RSYSLOG_CONF_PATH", "SYSLOG_LOG_PATH",
+}
+
+// clearEnvironment removes every configured value for the duration of a test.
+//
+// Without it the result would depend on the shell that started the test, and
+// the development container sets most of these.
+func clearEnvironment(t *testing.T) {
+	t.Helper()
+	for _, key := range settableKeys {
+		t.Setenv(key, "")
+	}
+}
+
 func TestLoadUsesProductionDefaults(t *testing.T) {
+	clearEnvironment(t)
+
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load returned an error: %v", err)
@@ -127,6 +154,7 @@ func TestLoadRejectsBadValues(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			clearEnvironment(t)
 			for k, v := range tc.env {
 				t.Setenv(k, v)
 			}
@@ -144,6 +172,7 @@ func TestLoadRejectsBadValues(t *testing.T) {
 // A single Load call must report every problem it finds, so an operator fixes
 // the environment in one pass instead of one variable per restart.
 func TestLoadReportsEveryProblemAtOnce(t *testing.T) {
+	clearEnvironment(t)
 	t.Setenv("MIN_UID", "abc")
 	t.Setenv("SESSION_TIMEOUT", "nope")
 	t.Setenv("RSYSLOG_STATUS_CMD", "id; whoami")

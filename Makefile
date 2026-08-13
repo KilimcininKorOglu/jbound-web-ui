@@ -79,7 +79,10 @@ dev-test: ## Run the unit tests inside the panel container
 
 .PHONY: dev-itest
 dev-itest: ## Run the integration tests inside the panel container
-	$(COMPOSE) exec -T app go test -tags=integration ./... $(GO_TEST_FLAGS)
+	# As the service account, not as root. One of the gate checks is that the
+	# panel never runs with uid 0, and root would also mask the 4750 mode of
+	# the setuid helper.
+	$(COMPOSE) exec -T -u unbound-web app go test -tags=integration ./... $(GO_TEST_FLAGS)
 
 # ---------------------------------------------------------------------------
 # Build and quality

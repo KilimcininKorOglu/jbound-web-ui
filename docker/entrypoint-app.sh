@@ -79,6 +79,13 @@ if [ ! -f "$SRC_DIR/go.mod" ]; then
     exec sleep infinity
 fi
 
+# The fixture passwords were needed to create the test accounts and have no
+# further use. Dropping them here keeps them out of the environment of the long
+# running panel process, where any local account could read them from /proc.
+unset DEV_PASSWORD_ROOT DEV_PASSWORD_DNSADMIN DEV_PASSWORD_DNSUSER \
+      DEV_PASSWORD_SVCACCT DEV_PASSWORD_LOWUID DEV_PASSWORD_LOCKEDUSER \
+      DEV_PASSWORD_EXPIREDUSER
+
 # runuser rather than setpriv. setpriv performs the exec itself, which lets it
 # start a binary the target account has no execute permission on. That makes it
 # a poor tool for reasoning about the 4750 helper, and the same confusion would

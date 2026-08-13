@@ -139,6 +139,53 @@ func TestADatabaseFailureStillReachesTheMirror(t *testing.T) {
 	}
 }
 
+// The switch stops the mirror and nothing else. The database is the primary
+// record, so an operator silencing a noisy receiver must not lose the trail.
+func TestForwardingOffStillWritesTheEntry(t *testing.T) {
+	repo := &fakeRepo{}
+	forwarder := &fakeForwarder{}
+	logger := NewLogger(repo, forwarder).WithForwarding(func() bool { return false })
+
+	if err := logger.Write(context.Background(), Entry{Action: ActionLogin}); err != nil {
+		t.Fatalf("write failed: %v", err)
+	}
+
+	if len(repo.entries) != 1 {
+		t.Errorf("%d row(s) written, want 1", len(repo.entries))
+	}
+	if len(forwarder.entries) != 0 {
+		t.Errorf("%d entry(s) forwarded with the switch off, want none",
+			len(forwarder.entries))
+	}
+}
+
+// The switch is read per entry rather than held, so turning it back on takes
+// effect on the next action.
+func TestForwardingResumesWhenTheSwitchGoesBackOn(t *testing.T) {
+	repo := &fakeRepo{}
+	forwarder := &fakeForwarder{}
+
+	enabled := false
+	logger := NewLogger(repo, forwarder).WithForwarding(func() bool { return enabled })
+
+	ctx := context.Background()
+	if err := logger.Write(ctx, Entry{Action: ActionLogin}); err != nil {
+		t.Fatalf("write failed: %v", err)
+	}
+	enabled = true
+	if err := logger.Write(ctx, Entry{Action: ActionLogout}); err != nil {
+		t.Fatalf("write failed: %v", err)
+	}
+
+	if len(forwarder.entries) != 1 {
+		t.Fatalf("%d entry(s) forwarded, want the second one only",
+			len(forwarder.entries))
+	}
+	if forwarder.entries[0].Action != ActionLogout {
+		t.Errorf("forwarded %s, want %s", forwarder.entries[0].Action, ActionLogout)
+	}
+}
+
 func TestAPanelWithoutASIEMStillWrites(t *testing.T) {
 	repo := &fakeRepo{}
 	logger := NewLogger(repo, nil)

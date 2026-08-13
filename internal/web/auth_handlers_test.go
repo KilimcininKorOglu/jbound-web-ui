@@ -107,7 +107,8 @@ func newTestEnv(t *testing.T) *testEnv {
 
 	sessions := store.NewSessions(db.DB)
 	forwarder := &recordingForwarder{}
-	auditLog := audit.NewLogger(store.NewAuditLogs(db.DB), forwarder)
+	auditLog := audit.NewLogger(store.NewAuditLogs(db.DB), forwarder).
+		WithForwarding(options.BoolOf(settings.SIEMForwardingEnabled))
 
 	dataDir := t.TempDir()
 	keys, err := server.NewKeyStore(dataDir)

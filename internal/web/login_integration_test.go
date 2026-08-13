@@ -106,9 +106,15 @@ func newLiveApp(t *testing.T) *App {
 		t.Fatalf("cannot build the authenticator: %v", err)
 	}
 
+	options := settings.NewService(store.NewSettings(db.DB))
+	if err := options.Load(context.Background()); err != nil {
+		t.Fatalf("cannot load the settings: %v", err)
+	}
+
 	forwarder := siem.NewForwarder("panel.test")
 	t.Cleanup(func() { forwarder.Close() })
-	auditLog := audit.NewLogger(store.NewAuditLogs(db.DB), forwarder)
+	auditLog := audit.NewLogger(store.NewAuditLogs(db.DB), forwarder).
+		WithForwarding(options.BoolOf(settings.SIEMForwardingEnabled))
 
 	// The login path does not reach a managed server, so the service is here
 	// only because the application needs one to build.
@@ -117,11 +123,6 @@ func newLiveApp(t *testing.T) *App {
 	if err != nil {
 		t.Fatalf("cannot create the key store: %v", err)
 	}
-	options := settings.NewService(store.NewSettings(db.DB))
-	if err := options.Load(context.Background()); err != nil {
-		t.Fatalf("cannot load the settings: %v", err)
-	}
-
 	pool := transport.NewPool(context.Background(),
 		options.DurationOf(settings.SSHIdleTimeout))
 	t.Cleanup(pool.Close)

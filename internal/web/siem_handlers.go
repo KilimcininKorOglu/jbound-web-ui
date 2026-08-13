@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"unbound-web/internal/audit"
+	appsettings "unbound-web/internal/settings"
 	"unbound-web/internal/siem"
 )
 
@@ -15,6 +16,10 @@ const defaultLogLines = 50
 // siemPageData feeds the SIEM page and its fragments.
 type siemPageData struct {
 	Settings siem.Settings
+
+	// Forwarding is the panel's own switch. The rules stay on the host either
+	// way, so an operator can silence a noisy receiver without losing them.
+	Forwarding bool
 
 	// Rules is what the form shows. It differs from the stored rules while a
 	// refused submission is being corrected.
@@ -46,7 +51,7 @@ func (a *App) handleSIEMPanel(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) siemPageData(r *http.Request) (siemPageData, error) {
-	settings, err := a.SIEM.Settings(r.Context())
+	config, err := a.SIEM.Settings(r.Context())
 	if err != nil {
 		return siemPageData{}, err
 	}
@@ -58,7 +63,42 @@ func (a *App) siemPageData(r *http.Request) (siemPageData, error) {
 		lines = nil
 	}
 
-	return siemPageData{Settings: settings, Rules: settings.ForwardingRules, Lines: lines}, nil
+	return siemPageData{
+		Settings:   config,
+		Forwarding: a.Settings.Bool(appsettings.SIEMForwardingEnabled),
+		Rules:      config.ForwardingRules,
+		Lines:      lines,
+	}, nil
+}
+
+// handleSIEMForwarding turns the mirror on or off.
+//
+// It writes the same setting the settings page holds, because a switch next to
+// the rules is where an operator looks for it while the receiver is the thing
+// going wrong.
+func (a *App) handleSIEMForwarding(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		a.siemProblem(w, r, "", "The form could not be read.", http.StatusBadRequest)
+		return
+	}
+	enabled := r.PostForm.Has("forwarding")
+
+	err := a.Settings.Save(r.Context(), map[string]string{
+		appsettings.SIEMForwardingEnabled: boolValue(enabled),
+	})
+	if err != nil {
+		a.internalError(w, "cannot store the forwarding switch", err)
+		return
+	}
+
+	state := "disabled"
+	if enabled {
+		state = "enabled"
+	}
+	a.auditSIEM(r, audit.ActionSIEMConfig, "SIEM forwarding "+state)
+	SetToast(w, ToastSuccess, "Forwarding to syslog is now "+state+".")
+
+	a.handleSIEMPanel(w, r)
 }
 
 // handleSIEMSave writes the forwarding rules and restarts the daemon.

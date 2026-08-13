@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	appsettings "unbound-web/internal/settings"
 )
 
 // siemPanel returns the rendered SIEM card.
@@ -26,6 +28,86 @@ func (e *fleetEnv) saveRules(t *testing.T, rules string) *httptest.ResponseRecor
 	t.Helper()
 
 	return e.adminForm(t, http.MethodPost, "/siem", e.cookie, url.Values{"rules": {rules}})
+}
+
+// setForwarding flips the switch the way the card does.
+func (e *fleetEnv) setForwarding(t *testing.T, on bool) *httptest.ResponseRecorder {
+	t.Helper()
+
+	values := url.Values{}
+	if on {
+		// An unchecked switch sends nothing at all, which is how the handler
+		// reads a false.
+		values.Set("forwarding", "on")
+	}
+	return e.adminForm(t, http.MethodPost, "/siem/forwarding", e.cookie, values)
+}
+
+// The rules stay on the host when the mirror is switched off, so a receiver
+// under repair costs nothing to restore.
+func TestTheForwardingSwitchKeepsTheRules(t *testing.T) {
+	const rule = "local6.*    @@siem-sink:514"
+
+	env := newFleetEnv(t)
+	env.saveRules(t, rule)
+
+	if recorder := env.setForwarding(t, false); recorder.Code != http.StatusOK {
+		t.Fatalf("POST /siem/forwarding = %d, want 200", recorder.Code)
+	}
+
+	if env.app.Settings.Bool(appsettings.SIEMForwardingEnabled) {
+		t.Error("the setting is still on after the switch was cleared")
+	}
+
+	body := env.siemPanel(t)
+	if !strings.Contains(body, "forwarding disabled") {
+		t.Error("the card does not say that forwarding is off")
+	}
+	if !strings.Contains(body, rule) {
+		t.Error("the rule was lost when the mirror was switched off")
+	}
+}
+
+func TestTheForwardingSwitchStopsTheMirror(t *testing.T) {
+	env := newFleetEnv(t)
+
+	if recorder := env.setForwarding(t, false); recorder.Code != http.StatusOK {
+		t.Fatalf("POST /siem/forwarding = %d, want 200", recorder.Code)
+	}
+
+	before := len(env.forwarder.sent())
+	env.saveRules(t, "local6.*    @@siem-sink:514")
+
+	if after := len(env.forwarder.sent()); after != before {
+		t.Errorf("%d entry(s) were forwarded with the switch off, want none",
+			after-before)
+	}
+}
+
+func TestTheForwardingSwitchIsAudited(t *testing.T) {
+	env := newFleetEnv(t)
+	env.setForwarding(t, false)
+
+	var details string
+	err := env.db.QueryRow(
+		`SELECT details FROM audit_logs
+		  WHERE action = 'siem_config' ORDER BY id DESC LIMIT 1`).Scan(&details)
+	if err != nil {
+		t.Fatalf("cannot read the audit table: %v", err)
+	}
+	if !strings.Contains(details, "disabled") {
+		t.Errorf("the entry reads %q, want it to say the mirror was disabled", details)
+	}
+}
+
+func TestTheForwardingSwitchIsAdminTerritory(t *testing.T) {
+	env := newTestEnv(t)
+	cookie := env.login(t, "dnsuser")
+
+	recorder := env.do(t, postForm("/siem/forwarding", "forwarding=on"), cookie)
+	if recorder.Code != http.StatusForbidden {
+		t.Errorf("POST /siem/forwarding as a plain user = %d, want 403", recorder.Code)
+	}
 }
 
 func TestTheSIEMPageRefusesAPlainUser(t *testing.T) {

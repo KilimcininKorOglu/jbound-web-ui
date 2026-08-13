@@ -143,10 +143,11 @@ func (a *App) Router() http.Handler {
 		"GET /settings":  a.handleSettingsPage,
 		"POST /settings": a.handleSettingsSave,
 
-		"GET /siem":       a.handleSIEMPage,
-		"GET /siem/panel": a.handleSIEMPanel,
-		"POST /siem":      a.handleSIEMSave,
-		"POST /siem/test": a.handleSIEMTest,
+		"GET /siem":             a.handleSIEMPage,
+		"GET /siem/panel":       a.handleSIEMPanel,
+		"POST /siem":            a.handleSIEMSave,
+		"POST /siem/test":       a.handleSIEMTest,
+		"POST /siem/forwarding": a.handleSIEMForwarding,
 
 		"GET /groups/new":       a.handleGroupForm,
 		"POST /groups":          a.handleGroupCreate,

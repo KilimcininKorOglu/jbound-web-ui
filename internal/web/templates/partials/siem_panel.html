@@ -12,7 +12,9 @@
           {{else}}
           <span class="badge bg-label-danger" data-field="rsyslog-status">rsyslog {{.Settings.Status}}</span>
           {{end}}
-          {{if .Settings.HasActiveRules}}
+          {{if not .Forwarding}}
+          <span class="badge bg-label-secondary ms-1" data-field="forwarding">forwarding disabled</span>
+          {{else if .Settings.HasActiveRules}}
           <span class="badge bg-label-success ms-1" data-field="forwarding">forwarding</span>
           {{else}}
           <span class="badge bg-label-secondary ms-1" data-field="forwarding">not forwarding</span>
@@ -23,6 +25,21 @@
       <div class="card-body">
         {{if .Problem}}{{template "alert" (alert "error" .Problem)}}{{end}}
         {{if .Notice}}{{template "alert" (alert "success" .Notice)}}{{end}}
+
+        {{/* The switch and the rules are separate on purpose. Turning the
+             mirror off keeps the rules on the host, which is what an operator
+             wants while a receiver is being repaired. */}}
+        <div class="form-check form-switch mb-4">
+          <input class="form-check-input" type="checkbox" role="switch"
+                 id="forwarding" name="forwarding" data-field="forwarding-switch"
+                 aria-describedby="forwarding-help" {{if .Forwarding}}checked{{end}}
+                 hx-post="/siem/forwarding" hx-target="#siem-panel" hx-swap="innerHTML">
+          <label class="form-check-label" for="forwarding">Forward audit events to syslog</label>
+          <div class="form-text" id="forwarding-help">
+            While this is off the panel keeps its audit trail in the database
+            only. The rules below stay where they are.
+          </div>
+        </div>
 
         <form hx-post="/siem" hx-target="#siem-panel" hx-swap="innerHTML">
           <label class="form-label" for="rules">Rules</label>

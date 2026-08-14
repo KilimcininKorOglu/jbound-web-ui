@@ -74,10 +74,23 @@ func (o Operation) Validate() error {
 func (o Operation) apply(content []byte) ([]byte, error) {
 	switch o.Kind {
 	case OpAdd:
-		return dnsfile.Add(content, o.Record)
+		updated, err := dnsfile.Add(content, o.Record)
+		if err != nil {
+			return nil, err
+		}
+		return dnsfile.EnsureZone(updated, o.Record.FQDN), nil
 	case OpEdit:
-		return dnsfile.Edit(content, o.Old, o.Record)
+		updated, err := dnsfile.Edit(content, o.Old, o.Record)
+		if err != nil {
+			return nil, err
+		}
+		// An edit may move the record to another name, and the new name may
+		// sit under a zone the file does not declare yet.
+		return dnsfile.EnsureZone(updated, o.Record.FQDN), nil
 	case OpDelete:
+		// The zone line stays. A transparent zone with no local data of its
+		// own changes no answer, and removing it would reach every other name
+		// under it.
 		return dnsfile.Delete(content, o.Record)
 	default:
 		return nil, fmt.Errorf("%w: unknown operation %q", dnsfile.ErrInvalid, o.Kind)

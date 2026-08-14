@@ -663,3 +663,101 @@ func TestAFailedWriteNamesTheServerInTheLog(t *testing.T) {
 		t.Errorf("a server that succeeded was logged as a failure:\n%s", output)
 	}
 }
+
+func TestAnAddDeclaresTheZoneOfTheRecordOnEveryServer(t *testing.T) {
+	// Under a parent zone the operator declared static or redirect, a record
+	// with no zone line of its own is written and never answered. The panel
+	// reports it applied, and the resolver disagrees.
+	h := newWriteHarness(t, 3)
+
+	report, err := h.writer.Apply(context.Background(), testActor(), groupTarget(), addOperation())
+	if err != nil {
+		t.Fatalf("Apply returned an error: %v", err)
+	}
+	if !report.OK() {
+		t.Fatalf("got %+v", report.Results)
+	}
+
+	for name, target := range h.targets {
+		if !strings.Contains(target.file(), `local-zone: "example.net." transparent`) {
+			t.Errorf("%s carries no zone for the record:\n%s", name, target.file())
+		}
+	}
+}
+
+func TestASecondRecordOfTheSameZoneAddsNoSecondZoneLine(t *testing.T) {
+	h := newWriteHarness(t, 1)
+
+	for _, value := range []string{"192.0.2.20", "192.0.2.21"} {
+		op := Operation{Kind: OpAdd, Record: dnsfile.Record{
+			FQDN: "new.example.net", Type: "A", Value: value}}
+
+		report, err := h.writer.Apply(context.Background(), testActor(),
+			Target{Scope: ScopeServer, ServerID: 1}, op)
+		if err != nil {
+			t.Fatalf("Apply returned an error: %v", err)
+		}
+		if !report.OK() {
+			t.Fatalf("got %+v", report.Results)
+		}
+	}
+
+	file := h.targets["dns1"].file()
+	if got := strings.Count(file, "local-zone:"); got != 1 {
+		t.Errorf("the file carries %d zone lines, want 1:\n%s", got, file)
+	}
+}
+
+func TestAnEditThatMovesARecordDeclaresTheNewZone(t *testing.T) {
+	h := newWriteHarness(t, 1)
+	target := Target{Scope: ScopeServer, ServerID: 1}
+
+	add := addOperation()
+	if _, err := h.writer.Apply(context.Background(), testActor(), target, add); err != nil {
+		t.Fatalf("Apply returned an error: %v", err)
+	}
+
+	edit := Operation{
+		Kind: OpEdit,
+		Old:  add.Record,
+		Record: dnsfile.Record{
+			FQDN: "moved.example.org", Type: "A", Value: "192.0.2.20"},
+	}
+	report, err := h.writer.Apply(context.Background(), testActor(), target, edit)
+	if err != nil {
+		t.Fatalf("Apply returned an error: %v", err)
+	}
+	if !report.OK() {
+		t.Fatalf("got %+v", report.Results)
+	}
+
+	if file := h.targets["dns1"].file(); !strings.Contains(file,
+		`local-zone: "example.org." transparent`) {
+		t.Errorf("the new zone was not declared:\n%s", file)
+	}
+}
+
+func TestADeleteLeavesTheZoneLineWhereItIs(t *testing.T) {
+	// A transparent zone with no local data of its own changes no answer, and
+	// removing it would reach every other name under it.
+	h := newWriteHarness(t, 1)
+	target := Target{Scope: ScopeServer, ServerID: 1}
+
+	add := addOperation()
+	if _, err := h.writer.Apply(context.Background(), testActor(), target, add); err != nil {
+		t.Fatalf("Apply returned an error: %v", err)
+	}
+
+	del := Operation{Kind: OpDelete, Record: add.Record}
+	if _, err := h.writer.Apply(context.Background(), testActor(), target, del); err != nil {
+		t.Fatalf("Apply returned an error: %v", err)
+	}
+
+	file := h.targets["dns1"].file()
+	if strings.Contains(file, "new.example.net") {
+		t.Errorf("the record survived the delete:\n%s", file)
+	}
+	if !strings.Contains(file, `local-zone: "example.net." transparent`) {
+		t.Errorf("the zone line went with the record:\n%s", file)
+	}
+}

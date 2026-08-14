@@ -128,9 +128,6 @@ func (a *App) Router() http.Handler {
 		"GET /dns/query":      a.handleQueryForm,
 		"POST /dns/query":     a.withFleetDeadline(a.handleQuery),
 
-		"GET /logs":       a.handleLogsPage,
-		"GET /logs/table": a.handleLogsTable,
-
 		"GET /diff":         a.handleDiffPage,
 		"GET /diff/table":   a.handleDiffTable,
 		"POST /diff/repair": a.withFleetDeadline(a.handleDiffRepair),
@@ -157,6 +154,14 @@ func (a *App) Router() http.Handler {
 		"POST /servers/{id}/rotate-key": a.handleServerRotateKey,
 		"POST /servers/{id}/test":       a.handleServerTest,
 		"POST /servers/{id}/trust":      a.handleServerTrust,
+
+		// The trail carries every account's sign ins with their source
+		// addresses, and the details of a failed login hold the exact string
+		// that was typed into the user name box. The SIEM page, which shows
+		// the same events read back from syslog, is admin territory for the
+		// same reason.
+		"GET /logs":       a.handleLogsPage,
+		"GET /logs/table": a.handleLogsTable,
 
 		"GET /settings":  a.handleSettingsPage,
 		"POST /settings": a.handleSettingsSave,

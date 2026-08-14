@@ -26,12 +26,12 @@ func contains(paths []string, want string) bool {
 func TestMenuHidesAdminItemsFromAPlainUser(t *testing.T) {
 	paths := pathsOf(menuFor(plainSession(), "/dns"))
 
-	for _, hidden := range []string{"/servers", "/siem"} {
+	for _, hidden := range []string{"/servers", "/siem", "/logs"} {
 		if contains(paths, hidden) {
 			t.Errorf("a plain user sees %s in the menu", hidden)
 		}
 	}
-	for _, shown := range []string{"/dns", "/diff", "/logs", "/system"} {
+	for _, shown := range []string{"/dns", "/diff", "/system"} {
 		if !contains(paths, shown) {
 			t.Errorf("a plain user cannot see %s in the menu", shown)
 		}

@@ -39,13 +39,18 @@ func TestTheLogPageNeedsASession(t *testing.T) {
 	}
 }
 
-func TestAPlainUserMayReadTheLog(t *testing.T) {
+func TestAPlainUserMayNotReadTheLog(t *testing.T) {
+	// The trail carries every account's sign ins with their source addresses,
+	// and the details of a failed login hold the exact string that was typed
+	// into the user name box, which is regularly a password.
 	env := newTestEnv(t)
 	cookie := env.login(t, "dnsuser")
 
-	recorder := env.do(t, httptest.NewRequest(http.MethodGet, "/logs", nil), cookie)
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", recorder.Code)
+	for _, path := range []string{"/logs", "/logs/table"} {
+		recorder := env.do(t, httptest.NewRequest(http.MethodGet, path, nil), cookie)
+		if recorder.Code != http.StatusForbidden {
+			t.Errorf("GET %s = %d, want 403", path, recorder.Code)
+		}
 	}
 }
 

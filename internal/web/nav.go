@@ -43,7 +43,7 @@ var menu = []MenuSection{
 	{
 		Title: "nav.section.system",
 		Items: []MenuItem{
-			{Label: "nav.audit_logs", Path: "/logs", Icon: "bx-list-ul"},
+			{Label: "nav.audit_logs", Path: "/logs", Icon: "bx-list-ul", AdminOnly: true},
 			{Label: "nav.sessions", Path: "/sessions", Icon: "bx-user-check", AdminOnly: true},
 			{Label: "nav.siem_config", Path: "/siem", Icon: "bx-transfer", AdminOnly: true},
 			{Label: "nav.settings", Path: "/settings", Icon: "bx-cog", AdminOnly: true},

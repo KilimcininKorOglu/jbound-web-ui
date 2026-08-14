@@ -297,6 +297,9 @@ func (a *App) handleRecordForm(w http.ResponseWriter, r *http.Request) {
 		Types: dnsfile.Types,
 		IsNew: true,
 	}
+	// The form is the one place that knows nobody has chosen a preference
+	// yet. Once a record exists, zero is a preference like any other.
+	data.Record.Priority = dnsfile.DefaultMXPriority
 
 	// An edit arrives with the record it is about, because the file is the
 	// source of truth and the panel has no identifier for a line.

@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"strings"
 
-	"unbound-web/internal/dnsfile"
 	"unbound-web/internal/fleet"
 	"unbound-web/internal/i18n"
 	"unbound-web/internal/server"
@@ -218,9 +217,6 @@ func (a *App) handleDiffRepair(w http.ResponseWriter, r *http.Request) {
 	}
 
 	want := recordFromValues(r.Form)
-	if want.Type == dnsfile.TypeMX && want.Priority == 0 {
-		want.Priority = dnsfile.DefaultMXPriority
-	}
 
 	report, err := a.Records.Repair(r.Context(), a.actor(r), target, want)
 	if err != nil {

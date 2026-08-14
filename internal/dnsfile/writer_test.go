@@ -8,6 +8,12 @@ import (
 	"unbound-web/internal/dnsfile"
 )
 
+// mxRecord is one mail exchanger with the preference it was given.
+func mxRecord(fqdn, value string, preference int) dnsfile.Record {
+	return dnsfile.Record{
+		FQDN: fqdn, Type: dnsfile.TypeMX, Value: value, Priority: preference}
+}
+
 func record(fqdn, recordType, value string) dnsfile.Record {
 	return dnsfile.Record{FQDN: fqdn, Type: recordType, Value: value}
 }
@@ -38,9 +44,15 @@ func TestBuildLineRendersEveryType(t *testing.T) {
 				Value: "mx1.example.net", Priority: 20},
 			want: `local-data: "mail.example.net. MX 20 mx1.example.net"`,
 		},
-		"mail without a preference": {
-			record: record("mail.example.net", "MX", "mx1.example.net"),
-			want:   `local-data: "mail.example.net. MX 10 mx1.example.net"`,
+		"mail with the preference it was given": {
+			record: mxRecord("mail.example.net", "mx1.example.net", 20),
+			want:   `local-data: "mail.example.net. MX 20 mx1.example.net"`,
+		},
+		// Zero is a legal preference, and it is the one the most preferred
+		// exchanger of a zone usually carries. It used to be written as ten.
+		"mail with the zero preference": {
+			record: mxRecord("mail.example.net", "mx1.example.net", 0),
+			want:   `local-data: "mail.example.net. MX 0 mx1.example.net"`,
 		},
 		"name that already ends in a dot": {
 			record: record("www.example.net.", "A", "192.0.2.10"),
@@ -444,19 +456,34 @@ func TestARecordThatIsNotInTheFileIsStillRefused(t *testing.T) {
 	}
 }
 
-// A preference that is left out reads as the default the panel writes, so an
-// MX record added through the panel is still found by an edit.
+// The preference is part of what the record is, so it decides the match.
 func TestAnMXRecordIsMatchedByItsPreference(t *testing.T) {
 	content := []byte(`local-data: "example.local MX 10 mx1.example.local"` + "\n")
 
-	if _, err := dnsfile.Delete(content, dnsfile.Record{
-		FQDN: "example.local", Type: dnsfile.TypeMX, Value: "mx1.example.local",
-	}); err != nil {
+	if _, err := dnsfile.Delete(content, mxRecord("example.local", "mx1.example.local", 10)); err != nil {
 		t.Errorf("dnsfile.Delete returned an error: %v", err)
 	}
-	if _, err := dnsfile.Delete(content, dnsfile.Record{
-		FQDN: "example.local", Type: dnsfile.TypeMX, Value: "mx1.example.local", Priority: 20,
-	}); !errors.Is(err, dnsfile.ErrNotFound) {
+	if _, err := dnsfile.Delete(content,
+		mxRecord("example.local", "mx1.example.local", 20)); !errors.Is(err, dnsfile.ErrNotFound) {
 		t.Errorf("dnsfile.Delete removed a record with another preference: %v", err)
+	}
+}
+
+// The exchanger a zone prefers most is the one written with preference zero,
+// and it used to be the one record the panel could neither write nor remove.
+func TestTheZeroPreferenceIsARecordOfItsOwn(t *testing.T) {
+	content := []byte(`local-data: "example.local. MX 0 mx1.example.local"` + "\n")
+
+	if _, err := dnsfile.Delete(content,
+		mxRecord("example.local", "mx1.example.local", 10)); !errors.Is(err, dnsfile.ErrNotFound) {
+		t.Errorf("dnsfile.Delete removed the zero preference for a ten: %v", err)
+	}
+
+	left, err := dnsfile.Delete(content, mxRecord("example.local", "mx1.example.local", 0))
+	if err != nil {
+		t.Fatalf("dnsfile.Delete returned an error: %v", err)
+	}
+	if strings.Contains(string(left), "mx1.example.local") {
+		t.Errorf("the record is still there:\n%s", left)
 	}
 }

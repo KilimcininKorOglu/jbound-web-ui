@@ -24,18 +24,14 @@ func (r Record) BuildLine() string {
 	fqdn := strings.TrimSuffix(r.FQDN, ".") + "."
 
 	if r.Type == TypeMX {
+		// The preference is written as it stands. Zero is a legal preference,
+		// and it is the one the most preferred mail exchanger of a zone
+		// usually carries, so substituting a default here would make that
+		// record the one the panel cannot manage.
 		return fmt.Sprintf("local-data: %q",
-			fmt.Sprintf("%s %s %d %s", fqdn, r.Type, r.preference(), r.Value))
+			fmt.Sprintf("%s %s %d %s", fqdn, r.Type, r.Priority, r.Value))
 	}
 	return fmt.Sprintf("local-data: %q", fmt.Sprintf("%s %s %s", fqdn, r.Type, r.Value))
-}
-
-// preference is the MX preference the file carries for this record.
-func (r Record) preference() int {
-	if r.Priority == 0 {
-		return DefaultMXPriority
-	}
-	return r.Priority
 }
 
 // matches reports whether one line of the file holds this record.
@@ -58,7 +54,7 @@ func (r Record) matches(line string) bool {
 		return false
 	}
 	if r.Type == TypeMX {
-		return r.preference() == other.preference()
+		return r.Priority == other.Priority
 	}
 	return true
 }

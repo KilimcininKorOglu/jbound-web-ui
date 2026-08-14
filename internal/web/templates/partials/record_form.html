@@ -37,7 +37,7 @@
           <label class="form-label" for="priority">{{t "record.preference"}}</label>
           <input class="form-control" id="priority" name="priority" type="number"
                  min="0" max="65535"
-                 value="{{if .Record.Priority}}{{.Record.Priority}}{{else}}10{{end}}">
+                 value="{{.Record.Priority}}">
           <div class="form-text">{{t "record.preference_help"}}</div>
         </div>
 

@@ -994,3 +994,38 @@ func TestARefusedRecordDoesNotComeBackWithEmptyTargetLists(t *testing.T) {
 		t.Errorf("the failure never reached the log:\n%s", logged.String())
 	}
 }
+
+func TestAnMXRecordKeepsThePreferenceTheOperatorTyped(t *testing.T) {
+	// Zero is the preference the most preferred exchanger of a zone carries.
+	// It used to be written as ten, so the confirmation showed one record and
+	// the servers held another, and the record could then never be removed.
+	env := newFleetEnv(t)
+
+	env.adminForm(t, http.MethodPost, "/dns/records", env.cookie, groupForm(url.Values{
+		"fqdn": {"example.local"}, "type": {"MX"},
+		"value": {"mx1.example.local"}, "priority": {"0"},
+	}))
+
+	for id := int64(1); id <= 3; id++ {
+		if !strings.Contains(env.target(id).file(), "MX 0 mx1.example.local") {
+			t.Errorf("server %d holds:\n%s", id, env.target(id).file())
+		}
+	}
+
+	// And what was written can be taken away again, which is the half the
+	// operator only discovers later.
+	recorder := env.deleteRecord(t, groupForm(url.Values{
+		"fqdn": {"example.local"}, "type": {"MX"},
+		"value": {"mx1.example.local"}, "priority": {"0"},
+	}))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("delete = %d, want 200:\n%s", recorder.Code, recorder.Body.String())
+	}
+	for id := int64(1); id <= 3; id++ {
+		// The seed file holds another exchanger with the same target, so the
+		// whole line decides rather than the value alone.
+		if strings.Contains(env.target(id).file(), `"example.local. MX 0`) {
+			t.Errorf("server %d still holds the record:\n%s", id, env.target(id).file())
+		}
+	}
+}

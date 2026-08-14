@@ -49,6 +49,26 @@ func TestHtmxIsTheOnlyScriptAllowedToContainEval(t *testing.T) {
 	}
 }
 
+// No dialog heading may go through the option SweetAlert2 parses as HTML.
+//
+// A toast message reaches the client as JSON in a response header, so the
+// template engine that escapes everything else never sees it, and SetToast
+// takes free form text from any handler. titleText is written with innerText,
+// so a message cannot become markup whatever a future caller puts into it.
+func TestNoDialogRendersItsHeadingAsHTML(t *testing.T) {
+	body, err := fs.ReadFile(staticFS, "static/js/app.js")
+	if err != nil {
+		t.Fatalf("cannot read the panel script: %v", err)
+	}
+
+	if strings.Contains(string(body), "title:") {
+		t.Error("app.js sets title:, which SweetAlert2 parses as HTML; use titleText:")
+	}
+	if !strings.Contains(string(body), "titleText:") {
+		t.Error("app.js sets no heading at all, so this check guards nothing")
+	}
+}
+
 // Every asset the layouts reference must exist. A typo in a path would
 // otherwise only appear as a missing stylesheet in the browser.
 func TestLayoutsReferenceOnlyAssetsThatExist(t *testing.T) {

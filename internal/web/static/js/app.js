@@ -68,8 +68,11 @@
     timerProgressBar: true
   });
 
+  /* titleText rather than title. SweetAlert2 parses title as HTML and writes
+     titleText with innerText, and this message reaches the client as JSON in a
+     response header, outside the template engine that escapes everything else. */
   function showToast(severity, message) {
-    Toast.fire({ icon: severity || 'info', title: message });
+    Toast.fire({ icon: severity || 'info', titleText: message });
   }
 
   /* The server raises a toast with the HX-Trigger header. htmx turns each
@@ -118,7 +121,7 @@
     event.preventDefault();
 
     Swal.fire({
-      title: event.target.getAttribute('data-confirm-title') || text('client.confirm_title'),
+      titleText: event.target.getAttribute('data-confirm-title') || text('client.confirm_title'),
       text: event.detail.question,
       icon: 'warning',
       showCancelButton: true,
@@ -219,7 +222,7 @@
 
   function confirmLogout() {
     Swal.fire({
-      title: text('client.logout_title'),
+      titleText: text('client.logout_title'),
       text: text('client.logout_question'),
       icon: 'warning',
       showCancelButton: true,

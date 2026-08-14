@@ -14,13 +14,18 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
+
+	"golang.org/x/crypto/ssh"
 
 	"jbound/internal/audit"
 	"jbound/internal/database"
@@ -33,6 +38,18 @@ import (
 // targets are the three Unbound containers of the stack. The host is the
 // service name, which is what the compose network resolves.
 var targets = []string{"dns1", "dns2", "dns3"}
+
+// downTarget is a fourth member of the group that never answers.
+//
+// Without it every fleet operation in the stack succeeds on every server, and
+// the path an operator actually needs to recognise, a change that reached some
+// servers and not others, is the one nobody sees while building it. The address
+// is from the RFC 5737 documentation block, so it is not routed anywhere and
+// the connection runs out of time rather than reaching a stranger.
+const (
+	downName = "dns-down"
+	downHost = "192.0.2.1"
+)
 
 // groupName is the group a fleet operation is aimed at in the stack.
 const groupName = "resolvers"
@@ -109,6 +126,12 @@ func run() error {
 		ids = append(ids, id)
 	}
 
+	downID, err := addDownTarget(ctx, service, servers, actor, string(material))
+	if err != nil {
+		return err
+	}
+	ids = append(ids, downID)
+
 	if _, err := service.CreateGroup(ctx, actor, server.Group{
 		Name:        groupName,
 		Description: "Every target of the development stack",
@@ -151,6 +174,56 @@ func addTarget(ctx context.Context, service *server.Service, actor server.Actor,
 		return 0, fmt.Errorf("cannot approve the host key of %s: %w", name, err)
 	}
 	return record.ID, nil
+}
+
+// addDownTarget creates the member that cannot be reached.
+//
+// The record is created through the service like every other one. Only the host
+// key is pinned directly, because there is no operator path to approve a key
+// from a host that never answers, and an unapproved server is refused before
+// the panel dials. Refusing early would prove the wrong thing: what this
+// fixture is for is the timeout, not the missing pin.
+//
+// The pinned key is generated here and belongs to nothing. It is never
+// compared, because the comparison happens after a handshake that never gets
+// that far.
+func addDownTarget(ctx context.Context, service *server.Service, servers *store.Servers,
+	actor server.Actor, material string) (int64, error) {
+
+	record, _, err := service.Create(ctx, actor, server.CreateInput{
+		Server: server.Server{
+			Name: downName, Host: downHost, SSHUser: "dnsops", Enabled: true,
+			StatusCmd: "/usr/sbin/service unbound status",
+		},
+		PrivateKey: material,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("cannot create %s: %w", downName, err)
+	}
+
+	hostKey, err := unreachableHostKey()
+	if err != nil {
+		return 0, err
+	}
+	if err := servers.SetHostKey(ctx, record.ID, hostKey); err != nil {
+		return 0, fmt.Errorf("cannot pin a host key for %s: %w", downName, err)
+	}
+	return record.ID, nil
+}
+
+// unreachableHostKey returns an authorized_keys line for a host that will never
+// present one.
+func unreachableHostKey() (string, error) {
+	public, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return "", fmt.Errorf("cannot generate a host key: %w", err)
+	}
+
+	key, err := ssh.NewPublicKey(public)
+	if err != nil {
+		return "", fmt.Errorf("cannot encode the host key: %w", err)
+	}
+	return string(bytes.TrimSpace(ssh.MarshalAuthorizedKey(key))), nil
 }
 
 // scan waits for a target to offer its host key.

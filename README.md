@@ -361,6 +361,12 @@ keys and a group named `resolvers` over all of them, written by
 and it leaves a panel that already holds a server alone, so anything you change
 afterwards stays changed.
 
+The group carries a fourth member, `dns-down`, pointed at the unrouted
+`192.0.2.1`. Every fleet action therefore reaches three servers and times out on
+one, which is the partial result an operator has to be able to read: HTTP 207, a
+row per server, and a toast that does not claim success. Disable it on the
+servers page when you want a clean run.
+
 ### Checks
 
 ```

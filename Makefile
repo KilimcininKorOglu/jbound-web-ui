@@ -178,8 +178,21 @@ shellcheck: ## Analyse the install and setup scripts
 
 .PHONY: coverage
 coverage: ## Report the test coverage of every package
+	# This leaves the integration tests out, so it understates the packages
+	# that speak to a real server: internal/transport is mostly reached by
+	# them. Use dev-coverage for the number that counts.
 	go test ./... -count=1 -coverprofile=coverage.out
 	@go tool cover -func=coverage.out | tail -1
+
+.PHONY: dev-coverage
+dev-coverage: ## Report the coverage of both tag sets, inside the container
+	# The one that answers "is this tested". The SSH transport has almost no
+	# unit tests by design: a fake SSH server proves the panel agrees with
+	# itself, and the point of that code is what a real sshd does with it.
+	$(COMPOSE) exec -T -u jbound app \
+		go test -p 1 -tags=integration ./... -count=1 -coverprofile=coverage-int.out
+	$(COMPOSE) exec -T -u jbound app \
+		go tool cover -func=coverage-int.out | tail -1
 
 .PHONY: check
 check: lint vuln test cppcheck shellcheck ## Run every check that needs no container

@@ -855,3 +855,87 @@ func TestARecordedProbeFailureKeepsItsTextOutOfTheDatabase(t *testing.T) {
 		}
 	}
 }
+
+func TestAnActionOnSomethingThatIsGoneWritesNoAuditRow(t *testing.T) {
+	// Two administrators, two tabs. One deletes a group or a server while the
+	// other is still looking at it. The second action has to fail, and it has
+	// to leave no trail saying it happened, because a trail that records
+	// deletions that never occurred is worse than no trail.
+	h := newHarness(t)
+	ctx := context.Background()
+
+	cases := map[string]func() error{
+		"update a group that is gone": func() error {
+			return h.service.UpdateGroup(ctx, testActor(),
+				Group{ID: 404, Name: "resolvers"})
+		},
+		"delete a group that is gone": func() error {
+			return h.service.DeleteGroup(ctx, testActor(), 404)
+		},
+		"delete a server that is gone": func() error {
+			return h.service.Delete(ctx, testActor(), 404)
+		},
+	}
+
+	for name, action := range cases {
+		t.Run(name, func(t *testing.T) {
+			before := len(h.auditLog.entries)
+			if err := action(); err == nil {
+				t.Fatal("the action succeeded against something that is gone")
+			}
+			if after := len(h.auditLog.entries); after != before {
+				t.Errorf("the failed action wrote %d audit row(s)", after-before)
+			}
+		})
+	}
+}
+
+func TestTargetsRefusesAGroupThatIsGone(t *testing.T) {
+	// A group that no longer exists and a group with no members are different
+	// answers, and the operator needs to be able to tell them apart.
+	h := newHarness(t)
+
+	if _, err := h.service.Targets(context.Background(), 404); err == nil {
+		t.Fatal("a group that does not exist returned targets")
+	}
+}
+
+func TestPublicKeyRefusesAServerWithNoKeyOnDisk(t *testing.T) {
+	// The key panel asks for the public half by the path in the row. A row
+	// whose file has been removed by hand must say so rather than hand back an
+	// empty key the operator would then copy onto a server.
+	h := newHarness(t)
+
+	pair, err := h.service.PublicKey(context.Background(), 404)
+	if err == nil {
+		t.Fatal("a server that does not exist returned a public key")
+	}
+	if pair.PublicKey != "" || pair.Fingerprint != "" {
+		t.Errorf("a failed read still described a key: %+v", pair)
+	}
+}
+
+func TestPublicKeyRefusesAKeyFileThatIsGone(t *testing.T) {
+	// The row survives a key file somebody removed by hand. Handing back an
+	// empty key would be an invitation to copy nothing onto a server and then
+	// wonder why the connection fails.
+	h := newHarness(t)
+	ctx := context.Background()
+
+	record, _, err := h.service.Create(ctx, testActor(), newServerInput("dns1"))
+	if err != nil {
+		t.Fatalf("Create returned an error: %v", err)
+	}
+
+	stored, err := h.servers.Get(ctx, record.ID)
+	if err != nil {
+		t.Fatalf("cannot read the record back: %v", err)
+	}
+	if err := os.Remove(filepath.Join(h.dataDir, stored.SSHKeyPath)); err != nil {
+		t.Fatalf("cannot remove the key file: %v", err)
+	}
+
+	if _, err := h.service.PublicKey(ctx, record.ID); err == nil {
+		t.Fatal("a server whose key file is gone returned a public key")
+	}
+}

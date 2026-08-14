@@ -413,8 +413,15 @@ make test         # unit tests only
 make dev-itest    # integration tests against the containers
 make cppcheck     # the setuid helper, on top of -Wall -Wextra -Werror
 make shellcheck   # the install and setup scripts
-make coverage     # coverage of every package
+make coverage     # coverage without the integration tests
+make dev-coverage # coverage of both tag sets, inside the container
 ```
+
+`coverage` leaves the integration tests out and therefore understates the
+packages that speak to a real server. `internal/transport` reads as two thirds
+covered there and is near ninety with `dev-coverage`, because a fake SSH server
+only proves the panel agrees with itself and what that code is for is what a
+real sshd does with it. `dev-coverage` is the number to judge by.
 
 `check` covers the Go analysers, the vulnerability scan and the unit tests, and
 it covers the setuid helper and the scripts that run as root during install,

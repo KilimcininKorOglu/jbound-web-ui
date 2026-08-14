@@ -185,3 +185,55 @@ func TestTheAuditPageIsBounded(t *testing.T) {
 		t.Errorf("the second page holds %d rows, want 2", len(page.Rows))
 	}
 }
+
+func TestAnEntryWrittenInATransactionLeavesWithIt(t *testing.T) {
+	// The import command writes a whole trail or none of it, which only works
+	// if the insert takes part in the caller's transaction rather than opening
+	// one of its own.
+	ctx := context.Background()
+	f := newFixture(t)
+	logs := store.NewAuditLogs(f.db)
+
+	tx, err := f.db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("cannot start a transaction: %v", err)
+	}
+
+	entry := audit.Entry{Username: "dnsadmin", Action: audit.ActionLogin,
+		Details: "rolled back", IPAddress: "10.0.0.5"}
+	if err := store.WriteAuditTx(ctx, tx, entry, time.Now()); err != nil {
+		t.Fatalf("cannot write inside the transaction: %v", err)
+	}
+	if err := tx.Rollback(); err != nil {
+		t.Fatalf("cannot roll back: %v", err)
+	}
+
+	page, err := logs.List(ctx, audit.Query{Page: 1, PerPage: 25})
+	if err != nil {
+		t.Fatalf("cannot list the trail: %v", err)
+	}
+	if page.Total != 0 {
+		t.Errorf("the trail holds %d rows after a rollback, want 0", page.Total)
+	}
+
+	// And the committed case, so the test does not pass simply because nothing
+	// was ever written.
+	tx, err = f.db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("cannot start a second transaction: %v", err)
+	}
+	if err := store.WriteAuditTx(ctx, tx, entry, time.Now()); err != nil {
+		t.Fatalf("cannot write inside the transaction: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("cannot commit: %v", err)
+	}
+
+	page, err = logs.List(ctx, audit.Query{Page: 1, PerPage: 25})
+	if err != nil {
+		t.Fatalf("cannot list the trail: %v", err)
+	}
+	if page.Total != 1 {
+		t.Errorf("the trail holds %d rows after a commit, want 1", page.Total)
+	}
+}

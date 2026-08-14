@@ -240,7 +240,10 @@ func (a *App) Render(w http.ResponseWriter, r *http.Request, status int,
 		serverError(w, r)
 		return
 	}
-	writeHTML(w, r, status, buf.Bytes())
+	// A page is sent as it is. It carries the session CSRF token in the body
+	// element and most pages echo a filter the reader typed, and a response
+	// that holds both gives its secret away through its compressed length.
+	writeHTML(w, r, status, buf.Bytes(), false)
 }
 
 // RenderPartial writes one fragment, which is what an htmx swap expects.
@@ -257,15 +260,19 @@ func (a *App) RenderPartial(w http.ResponseWriter, r *http.Request, status int,
 		serverError(w, r)
 		return
 	}
-	writeHTML(w, r, status, buf.Bytes())
+	// A fragment carries no token, and the record table is the largest thing
+	// the panel sends after the stylesheets: a hundred rows of markup, each
+	// naming the servers that hold the record.
+	writeHTML(w, r, status, buf.Bytes(), true)
 }
 
-func writeHTML(w http.ResponseWriter, r *http.Request, status int, body []byte) {
+// writeHTML sends a rendered body, compressing it when the caller says the
+// response is free to be compressed.
+func writeHTML(w http.ResponseWriter, r *http.Request, status int,
+	body []byte, compress bool) {
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(status)
-	if _, err := w.Write(body); err != nil {
-		logging.From(r.Context()).Error("cannot write the response", "error", err)
-	}
+	writeCompressed(w, r, status, body, compress)
 }
 
 // SetToast asks the browser to raise a toast once the response lands.

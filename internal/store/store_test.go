@@ -14,27 +14,6 @@ import (
 	"unbound-web/internal/store"
 )
 
-func TestAServerIsFoundByItsName(t *testing.T) {
-	// The name is what an operator types and what the seed of a deployment
-	// carries, so the lookup exists next to the one by identifier.
-	f := newFixture(t)
-	ctx := context.Background()
-	created := f.mustCreate(t, "dns1")
-
-	found, err := f.servers.GetByName(ctx, "dns1")
-	if err != nil {
-		t.Fatalf("cannot read the server: %v", err)
-	}
-	if found.ID != created.ID {
-		t.Errorf("id = %d, want %d", found.ID, created.ID)
-	}
-
-	_, err = f.servers.GetByName(ctx, "dns9")
-	if !errors.Is(err, store.ErrNotFound) {
-		t.Errorf("a name nobody registered returned %v, want ErrNotFound", err)
-	}
-}
-
 func TestTheKeyPathIsStoredAfterTheRowExists(t *testing.T) {
 	// The key file is named after the row, so the path is only known once the
 	// row has an identifier.

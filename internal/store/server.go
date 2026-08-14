@@ -139,21 +139,6 @@ func (s *Servers) Get(ctx context.Context, id int64) (server.Server, error) {
 	return record, nil
 }
 
-// GetByName reads one server by its name.
-func (s *Servers) GetByName(ctx context.Context, name string) (server.Server, error) {
-	row := s.db.QueryRowContext(ctx,
-		"SELECT"+serverColumns+" FROM servers WHERE name = ?", name)
-
-	record, err := scanServer(row)
-	if errors.Is(err, sql.ErrNoRows) {
-		return server.Server{}, fmt.Errorf("server %s: %w", name, ErrNotFound)
-	}
-	if err != nil {
-		return server.Server{}, fmt.Errorf("cannot read the server: %w", err)
-	}
-	return record, nil
-}
-
 // List returns every server ordered by name.
 func (s *Servers) List(ctx context.Context) ([]server.Server, error) {
 	rows, err := s.db.QueryContext(ctx,

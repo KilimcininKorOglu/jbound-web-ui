@@ -530,3 +530,30 @@ func TestACacheWriteFailureIsLogged(t *testing.T) {
 		t.Errorf("the log does not carry the cause:\n%s", output)
 	}
 }
+
+func TestAPassNamesTheServersItCouldNotRefresh(t *testing.T) {
+	// A count on its own cannot tell one flapping host from a fleet wide
+	// outage, and the panel is the wrong place to look it up when the panel is
+	// the thing in trouble.
+	logged := captureLog(t)
+
+	failing := workingTarget()
+	failing.readErr = fmt.Errorf("%w: no route to host", transport.ErrUnreachable)
+	h := newHarness(t, workingTarget(), failing)
+
+	h.refresher.run(context.Background())
+
+	output := logged.String()
+	if !strings.Contains(output, "a server could not be refreshed") {
+		t.Fatalf("the pass named no failing server:\n%s", output)
+	}
+	if !strings.Contains(output, "server=dns2") {
+		t.Errorf("the log does not name the server that failed:\n%s", output)
+	}
+	if strings.Contains(output, "server=dns1 error") {
+		t.Errorf("a server that answered was reported as a failure:\n%s", output)
+	}
+	if !strings.Contains(output, "failed=1") {
+		t.Errorf("the summary line is missing:\n%s", output)
+	}
+}

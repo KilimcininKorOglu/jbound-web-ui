@@ -265,9 +265,15 @@ func (r *Refresher) run(ctx context.Context) {
 
 	failed := 0
 	for _, result := range results {
-		if !result.OK() {
-			failed++
+		if result.OK() {
+			continue
 		}
+		failed++
+		// A count on its own cannot tell one flapping host from a fleet wide
+		// outage, and the panel is the wrong place to look it up when the panel
+		// is the thing in trouble.
+		slog.Warn("a server could not be refreshed",
+			"server", result.ServerName, "error", result.Err)
 	}
 	slog.Info("fleet refreshed", "servers", len(results), "failed", failed)
 }

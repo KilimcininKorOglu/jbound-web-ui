@@ -10,16 +10,22 @@ import (
 	"unbound-web/internal/logging"
 )
 
-// Messages shown on the login page.
+// Messages shown on the login page, as catalogue keys.
 //
 // Every rejection shares one message. Telling the user which accounts exist,
 // which are locked and which merely typed the wrong password would turn the
-// form into an account directory.
+// form into an account directory. The one wording is one wording per language,
+// so translating them does not tell the reader anything new.
+//
+// The language of the login page comes from the cookie and the configured
+// default rather than from a session, so the catalogue is available here even
+// though nobody has signed in yet.
 const (
-	msgMissingFields = "Please fill in all fields."
-	msgLoginFailed   = "Invalid username or password."
-	msgRateLimited   = "Too many login attempts. Try again later."
-	msgInternalError = "The panel could not process the request."
+	msgMissingFields  = "login.error.missing_fields"
+	msgLoginFailed    = "login.error.failed"
+	msgRateLimited    = "login.error.rate_limited"
+	msgInternalError  = "login.error.internal"
+	msgSessionExpired = "login.error.expired"
 )
 
 // handleLoginPage serves the login form.
@@ -35,7 +41,7 @@ func (a *App) handleLoginPage(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("timeout") == "1" {
 		data.Alert = &Alert{
 			Severity: ToastWarning,
-			Message:  "Your session has expired. Please sign in again.",
+			Message:  a.catalog(r).T(msgSessionExpired),
 		}
 	}
 	a.Render(w, r, http.StatusOK, "login", data)
@@ -177,8 +183,11 @@ func (a *App) handleLogout(w http.ResponseWriter, r *http.Request) {
 // htmx swaps the alert fragment into the form, so the response is the fragment
 // rather than the whole page. A client without htmx gets the page back with the
 // same message inside it.
+//
+// The message arrives as a catalogue key, so the sentence reads in the language
+// the form around it was drawn in.
 func (a *App) loginFailure(w http.ResponseWriter, r *http.Request, status int, message string) {
-	alert := &Alert{Severity: ToastError, Message: message}
+	alert := &Alert{Severity: ToastError, Message: a.catalog(r).T(message)}
 
 	if r.Header.Get("HX-Request") == "true" {
 		a.RenderPartial(w, r, status, "alert", alert)

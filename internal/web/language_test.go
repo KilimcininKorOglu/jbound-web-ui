@@ -151,6 +151,42 @@ func TestTheLoginPageFollowsTheLanguageCookie(t *testing.T) {
 	}
 }
 
+// The rejection is the one sentence on that page that matters most, and it was
+// the one sentence the panel answered in English.
+func TestTheLoginRejectionFollowsTheLanguageCookie(t *testing.T) {
+	env := newTestEnv(t)
+
+	request := postForm("/login", "username=dnsadmin&password=wrong")
+	request.Header.Set("Origin", "http://example.test")
+	request.Host = "example.test"
+
+	recorder := env.do(t, request, &http.Cookie{Name: LanguageCookieName, Value: "tr"})
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401:\n%s", recorder.Code, recorder.Body.String())
+	}
+
+	body := recorder.Body.String()
+	if !strings.Contains(body, turkish(t, env, msgLoginFailed)) {
+		t.Errorf("the rejection is not in Turkish:\n%s", body)
+	}
+	// One wording for every rejection, in every language. Naming the accounts
+	// that exist would turn the form into a directory.
+	if strings.Contains(body, "Invalid username or password") {
+		t.Error("the English wording came through as well")
+	}
+}
+
+func TestTheExpiredSessionNoticeFollowsTheLanguageCookie(t *testing.T) {
+	env := newTestEnv(t)
+
+	recorder := env.do(t, httptest.NewRequest(http.MethodGet, "/?timeout=1", nil),
+		&http.Cookie{Name: LanguageCookieName, Value: "tr"})
+
+	if !strings.Contains(recorder.Body.String(), turkish(t, env, msgSessionExpired)) {
+		t.Errorf("the expiry notice is not in Turkish:\n%s", recorder.Body.String())
+	}
+}
+
 // The dialogs are raised by a script, which the content security policy stops
 // from carrying its own texts. They ride on the body element instead.
 func TestTheClientTextsTravelWithThePage(t *testing.T) {

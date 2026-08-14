@@ -246,13 +246,23 @@ func (t *AgentTransport) Restart(ctx context.Context) (string, error) {
 }
 
 // step runs one operation and returns what it said.
+//
+// A refusal is returned on both channels, the way the ssh path returns stderr
+// beside the error. What the resolver said about the configuration travels in
+// the failure here, and the caller builds its message from the output, so an
+// operator would otherwise be told the configuration was refused and never
+// which line was wrong.
 func (t *AgentTransport) step(ctx context.Context, path string) (string, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
 	var answer agentapi.CommandResult
 	if err := t.call(ctx, http.MethodPost, path, nil, &answer); err != nil {
-		return answer.Output, err
+		var refused *CommandError
+		if errors.As(err, &refused) {
+			return refused.Stderr, err
+		}
+		return "", err
 	}
 	return strings.TrimSpace(answer.Output), nil
 }

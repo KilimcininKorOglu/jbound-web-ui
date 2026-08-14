@@ -295,12 +295,18 @@ func TestARefusedConfigurationCarriesWhatTheResolverSaid(t *testing.T) {
 	})
 
 	client := harness.transport(t)
-	_, err := client.CheckConfig(context.Background())
+	output, err := client.CheckConfig(context.Background())
 	if !errors.Is(err, ErrCommandFailed) {
 		t.Fatalf("error = %v, want a failed command", err)
 	}
 	if !strings.Contains(err.Error(), "line 12") {
 		t.Errorf("the error drops what the resolver said: %v", err)
+	}
+	// The fleet layer builds the operator's message from the output and not
+	// from the error, so a refusal carried in the error alone reaches the page
+	// as "the resolver refused the configuration" and nothing more.
+	if !strings.Contains(output, "line 12") {
+		t.Errorf("the output drops what the resolver said: %q", output)
 	}
 }
 

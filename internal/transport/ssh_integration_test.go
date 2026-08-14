@@ -615,3 +615,51 @@ func TestRemoteShellProducesNoExtraOutput(t *testing.T) {
 
 var _ Transport = (*SSHTransport)(nil)
 var _ ssh.PublicKey = ssh.PublicKey(nil)
+
+func TestACommandGivesUpAfterTheConfiguredTimeout(t *testing.T) {
+	// The refresher passes the process lifetime context, so without a deadline
+	// of its own a server that accepts the session and never answers holds the
+	// goroutine and the transport mutex for good.
+	cfg := approvedConfig(t)
+	cfg.CommandTimeout = 2 * time.Second
+	cfg.StatusCmd = "/bin/sleep 60"
+
+	transport, err := NewSSH(cfg)
+	if err != nil {
+		t.Fatalf("cannot build the transport: %v", err)
+	}
+	t.Cleanup(func() { transport.Close() })
+
+	start := time.Now()
+	// context.Background() is what the timer path passes, so the only bound
+	// here is the configured one.
+	if _, _, statusErr := transport.ServiceStatus(context.Background()); statusErr == nil {
+		t.Fatal("a command that never answers came back without an error")
+	}
+
+	if elapsed := time.Since(start); elapsed > 10*time.Second {
+		t.Errorf("the command took %s, want it bounded by the 2s timeout", elapsed)
+	}
+}
+
+func TestTheTransportMutexSurvivesAHungCommand(t *testing.T) {
+	// The mutex is held for the whole command, so a command that never ends
+	// takes every later operation on that server down with it.
+	cfg := approvedConfig(t)
+	cfg.CommandTimeout = 2 * time.Second
+	cfg.StatusCmd = "/bin/sleep 60"
+
+	transport, err := NewSSH(cfg)
+	if err != nil {
+		t.Fatalf("cannot build the transport: %v", err)
+	}
+	t.Cleanup(func() { transport.Close() })
+
+	_, _, _ = transport.ServiceStatus(context.Background())
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if _, _, readErr := transport.ReadHostEntries(ctx); readErr != nil {
+		t.Errorf("the next operation could not take the mutex: %v", readErr)
+	}
+}

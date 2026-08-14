@@ -177,6 +177,10 @@ func (t *SSHTransport) dropConnection() {
 //
 // Each command gets its own session, because an SSH session runs exactly one
 // command. The sessions share the client connection.
+//
+// The command carries its own deadline. The refresher passes the process
+// lifetime context, so a server that accepts the session and never answers
+// would otherwise hold this goroutine and the transport mutex for good.
 func (t *SSHTransport) run(ctx context.Context, command string,
 	stdin io.Reader) (stdout, stderr string, err error) {
 
@@ -185,6 +189,12 @@ func (t *SSHTransport) run(ctx context.Context, command string,
 		return "", "", err
 	}
 	defer session.Close()
+
+	if t.cfg.CommandTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, t.cfg.CommandTimeout)
+		defer cancel()
+	}
 
 	var outBuf, errBuf bytes.Buffer
 	session.Stdout = &outBuf

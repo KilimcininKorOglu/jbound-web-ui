@@ -3,6 +3,7 @@ package dnsfile
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -23,13 +24,43 @@ func (r Record) BuildLine() string {
 	fqdn := strings.TrimSuffix(r.FQDN, ".") + "."
 
 	if r.Type == TypeMX {
-		priority := r.Priority
-		if priority == 0 {
-			priority = DefaultMXPriority
-		}
-		return fmt.Sprintf("local-data: %q", fmt.Sprintf("%s %s %d %s", fqdn, r.Type, priority, r.Value))
+		return fmt.Sprintf("local-data: %q",
+			fmt.Sprintf("%s %s %d %s", fqdn, r.Type, r.preference(), r.Value))
 	}
 	return fmt.Sprintf("local-data: %q", fmt.Sprintf("%s %s %s", fqdn, r.Type, r.Value))
+}
+
+// preference is the MX preference the file carries for this record.
+func (r Record) preference() int {
+	if r.Priority == 0 {
+		return DefaultMXPriority
+	}
+	return r.Priority
+}
+
+// matches reports whether one line of the file holds this record.
+//
+// The line is read back through the parser rather than compared against
+// BuildLine. The file is edited by hand on the target as well, and the parser
+// accepts two forms BuildLine renders differently: a name without the trailing
+// dot, and any run of whitespace between the fields. Rebuilding the line would
+// hide exactly those records from an edit and a delete, while the panel goes
+// on listing them.
+func (r Record) matches(line string) bool {
+	parsed := Parse([]byte(line))
+	if len(parsed) != 1 {
+		return false
+	}
+	other := parsed[0]
+
+	if strings.TrimSuffix(r.FQDN, ".") != other.FQDN ||
+		r.Type != other.Type || r.Value != other.Value {
+		return false
+	}
+	if r.Type == TypeMX {
+		return r.preference() == other.preference()
+	}
+	return true
 }
 
 // Add appends a record to the file.
@@ -44,7 +75,7 @@ func Add(content []byte, record Record) ([]byte, error) {
 	line := record.BuildLine()
 	lines := split(content)
 
-	if contains(lines, line) {
+	if contains(lines, record) {
 		return nil, fmt.Errorf("%w: %s", ErrDuplicate, line)
 	}
 	return join(append(lines, line)), nil
@@ -63,19 +94,18 @@ func Edit(content []byte, old, updated Record) ([]byte, error) {
 		return nil, err
 	}
 
-	oldLine := old.BuildLine()
 	newLine := updated.BuildLine()
 
 	lines := split(content)
 	replaced := 0
 	for i, line := range lines {
-		if strings.TrimSpace(line) == oldLine {
+		if old.matches(line) {
 			lines[i] = newLine
 			replaced++
 		}
 	}
 	if replaced == 0 {
-		return nil, fmt.Errorf("%w: %s", ErrNotFound, oldLine)
+		return nil, fmt.Errorf("%w: %s", ErrNotFound, old.BuildLine())
 	}
 	return join(lines), nil
 }
@@ -89,20 +119,19 @@ func Delete(content []byte, record Record) ([]byte, error) {
 		return nil, err
 	}
 
-	target := record.BuildLine()
 	lines := split(content)
 
 	kept := make([]string, 0, len(lines))
 	removed := 0
 	for _, line := range lines {
-		if strings.TrimSpace(line) == target {
+		if record.matches(line) {
 			removed++
 			continue
 		}
 		kept = append(kept, line)
 	}
 	if removed == 0 {
-		return nil, fmt.Errorf("%w: %s", ErrNotFound, target)
+		return nil, fmt.Errorf("%w: %s", ErrNotFound, record.BuildLine())
 	}
 	return join(kept), nil
 }
@@ -132,12 +161,10 @@ func join(lines []string) []byte {
 	return []byte(strings.Join(lines, "\n") + "\n")
 }
 
-// contains reports whether a line is already in the file.
-func contains(lines []string, target string) bool {
-	for _, line := range lines {
-		if strings.TrimSpace(line) == target {
-			return true
-		}
-	}
-	return false
+// contains reports whether the file already holds a record.
+//
+// It matches the way an edit and a delete do, so a record that is in the file
+// in another form is refused as the duplicate it is rather than written twice.
+func contains(lines []string, record Record) bool {
+	return slices.ContainsFunc(lines, record.matches)
 }

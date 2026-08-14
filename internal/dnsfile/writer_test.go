@@ -370,3 +370,93 @@ func TestWritingNeverTouchesTheCallersContent(t *testing.T) {
 		t.Errorf("the content changed under the caller:\n%s", original)
 	}
 }
+
+// The file is edited by hand on the target, which the package says in several
+// places. A record written there in a form the panel does not render was
+// listed by the panel and then refused every edit and every delete, with a
+// message that sent the operator looking for a conflict on the server.
+func TestARecordWrittenByHandCanBeEditedAndDeleted(t *testing.T) {
+	forms := map[string]string{
+		"no trailing dot": `local-data: "byhand.example.local A 10.0.0.5"`,
+		"extra spaces":    `local-data: "byhand.example.local.   A    10.0.0.5"`,
+		"a tab":           "local-data: \"byhand.example.local.\tA\t10.0.0.5\"",
+		"indented":        `    local-data: "byhand.example.local. A 10.0.0.5"`,
+	}
+	record := dnsfile.Record{FQDN: "byhand.example.local", Type: dnsfile.TypeA, Value: "10.0.0.5"}
+
+	for name, line := range forms {
+		t.Run(name, func(t *testing.T) {
+			content := []byte("# managed by the panel\n" + line + "\n")
+
+			updated, err := dnsfile.Edit(content, record,
+				dnsfile.Record{FQDN: "byhand.example.local", Type: dnsfile.TypeA, Value: "10.0.0.6"})
+			if err != nil {
+				t.Fatalf("dnsfile.Edit returned an error: %v", err)
+			}
+			if !strings.Contains(string(updated), "10.0.0.6") ||
+				strings.Contains(string(updated), "10.0.0.5") {
+				t.Errorf("the edit did not replace the line:\n%s", updated)
+			}
+
+			left, err := dnsfile.Delete(content, record)
+			if err != nil {
+				t.Fatalf("dnsfile.Delete returned an error: %v", err)
+			}
+			if strings.Contains(string(left), "byhand.example.local") {
+				t.Errorf("the delete left the line behind:\n%s", left)
+			}
+		})
+	}
+}
+
+// The same record in another form is the same record, so adding it again is a
+// duplicate rather than a second line the resolver has to choose between.
+func TestARecordAlreadyInTheFileInAnotherFormIsADuplicate(t *testing.T) {
+	content := []byte(`local-data: "byhand.example.local A 10.0.0.5"` + "\n")
+
+	_, err := dnsfile.Add(content, dnsfile.Record{
+		FQDN: "byhand.example.local", Type: dnsfile.TypeA, Value: "10.0.0.5"})
+	if !errors.Is(err, dnsfile.ErrDuplicate) {
+		t.Errorf("dnsfile.Add returned %v, want a duplicate", err)
+	}
+}
+
+// A record that is genuinely absent still has to be reported as absent, or the
+// looser match would turn a stale panel into a silent no-op.
+func TestARecordThatIsNotInTheFileIsStillRefused(t *testing.T) {
+	content := []byte(`local-data: "other.example.local. A 10.0.0.5"` + "\n")
+	missing := dnsfile.Record{FQDN: "byhand.example.local", Type: dnsfile.TypeA, Value: "10.0.0.5"}
+
+	if _, err := dnsfile.Delete(content, missing); !errors.Is(err, dnsfile.ErrNotFound) {
+		t.Errorf("dnsfile.Delete returned %v, want not found", err)
+	}
+	// A different value at the same name is a different record.
+	if _, err := dnsfile.Delete(content, dnsfile.Record{
+		FQDN: "other.example.local", Type: dnsfile.TypeA, Value: "10.0.0.9",
+	}); !errors.Is(err, dnsfile.ErrNotFound) {
+		t.Errorf("dnsfile.Delete removed a record with another value: %v", err)
+	}
+	// So is a different type.
+	if _, err := dnsfile.Delete(content, dnsfile.Record{
+		FQDN: "other.example.local", Type: dnsfile.TypeAAAA, Value: "10.0.0.5",
+	}); !errors.Is(err, dnsfile.ErrNotFound) {
+		t.Errorf("dnsfile.Delete removed a record of another type: %v", err)
+	}
+}
+
+// A preference that is left out reads as the default the panel writes, so an
+// MX record added through the panel is still found by an edit.
+func TestAnMXRecordIsMatchedByItsPreference(t *testing.T) {
+	content := []byte(`local-data: "example.local MX 10 mx1.example.local"` + "\n")
+
+	if _, err := dnsfile.Delete(content, dnsfile.Record{
+		FQDN: "example.local", Type: dnsfile.TypeMX, Value: "mx1.example.local",
+	}); err != nil {
+		t.Errorf("dnsfile.Delete returned an error: %v", err)
+	}
+	if _, err := dnsfile.Delete(content, dnsfile.Record{
+		FQDN: "example.local", Type: dnsfile.TypeMX, Value: "mx1.example.local", Priority: 20,
+	}); !errors.Is(err, dnsfile.ErrNotFound) {
+		t.Errorf("dnsfile.Delete removed a record with another preference: %v", err)
+	}
+}

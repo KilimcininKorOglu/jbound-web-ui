@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
@@ -8,6 +9,7 @@ import (
 	"unbound-web/internal/fleet"
 	"unbound-web/internal/i18n"
 	"unbound-web/internal/server"
+	"unbound-web/internal/settings"
 )
 
 // diffPageData feeds the drift page and its table fragment.
@@ -31,6 +33,12 @@ type diffPageData struct {
 
 	// Columns is how wide the table is, which the empty row has to span.
 	Columns int
+
+	// SourceID and SourceName name the server a synchronisation copies from.
+	// They stay empty while no source is chosen, which is what the table says
+	// instead of offering a button that cannot do anything.
+	SourceID   int64
+	SourceName string
 }
 
 func (a *App) handleDiffPage(w http.ResponseWriter, r *http.Request) {
@@ -83,7 +91,11 @@ func (a *App) diffPageData(r *http.Request) (diffPageData, error) {
 		return diffPageData{}, err
 	}
 
+	sourceID, sourceName := a.sourceServer(r.Context())
+
 	return diffPageData{
+		SourceID:       sourceID,
+		SourceName:     sourceName,
 		Diff:           diff,
 		Query:          query,
 		Groups:         groups,
@@ -135,6 +147,60 @@ func diffStaleNote(catalog *i18n.Catalog, diff fleet.Diff) string {
 		return ""
 	}
 	return catalog.Tf("diff.stale_note_long", strings.Join(stale, ", "))
+}
+
+// sourceServer resolves the chosen source into an identifier and a name.
+//
+// A source that no longer exists reads as none. The setting is cleared when a
+// server is deleted or disabled, and this is the second line of that rule.
+func (a *App) sourceServer(ctx context.Context) (int64, string) {
+	id := a.Settings.Values().Int64(settings.SourceServerID)
+	if id <= 0 {
+		return 0, ""
+	}
+
+	record, err := a.Servers.Get(ctx, id)
+	if err != nil || !record.Enabled {
+		return 0, ""
+	}
+	return record.ID, record.Name
+}
+
+// handleDiffSync makes every server of the target hold what the source holds.
+//
+// It deletes as well as adds, which is why it is an admin route: it removes
+// records the operator did not name one by one.
+func (a *App) handleDiffSync(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		a.reportProblem(w, r, a.catalog(r).T("error.form_unreadable"), http.StatusBadRequest)
+		return
+	}
+
+	target, err := targetFromValues(r.Form)
+	if err != nil {
+		a.reportProblem(w, r, recordMessage(a.catalog(r), err), http.StatusBadRequest)
+		return
+	}
+
+	sourceID, _ := a.sourceServer(r.Context())
+	report, err := a.Records.Mirror(r.Context(), a.actor(r), target, sourceID)
+	if err != nil {
+		a.reportProblem(w, r, recordMessage(a.catalog(r), err), dnsStatus(err))
+		return
+	}
+
+	a.renderReport(w, r, report, syncReport)
+}
+
+var syncReport = reportKind{
+	Title:   "report.sync.title",
+	OK:      "report.sync.ok",
+	Partial: "report.sync.partial",
+	None:    "report.sync.none",
+
+	ToastOK:      "report.sync.toast_ok",
+	ToastPartial: "report.sync.toast_partial",
+	ToastNone:    "report.sync.toast_none",
 }
 
 // handleDiffRepair writes one record to every server that lacks it or holds a

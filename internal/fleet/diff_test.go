@@ -2,6 +2,7 @@ package fleet
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -257,5 +258,189 @@ func TestARepairIsAuditedPerServer(t *testing.T) {
 	}
 	if !strings.HasPrefix(entries[0].Details, "Repaired A www.example.net -> 192.0.2.10 on dns2") {
 		t.Errorf("details = %q", entries[0].Details)
+	}
+}
+
+func TestMirrorOperationsRemoveBeforeTheyAdd(t *testing.T) {
+	// A name whose value changed is a removal and an addition. Running them
+	// the other way round would leave the file holding both for a moment.
+	current := []dnsfile.Record{
+		{FQDN: "www.example.net", Type: "A", Value: "192.0.2.10"},
+		{FQDN: "old.example.net", Type: "A", Value: "192.0.2.99"},
+	}
+	want := []dnsfile.Record{
+		{FQDN: "www.example.net", Type: "A", Value: "192.0.2.10"},
+		{FQDN: "new.example.net", Type: "A", Value: "192.0.2.11"},
+	}
+
+	added, removed := mirrorOperations(current, want)
+
+	if len(removed) != 1 || removed[0].Record.FQDN != "old.example.net" {
+		t.Errorf("removals = %+v, want the record the source does not hold", removed)
+	}
+	if len(added) != 1 || added[0].Record.FQDN != "new.example.net" {
+		t.Errorf("additions = %+v, want the record the source holds", added)
+	}
+}
+
+func TestMirrorOperationsLeaveAnIdenticalFileAlone(t *testing.T) {
+	records := []dnsfile.Record{
+		{FQDN: "www.example.net", Type: "A", Value: "192.0.2.10"},
+		{FQDN: "mail.example.net", Type: "MX", Value: "mx1.example.net", Priority: 20},
+	}
+
+	added, removed := mirrorOperations(records, records)
+	if len(added) != 0 || len(removed) != 0 {
+		t.Errorf("got %d additions and %d removals, want none", len(added), len(removed))
+	}
+}
+
+func TestMirrorOperationsKeepEveryValueOfOneName(t *testing.T) {
+	// A round robin name holds several values. Matching on the name alone
+	// would call the second value a difference and destroy it.
+	current := []dnsfile.Record{
+		{FQDN: "rr.example.net", Type: "A", Value: "192.0.2.1"},
+	}
+	want := []dnsfile.Record{
+		{FQDN: "rr.example.net", Type: "A", Value: "192.0.2.1"},
+		{FQDN: "rr.example.net", Type: "A", Value: "192.0.2.2"},
+	}
+
+	added, removed := mirrorOperations(current, want)
+	if len(removed) != 0 {
+		t.Errorf("removals = %+v, want none", removed)
+	}
+	if len(added) != 1 || added[0].Record.Value != "192.0.2.2" {
+		t.Errorf("additions = %+v, want the missing second value", added)
+	}
+}
+
+func TestMirrorOperationsDeleteADuplicateLineOnce(t *testing.T) {
+	// One delete removes every matching line, so a second would find nothing
+	// and fail the whole synchronisation of that server.
+	duplicated := dnsfile.Record{FQDN: "old.example.net", Type: "A", Value: "192.0.2.99"}
+	current := []dnsfile.Record{duplicated, duplicated}
+
+	added, removed := mirrorOperations(current, nil)
+	if len(added) != 0 {
+		t.Errorf("additions = %+v, want none", added)
+	}
+	if len(removed) != 1 {
+		t.Errorf("removals = %+v, want exactly one", removed)
+	}
+}
+
+func TestAMirrorMakesEveryServerHoldWhatTheSourceHolds(t *testing.T) {
+	h := newWriteHarness(t, 3)
+
+	// dns1 is the source. dns2 is missing a record and dns3 holds one the
+	// source does not.
+	h.targets["dns1"].content = []byte(seeded +
+		"local-data: \"extra.example.net. A 192.0.2.50\"\n")
+	h.targets["dns3"].content = []byte(seeded +
+		"local-data: \"stray.example.net. A 192.0.2.77\"\n")
+
+	report, err := h.writer.Mirror(context.Background(), testActor(), groupTarget(), 1)
+	if err != nil {
+		t.Fatalf("Mirror returned an error: %v", err)
+	}
+
+	success, failed, skipped := report.Counts()
+	if failed != 0 {
+		t.Fatalf("counts = %d/%d/%d, want no failure", success, failed, skipped)
+	}
+	if len(report.Results) != 2 {
+		t.Fatalf("%d server(s) were touched, want the two that are not the source",
+			len(report.Results))
+	}
+
+	for _, name := range []string{"dns2", "dns3"} {
+		file := h.targets[name].file()
+		if !strings.Contains(file, "extra.example.net") {
+			t.Errorf("%s did not receive the record the source holds:\n%s", name, file)
+		}
+		if strings.Contains(file, "stray.example.net") {
+			t.Errorf("%s kept a record the source does not hold:\n%s", name, file)
+		}
+	}
+}
+
+func TestAMirrorLeavesTheSourceAlone(t *testing.T) {
+	h := newWriteHarness(t, 3)
+	h.targets["dns1"].content = []byte(seeded +
+		"local-data: \"extra.example.net. A 192.0.2.50\"\n")
+	before := h.targets["dns1"].file()
+
+	out, err := h.writer.Mirror(context.Background(), testActor(), groupTarget(), 1)
+	if err != nil {
+		t.Fatalf("Mirror returned an error: %v", err)
+	}
+
+	if after := h.targets["dns1"].file(); after != before {
+		t.Errorf("the source was written to:\n%s", after)
+	}
+	for _, result := range out.Results {
+		if result.ServerName == "dns1" {
+			t.Error("the source appeared in its own report")
+		}
+	}
+}
+
+func TestAMirrorRefusesASourceThatHoldsNothing(t *testing.T) {
+	// A source that reads as empty is far more often a broken read than a
+	// deliberate one, and mirroring it would empty the whole target.
+	h := newWriteHarness(t, 3)
+	h.targets["dns1"].content = []byte("# nothing here\n")
+	before := h.targets["dns2"].file()
+
+	_, err := h.writer.Mirror(context.Background(), testActor(), groupTarget(), 1)
+	if !errors.Is(err, ErrEmptySource) {
+		t.Fatalf("got %v, want ErrEmptySource", err)
+	}
+	if after := h.targets["dns2"].file(); after != before {
+		t.Errorf("a server was changed by a refused mirror:\n%s", after)
+	}
+}
+
+func TestAMirrorNeedsASource(t *testing.T) {
+	h := newWriteHarness(t, 3)
+
+	if _, err := h.writer.Mirror(context.Background(), testActor(), groupTarget(), 0); !errors.Is(err, ErrNoSource) {
+		t.Errorf("got %v, want ErrNoSource", err)
+	}
+}
+
+func TestAMirrorRefusesADisabledSource(t *testing.T) {
+	h := newWriteHarness(t, 3)
+
+	record := h.servers.records[1]
+	record.Enabled = false
+	h.servers.records[1] = record
+
+	if _, err := h.writer.Mirror(context.Background(), testActor(), groupTarget(), 1); !errors.Is(err, ErrNoSource) {
+		t.Errorf("got %v, want ErrNoSource", err)
+	}
+}
+
+func TestAMirrorIsAudited(t *testing.T) {
+	h := newWriteHarness(t, 3)
+	h.targets["dns1"].content = []byte(seeded +
+		"local-data: \"extra.example.net. A 192.0.2.50\"\n")
+
+	if _, err := h.writer.Mirror(context.Background(), testActor(), groupTarget(), 1); err != nil {
+		t.Fatalf("Mirror returned an error: %v", err)
+	}
+
+	entries := h.audit.all()
+	if len(entries) != 2 {
+		t.Fatalf("%d audit row(s), want one per changed server", len(entries))
+	}
+	for _, entry := range entries {
+		if entry.Action != audit.ActionDiffSync {
+			t.Errorf("action = %q, want %q", entry.Action, audit.ActionDiffSync)
+		}
+		if !strings.Contains(entry.Details, "dns1") {
+			t.Errorf("the entry does not name the source: %q", entry.Details)
+		}
 	}
 }

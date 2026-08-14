@@ -686,6 +686,10 @@ func recordMessage(catalog *i18n.Catalog, err error) string {
 		return capitalise(strings.TrimPrefix(err.Error(), dnsfile.ErrInvalid.Error()+": ")) + "."
 	case errors.Is(err, fleet.ErrScope):
 		return capitalise(strings.TrimPrefix(err.Error(), fleet.ErrScope.Error()+": ")) + "."
+	case errors.Is(err, fleet.ErrNoSource):
+		return catalog.T("error.no_source")
+	case errors.Is(err, fleet.ErrEmptySource):
+		return catalog.T("error.empty_source")
 	default:
 		return userMessage(catalog, err)
 	}
@@ -702,7 +706,8 @@ func capitalise(text string) string {
 // dnsStatus maps a refusal onto the code the form expects.
 func dnsStatus(err error) int {
 	switch {
-	case errors.Is(err, dnsfile.ErrInvalid), errors.Is(err, fleet.ErrScope):
+	case errors.Is(err, dnsfile.ErrInvalid), errors.Is(err, fleet.ErrScope),
+		errors.Is(err, fleet.ErrNoSource), errors.Is(err, fleet.ErrEmptySource):
 		return http.StatusBadRequest
 	case errors.Is(err, server.ErrValidation):
 		return http.StatusUnprocessableEntity

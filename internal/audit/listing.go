@@ -85,7 +85,7 @@ func Actions() []string {
 		ActionLogin, ActionLogout, ActionLoginFailed,
 		ActionDNSAdd, ActionDNSEdit, ActionDNSDelete,
 		ActionDNSRestart, ActionDNSQuery,
-		ActionDiffRepair, ActionCacheRefresh,
+		ActionDiffRepair, ActionDiffSync, ActionCacheRefresh,
 		ActionServerCreate, ActionServerUpdate, ActionServerDelete, ActionServerTrust,
 		ActionGroupCreate, ActionGroupUpdate, ActionGroupDelete,
 		ActionSIEMConfig, ActionSIEMTest,

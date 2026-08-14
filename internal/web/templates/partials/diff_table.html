@@ -5,11 +5,28 @@
      because both servers answer and they answer differently. */}}
 {{define "diff-table"}}
 {{$query := .Query}}
+{{$source := .SourceID}}
 <div class="card">
   <div class="card-body pb-0">
     <span class="text-muted small" role="status" data-field="diff-summary">{{.Summary}}</span>
     {{if .StaleNote}}
     <div class="text-muted small" data-field="stale-note">{{.StaleNote}}</div>
+    {{end}}
+
+    {{/* The synchronisation deletes as well as adds, so it says so before it
+         is started and it is offered only when a source is chosen. */}}
+    {{if .SourceName}}
+    <div class="dns-toolbar mt-3 mb-0">
+      <button class="btn btn-outline-primary btn-sm" type="button" data-field="sync-from-source"
+              hx-post="/diff/sync" hx-include="#diff-controls"
+              hx-target="#record-panel" hx-swap="innerHTML"
+              hx-confirm="{{tf "diff.sync_question" .SourceName}}"
+              data-confirm-title="{{t "diff.sync_title"}}">
+        {{tf "diff.sync" .SourceName}}
+      </button>
+    </div>
+    {{else}}
+    <div class="text-muted small mt-3" data-field="no-source">{{t "diff.no_source"}}</div>
     {{end}}
   </div>
 
@@ -24,6 +41,9 @@
           {{range .Diff.Servers}}
           <th scope="col">
             {{.Name}}
+            {{if eq .ID $source}}
+            <span class="badge bg-label-primary ms-1" data-field="source">{{t "diff.source"}}</span>
+            {{end}}
             {{if .Stale}}
             <span class="badge bg-label-warning ms-1" data-field="stale">{{t "diff.stale"}}</span>
             {{end}}

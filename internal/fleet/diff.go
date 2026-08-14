@@ -3,6 +3,9 @@ package fleet
 import (
 	"cmp"
 	"context"
+	"errors"
+	"fmt"
+	"log/slog"
 	"slices"
 
 	"unbound-web/internal/audit"
@@ -358,6 +361,220 @@ func (w *Writer) writeRepairAudit(ctx context.Context, actor server.Actor,
 		ServerID:   &serverID,
 		ServerName: record.Name,
 		Action:     audit.ActionDiffRepair,
+		Details:    details,
+		IPAddress:  actor.IPAddress,
+	})
+}
+
+// ErrNoSource marks a synchronisation with no usable source server.
+var ErrNoSource = errors.New("no source server is chosen")
+
+// ErrEmptySource marks a source whose file holds no record at all.
+//
+// Mirroring it would empty every other server of the target, and a source that
+// reads as empty is far more often a broken read than a deliberate one.
+var ErrEmptySource = errors.New("the source server holds no record")
+
+// Mirror makes every server of the target hold what the source holds.
+func (s *Service) Mirror(ctx context.Context, actor server.Actor, target Target,
+	sourceID int64) (Report, error) {
+
+	return s.writer.Mirror(ctx, actor, target, sourceID)
+}
+
+// Mirror copies the records of one server onto the rest of the target.
+//
+// It deletes as well as adds, so a target server ends up holding exactly what
+// the source holds. Nothing happens on its own: the operator names the source
+// on the settings page and starts the synchronisation by hand.
+func (w *Writer) Mirror(ctx context.Context, actor server.Actor, target Target,
+	sourceID int64) (Report, error) {
+
+	if sourceID <= 0 {
+		return Report{}, ErrNoSource
+	}
+
+	source, err := w.servers.Get(ctx, sourceID)
+	if err != nil {
+		return Report{}, err
+	}
+	if !source.Enabled || !source.Trusted() {
+		return Report{}, ErrNoSource
+	}
+
+	// The source is read from the file rather than from the cache, for the
+	// same reason a repair is: the cache is what showed the operator the
+	// difference and by now it may be older than the server it describes.
+	want, err := w.readSource(ctx, source)
+	if err != nil {
+		return Report{}, err
+	}
+	if len(want) == 0 {
+		return Report{}, ErrEmptySource
+	}
+
+	targets, groupName, err := w.Targets(ctx, target)
+	if err != nil {
+		return Report{}, err
+	}
+	others := slices.DeleteFunc(targets, func(record server.Server) bool {
+		return record.ID == source.ID
+	})
+
+	results := w.fanOut(ctx, others, func(ctx context.Context, record server.Server) ServerResult {
+		return w.mirrorOne(ctx, actor, record, source, want, groupName)
+	})
+
+	return Report{Results: results, GroupName: groupName}, nil
+}
+
+// readSource reads the records of the server the mirror copies from.
+func (w *Writer) readSource(ctx context.Context, source server.Server) ([]dnsfile.Record, error) {
+	lock := w.lockFor(source.ID)
+	lock.Lock()
+	defer lock.Unlock()
+
+	client, err := w.pool.Get(w.transportConfig(source))
+	if err != nil {
+		return nil, err
+	}
+	content, _, err := client.ReadHostEntries(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return dnsfile.Parse(content), nil
+}
+
+// mirrorOne brings one server in line with the source.
+func (w *Writer) mirrorOne(ctx context.Context, actor server.Actor,
+	record, source server.Server, want []dnsfile.Record, groupName string) ServerResult {
+
+	if refusal, ok := refuse(record); ok {
+		return refusal
+	}
+	result := ServerResult{ServerID: record.ID, ServerName: record.Name}
+
+	lock := w.lockFor(record.ID)
+	lock.Lock()
+	defer lock.Unlock()
+
+	client, err := w.pool.Get(w.transportConfig(record))
+	if err != nil {
+		result.Status = StatusFailed
+		result.Message = err.Error()
+		return result
+	}
+
+	content, digest, err := client.ReadHostEntries(ctx)
+	if err != nil {
+		result.Status = StatusFailed
+		result.Message = err.Error()
+		return result
+	}
+
+	added, removed := mirrorOperations(dnsfile.Parse(content), want)
+	if len(added)+len(removed) == 0 {
+		result.Status = StatusSkipped
+		result.Message = "Already in line with " + source.Name
+		return result
+	}
+
+	// Every change is applied in memory first. A server whose file the panel
+	// cannot rewrite completely is left exactly as it was.
+	updated := content
+	for _, op := range slices.Concat(removed, added) {
+		updated, err = op.apply(updated)
+		if err != nil {
+			slog.Error("cannot mirror a record",
+				"server", record.Name, "source", source.Name,
+				"operation", op.Kind, "fqdn", op.Record.FQDN, "error", err)
+
+			result.Status = StatusFailed
+			result.Message = err.Error()
+			return result
+		}
+	}
+
+	if err := client.WriteHostEntries(ctx, updated, digest); err != nil {
+		slog.Error("cannot write a mirrored file",
+			"server", record.Name, "source", source.Name, "error", err)
+
+		result.Status = StatusFailed
+		result.Message = err.Error()
+		return result
+	}
+
+	result.Status = StatusSuccess
+	result.Message = fmt.Sprintf("%d added, %d removed", len(added), len(removed))
+	if _, refreshErr := w.refresh.One(ctx, record.ID); refreshErr != nil {
+		slog.Error("cannot refresh the cache after a mirror",
+			"server", record.Name, "error", refreshErr)
+		result.Message += ", but the cache could not be refreshed"
+	}
+
+	w.writeMirrorAudit(ctx, actor, record, source, len(added), len(removed), groupName)
+	return result
+}
+
+// mirrorOperations works out what one server needs to hold what the source
+// holds, and nothing else.
+//
+// Removals come back separately from additions, because they have to run
+// first: a name that changes value is a removal and an addition, and running
+// them the other way round would leave the file holding both for a moment.
+//
+// No edit is produced. A delete followed by an add reaches the same file and
+// behaves correctly for a name that legitimately holds several values, which
+// an edit keyed on the name alone does not.
+func mirrorOperations(current, want []dnsfile.Record) (added, removed []Operation) {
+	wanted := map[recordKey]bool{}
+	for _, record := range want {
+		wanted[keyOf(record)] = true
+	}
+
+	held := map[recordKey]bool{}
+	for _, record := range current {
+		key := keyOf(record)
+		if held[key] {
+			// The file holds the same line twice. One delete removes every
+			// matching line, so a second would find nothing.
+			continue
+		}
+		held[key] = true
+
+		if !wanted[key] {
+			removed = append(removed, Operation{Kind: OpDelete, Record: record})
+		}
+	}
+
+	seen := map[recordKey]bool{}
+	for _, record := range want {
+		key := keyOf(record)
+		if held[key] || seen[key] {
+			continue
+		}
+		seen[key] = true
+		added = append(added, Operation{Kind: OpAdd, Record: record})
+	}
+	return added, removed
+}
+
+// writeMirrorAudit records one server's synchronisation.
+func (w *Writer) writeMirrorAudit(ctx context.Context, actor server.Actor,
+	record, source server.Server, added, removed int, groupName string) {
+
+	details := fmt.Sprintf("Synchronised from %s: %d added, %d removed",
+		source.Name, added, removed)
+	if groupName != "" {
+		details += " (group " + groupName + ")"
+	}
+
+	_ = w.audit.Write(ctx, audit.Entry{
+		UID:        actor.UID,
+		Username:   actor.Username,
+		Action:     audit.ActionDiffSync,
+		ServerID:   &record.ID,
+		ServerName: record.Name,
 		Details:    details,
 		IPAddress:  actor.IPAddress,
 	})

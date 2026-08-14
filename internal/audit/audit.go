@@ -35,6 +35,7 @@ const (
 	ActionDNSQuery   = "dns_query"
 
 	ActionDiffRepair   = "diff_repair"
+	ActionDiffSync     = "diff_sync"
 	ActionCacheRefresh = "cache_refresh"
 
 	ActionSIEMConfig = "siem_config"

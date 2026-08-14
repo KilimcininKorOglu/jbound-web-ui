@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+
+	"unbound-web/internal/settings"
 )
 
 // drift makes one server hold something the others do not, which is what the
@@ -177,5 +179,46 @@ func TestARepairNeedsACSRFToken(t *testing.T) {
 		"scope=group&group_id=1&fqdn=www.example.local&type=A&value=10.0.0.20"), env.cookie)
 	if recorder.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403", recorder.Code)
+	}
+}
+
+func TestTheSyncRouteIsAdminTerritory(t *testing.T) {
+	// The synchronisation removes records the operator did not name one by
+	// one, so it sits with the other fleet configuration routes.
+	env := newTestEnv(t)
+	cookie := env.login(t, "dnsuser")
+
+	recorder := env.do(t, postForm("/diff/sync", "scope=all&group_id=0&server_id=0"), cookie)
+	if recorder.Code != http.StatusForbidden {
+		t.Errorf("POST /diff/sync as a plain user = %d, want 403", recorder.Code)
+	}
+}
+
+func TestTheDiffTableSaysWhenNoSourceIsChosen(t *testing.T) {
+	env := newFleetEnv(t)
+
+	body := env.diffTable(t, "")
+	if !strings.Contains(body, `data-field="no-source"`) {
+		t.Errorf("the table does not say that no source is chosen:\n%s", body)
+	}
+	if strings.Contains(body, `data-field="sync-from-source"`) {
+		t.Errorf("the table offers a synchronisation with no source:\n%s", body)
+	}
+}
+
+func TestTheDiffTableMarksTheSourceColumn(t *testing.T) {
+	env := newFleetEnv(t)
+
+	form := env.settingsForm(t, map[string]string{settings.SourceServerID: "1"})
+	if recorder := env.do(t, postForm("/settings", form), env.adminCookie(t)); recorder.Code != http.StatusOK {
+		t.Fatalf("cannot choose the source: %d", recorder.Code)
+	}
+
+	body := env.diffTable(t, "")
+	if !strings.Contains(body, `data-field="source"`) {
+		t.Errorf("the source column carries no badge:\n%s", body)
+	}
+	if !strings.Contains(body, `data-field="sync-from-source"`) {
+		t.Errorf("the table offers no synchronisation:\n%s", body)
 	}
 }

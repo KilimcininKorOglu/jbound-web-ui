@@ -155,6 +155,10 @@ func (a *App) Router() http.Handler {
 		"POST /servers/{id}/test":       a.handleServerTest,
 		"POST /servers/{id}/trust":      a.handleServerTrust,
 
+		// The restore reaches one server, so it needs no fleet deadline, but it
+		// is a write to a resolver and belongs with the rest of them here.
+		"POST /servers/{id}/restore-file": a.handleServerRestoreFile,
+
 		// The trail carries every account's sign ins with their source
 		// addresses, and the details of a failed login hold the exact string
 		// that was typed into the user name box. The SIEM page, which shows

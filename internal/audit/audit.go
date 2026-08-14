@@ -39,6 +39,7 @@ const (
 	ActionDiffRepair   = "diff_repair"
 	ActionDiffSync     = "diff_sync"
 	ActionCacheRefresh = "cache_refresh"
+	ActionFileRestore  = "file_restore"
 
 	ActionSIEMConfig = "siem_config"
 	ActionSIEMTest   = "siem_test"

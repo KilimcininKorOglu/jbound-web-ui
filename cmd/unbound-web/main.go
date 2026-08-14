@@ -230,7 +230,7 @@ func run() error {
 	refresher.Start(ctx, options.DurationOf(settings.CacheRefreshInterval))
 
 	writer := fleet.NewWriter(servers, serverService, pool, refresher, auditLog,
-		cfg.DataDir, timeouts, concurrent)
+		store.NewBackups(db.DB), cfg.DataDir, timeouts, concurrent)
 	queries := dnsquery.New(cfg.DigPath, options.DurationOf(settings.DNSQueryTimeout))
 	recordService := fleet.NewService(records, states, writer, refresher,
 		queries, auditLog, options.DurationOf(settings.CacheStaleAfter),

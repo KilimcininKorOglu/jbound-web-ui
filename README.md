@@ -15,6 +15,8 @@ writes one include file, and reloads the resolver.
   or on a whole group.
 - Compares the servers of a group and repairs a record that is missing or
   different on some of them.
+- Keeps the file each server carried before the last change, and puts it back
+  from the servers page when a change turns out to be wrong.
 - Reloads the resolvers, and asks each one what it answers for a name.
 - Records every action with the user, the address and the result, and can mirror
   the trail to syslog in CEF.

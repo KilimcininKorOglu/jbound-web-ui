@@ -175,6 +175,7 @@ type Writer struct {
 	pool     Connector
 	refresh  *Refresher
 	audit    *audit.Logger
+	backups  BackupStore
 	dataDir  string
 	timeouts func() server.Timeouts
 
@@ -192,8 +193,8 @@ type GroupSource interface {
 
 // NewWriter builds the writer.
 func NewWriter(servers ServerSource, groups GroupSource, pool Connector,
-	refresh *Refresher, auditLog *audit.Logger, dataDir string,
-	timeouts func() server.Timeouts, concurrent func() int) *Writer {
+	refresh *Refresher, auditLog *audit.Logger, backups BackupStore,
+	dataDir string, timeouts func() server.Timeouts, concurrent func() int) *Writer {
 
 	return &Writer{
 		servers:    servers,
@@ -201,6 +202,7 @@ func NewWriter(servers ServerSource, groups GroupSource, pool Connector,
 		pool:       pool,
 		refresh:    refresh,
 		audit:      auditLog,
+		backups:    backups,
 		dataDir:    dataDir,
 		timeouts:   timeouts,
 		concurrent: concurrent,
@@ -442,6 +444,10 @@ func (w *Writer) write(ctx context.Context, record server.Server, op Operation) 
 	if err != nil {
 		return err
 	}
+
+	// The file is replaced in one move, so this is the last moment the content
+	// it holds exists anywhere the panel can reach.
+	w.keepPrevious(ctx, record.ID, content, digest)
 
 	// The digest travels back with the write, so a file that changed on the
 	// target between the read and the write is refused rather than replaced.

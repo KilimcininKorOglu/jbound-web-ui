@@ -8,11 +8,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"unbound-web/internal/auth"
 	"unbound-web/internal/i18n"
 	"unbound-web/internal/server"
 	"unbound-web/internal/settings"
+	"unbound-web/internal/store"
 	"unbound-web/internal/transport"
 )
 
@@ -103,6 +105,7 @@ func TestServerRoutesRefuseAPlainUser(t *testing.T) {
 		{http.MethodPost, "/servers/1/test"},
 		{http.MethodPost, "/servers/1/trust"},
 		{http.MethodPost, "/servers/1/rotate-key"},
+		{http.MethodPost, "/servers/1/restore-file"},
 		{http.MethodPost, "/groups"},
 		{http.MethodDelete, "/groups/1"},
 	}
@@ -233,6 +236,82 @@ func TestServerListShowsTheNewServer(t *testing.T) {
 	// than reporting a failure the operator cannot act on.
 	if !strings.Contains(body, "host key not approved") {
 		t.Error("the table does not flag the unapproved host key")
+	}
+}
+
+func TestTheRestoreButtonWaitsUntilThereIsSomethingToRestore(t *testing.T) {
+	env := newTestEnv(t)
+	cookie := env.login(t, "dnsadmin")
+	env.addServer(t, cookie, "dns1")
+
+	body := env.do(t, httptest.NewRequest(http.MethodGet, "/servers", nil), cookie).Body.String()
+	if strings.Contains(body, "/servers/1/restore-file") {
+		t.Error("a server with no stored file is offered the restore button")
+	}
+
+	backups := store.NewBackups(env.db)
+	if err := backups.Save(t.Context(), 1, []byte(previousFile), "digest", time.Now()); err != nil {
+		t.Fatalf("cannot store the previous file: %v", err)
+	}
+
+	body = env.do(t, httptest.NewRequest(http.MethodGet, "/servers", nil), cookie).Body.String()
+	if !strings.Contains(body, "/servers/1/restore-file") {
+		t.Error("a server with a stored file is not offered the restore button")
+	}
+}
+
+// previousFile stands in for the host entries file as it was before a change
+// the operator wants back.
+const previousFile = "local-data: \"www.example.net. A 192.0.2.10\"\n"
+
+func TestRestoringPutsTheStoredFileBackOnTheServer(t *testing.T) {
+	env := newTestEnv(t)
+	cookie := env.login(t, "dnsadmin")
+	env.addServer(t, cookie, "dns1")
+	if err := env.trust(1); err != nil {
+		t.Fatalf("cannot approve the host key: %v", err)
+	}
+
+	env.transport.content = []byte("local-data: \"wrong.example.net. A 192.0.2.99\"\n")
+	backups := store.NewBackups(env.db)
+	if err := backups.Save(t.Context(), 1, []byte(previousFile), "digest", time.Now()); err != nil {
+		t.Fatalf("cannot store the previous file: %v", err)
+	}
+
+	recorder := env.adminForm(t, http.MethodPost, "/servers/1/restore-file", cookie, url.Values{})
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200:\n%s", recorder.Code, recorder.Body.String())
+	}
+
+	if string(env.transport.content) != previousFile {
+		t.Errorf("the server holds:\n%s\nwant:\n%s", env.transport.content, previousFile)
+	}
+
+	// The file that was replaced becomes the next copy, so the operator can
+	// change their mind about the restore itself.
+	backup, err := backups.Get(t.Context(), 1)
+	if err != nil {
+		t.Fatalf("Get returned an error: %v", err)
+	}
+	if !strings.Contains(string(backup.Content), "wrong.example.net") {
+		t.Errorf("the restore did not keep the file it replaced: %q", backup.Content)
+	}
+}
+
+func TestRestoringWithNothingStoredSaysSo(t *testing.T) {
+	env := newTestEnv(t)
+	cookie := env.login(t, "dnsadmin")
+	env.addServer(t, cookie, "dns1")
+	if err := env.trust(1); err != nil {
+		t.Fatalf("cannot approve the host key: %v", err)
+	}
+
+	recorder := env.adminForm(t, http.MethodPost, "/servers/1/restore-file", cookie, url.Values{})
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200:\n%s", recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Header().Get("HX-Trigger"), "no previous file") {
+		t.Errorf("the toast does not explain the refusal: %q", recorder.Header().Get("HX-Trigger"))
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"unbound-web/internal/auth"
+	"unbound-web/internal/fleet"
 	"unbound-web/internal/i18n"
 	"unbound-web/internal/logging"
 	"unbound-web/internal/server"
@@ -41,6 +42,11 @@ type serverRow struct {
 	// class rather than the text of the error, because that text names the
 	// remote command and its stderr.
 	Failure string
+
+	// HasBackup marks a server the panel holds a previous file for. Without it
+	// the restore button would be offered on every row and answer most of them
+	// with nothing to restore.
+	HasBackup bool
 }
 
 // groupRow is one line of the group table.
@@ -126,6 +132,11 @@ func (a *App) serversPageData(r *http.Request) (serversPageData, error) {
 		return serversPageData{}, err
 	}
 
+	restorable, err := a.Records.Backups(r.Context())
+	if err != nil {
+		return serversPageData{}, err
+	}
+
 	catalog := a.catalog(r)
 	byID := map[int64]server.Server{}
 	rows := make([]serverRow, 0, len(servers))
@@ -134,11 +145,12 @@ func (a *App) serversPageData(r *http.Request) (serversPageData, error) {
 
 		state := states[record.ID]
 		rows = append(rows, serverRow{
-			Server:  record,
-			Status:  serverStatus(record),
-			Pending: record.Enabled && state.Pending(),
-			Records: state.RecordCount,
-			Failure: cacheErrorText(catalog, record.LastError),
+			Server:    record,
+			Status:    serverStatus(record),
+			Pending:   record.Enabled && state.Pending(),
+			Records:   state.RecordCount,
+			Failure:   cacheErrorText(catalog, record.LastError),
+			HasBackup: restorable[record.ID],
 		})
 	}
 
@@ -323,6 +335,44 @@ func (a *App) handleServerRotateKey(w http.ResponseWriter, r *http.Request) {
 	SetToast(w, ToastSuccess, a.catalog(r).T("toast.key_rotated"))
 	a.RenderPartial(w, r, http.StatusOK, "server-key",
 		keyPanelData{Server: record, Key: pair, Rotated: true})
+}
+
+// handleServerRestoreFile puts back the file one server carried before the
+// last change the panel made to it.
+//
+// One server at a time, by hand. A change that reached a group is undone by
+// pressing this on each member, which is deliberate: the operator sees what
+// each one answers rather than firing a second fleet wide write to repair the
+// first.
+func (a *App) handleServerRestoreFile(w http.ResponseWriter, r *http.Request) {
+	id, ok := a.pathID(w, r)
+	if !ok {
+		return
+	}
+
+	result, err := a.Records.RestoreFile(r.Context(), a.actor(r), id)
+	if err != nil {
+		if errors.Is(err, fleet.ErrNoBackup) {
+			SetToast(w, ToastWarning, a.catalog(r).T("toast.no_stored_file"))
+			a.closePanel(w)
+			return
+		}
+		a.notFoundOrError(w, r, "cannot restore the file of a server", err)
+		return
+	}
+
+	catalog := a.catalog(r)
+	switch result.Status {
+	case fleet.StatusSuccess:
+		SetToast(w, ToastSuccess, catalog.Tf("toast.file_restored", result.ServerName))
+	case fleet.StatusSkipped:
+		SetToast(w, ToastInfo, catalog.Tf("toast.file_not_restored", result.ServerName))
+	default:
+		// The message names the transport failure, which is the same text the
+		// record report shows for a write that could not land.
+		SetToast(w, ToastError, catalog.Tf("toast.file_restore_failed", result.ServerName))
+	}
+	a.closePanel(w)
 }
 
 func (a *App) handleServerTest(w http.ResponseWriter, r *http.Request) {

@@ -155,6 +155,7 @@ type writeHarness struct {
 	connector *fakeConnector
 	audit     *fakeAudit
 	states    *fakeStates
+	backups   *fakeBackups
 	targets   map[string]*writableTarget
 }
 
@@ -207,8 +208,10 @@ func newWriteHarness(t *testing.T, count int) *writeHarness {
 	refresher := NewRefresher(servers, records, states, pool, "/data",
 		settings.Fixed(timeouts), settings.Fixed(2))
 	harness.refresher = refresher
+	harness.backups = &fakeBackups{saved: map[int64]FileBackup{}}
 	harness.writer = NewWriter(servers, groups, pool, refresher,
-		audit.NewLogger(auditRepo, nil), "/data", settings.Fixed(timeouts), settings.Fixed(2))
+		audit.NewLogger(auditRepo, nil), harness.backups, "/data",
+		settings.Fixed(timeouts), settings.Fixed(2))
 
 	return harness
 }

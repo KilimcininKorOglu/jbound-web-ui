@@ -105,7 +105,7 @@ func newHarness(t *testing.T) *harness {
 
 	refresher := fleet.NewRefresher(servers, records, states, pool, dataDir, timeouts, settings.Fixed(2))
 	writer := fleet.NewWriter(servers, service, pool, refresher, auditLog,
-		dataDir, timeouts, settings.Fixed(2))
+		store.NewBackups(db.DB), dataDir, timeouts, settings.Fixed(2))
 
 	return &harness{
 		refresher: refresher,

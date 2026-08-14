@@ -310,6 +310,8 @@ func (w *Writer) repairOne(ctx context.Context, actor server.Actor,
 		result.Message = failureMessage(err)
 		return result
 	}
+	w.keepPrevious(ctx, record.ID, content, digest)
+
 	if err := client.WriteHostEntries(ctx, updated, digest); err != nil {
 		result.Status = StatusFailed
 		result.Message = failureMessage(err)
@@ -497,6 +499,11 @@ func (w *Writer) mirrorOne(ctx context.Context, actor server.Actor,
 			return result
 		}
 	}
+
+	// A mirror is the widest change the panel makes: it deletes as well as
+	// adds, so the copy is what a target that was synchronised from the wrong
+	// source is brought back with.
+	w.keepPrevious(ctx, record.ID, content, digest)
 
 	if err := client.WriteHostEntries(ctx, updated, digest); err != nil {
 		logging.From(ctx).Error("cannot write a mirrored file",

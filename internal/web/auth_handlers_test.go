@@ -134,7 +134,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	refresher := fleet.NewRefresher(serverStore, recordStore, stateStore,
 		connector, dataDir, timeouts, settings.Fixed(2))
 	writer := fleet.NewWriter(serverStore, servers, connector, refresher,
-		auditLog, dataDir, timeouts, settings.Fixed(2))
+		auditLog, store.NewBackups(db.DB), dataDir, timeouts, settings.Fixed(2))
 	queries := &stubQuerier{answers: map[string][]string{}}
 	records := fleet.NewService(recordStore, stateStore, writer, refresher,
 		queries, auditLog, settings.Fixed(15*time.Minute),

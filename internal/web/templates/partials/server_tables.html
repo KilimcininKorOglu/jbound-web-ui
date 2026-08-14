@@ -49,6 +49,17 @@
                     hx-get="/servers/{{.ID}}/edit" hx-target="#server-panel" hx-swap="innerHTML">
               {{t "common.edit"}}
             </button>
+            {{/* Offered only where there is something to put back, so the
+                 button never answers with nothing to restore. */}}
+            {{if .HasBackup}}
+            <button class="btn btn-sm btn-outline-warning" type="button"
+                    hx-post="/servers/{{.ID}}/restore-file"
+                    hx-target="#server-panel" hx-swap="innerHTML"
+                    hx-confirm="{{tf "servers.restore_question" .Name}}"
+                    data-confirm-title="{{t "servers.restore_title"}}">
+              {{t "servers.restore"}}
+            </button>
+            {{end}}
             <button class="btn btn-sm btn-outline-danger" type="button"
                     hx-delete="/servers/{{.ID}}" hx-target="#server-panel" hx-swap="innerHTML"
                     hx-confirm="{{tf "servers.delete_question" .Name}}"

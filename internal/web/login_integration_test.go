@@ -143,7 +143,8 @@ func newLiveApp(t *testing.T) *App {
 		dataDir, timeouts, options.IntOf(settings.FleetMaxConcurrent))
 	records := fleet.NewService(recordStore, stateStore,
 		fleet.NewWriter(serverStore, servers, pool, refresher, auditLog,
-			dataDir, timeouts, options.IntOf(settings.FleetMaxConcurrent)),
+			store.NewBackups(db.DB), dataDir, timeouts,
+			options.IntOf(settings.FleetMaxConcurrent)),
 		refresher, dnsquery.New(cfg.DigPath, options.DurationOf(settings.DNSQueryTimeout)),
 		auditLog, options.DurationOf(settings.CacheStaleAfter),
 		options.IntOf(settings.RecordsPerPage))

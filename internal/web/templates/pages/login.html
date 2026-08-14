@@ -1,8 +1,12 @@
 {{define "content"}}
 <div class="card">
   <div class="card-body">
+    {{/* The heading stays in the document and leaves the screen. A card that
+         opens with no h1 gives a reader nothing to land on, and the mark
+         underneath it says the same thing to everybody else. */}}
     <div class="app-brand justify-content-center mb-4">
-      <h1 class="app-brand-text demo text-body fw-bolder brand-title mb-0">{{t "login.heading"}}</h1>
+      <h1 class="visually-hidden">{{t "login.title"}}</h1>
+      <img class="login-mark" src="/static/img/favicon.svg" alt="" width="56" height="56">
     </div>
     <p class="mb-4 text-center">{{t "login.lead"}}</p>
 

@@ -388,11 +388,19 @@ func TestThePanelNameReachesEveryBrandSurface(t *testing.T) {
 	}
 
 	page := env.do(t, httptest.NewRequest(http.MethodGet, "/dns", nil), env.cookie).Body.String()
-	if strings.Contains(page, "JanBound") {
+
+	// The shipped default, read from the registry rather than written here, so
+	// renaming the product does not quietly turn this assertion into one that
+	// passes against a name nothing uses.
+	definition, ok := settings.Lookup(settings.PanelName)
+	if !ok {
+		t.Fatal("the panel name is not in the registry")
+	}
+	if strings.Contains(page, definition.Default) {
 		t.Errorf("the old name survived the rename:\n%s", page)
 	}
 	if !strings.Contains(page, `data-field="panel-name"`) {
-		t.Errorf("the navbar carries no name:\n%s", page)
+		t.Errorf("the footer carries no name:\n%s", page)
 	}
 	if strings.Count(page, name) < 3 {
 		t.Errorf("the new name reaches too few surfaces:\n%s", page)

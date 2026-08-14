@@ -39,8 +39,11 @@
     <aside id="layout-menu" class="layout-menu menu-vertical menu bg-menu-theme"
            aria-label="{{t "nav.main"}}">
       <div class="app-brand demo">
-        <a href="/dns" class="app-brand-link">
-          <span class="app-brand-text demo menu-text fw-bolder ms-2">{{.PanelName}}</span>
+        {{/* The mark carries no name of its own, so the link takes the one
+             the operator typed. An image with an empty alt inside a labelled
+             link is announced once rather than twice. */}}
+        <a href="/dns" class="app-brand-link" aria-label="{{.PanelName}}">
+          <img class="app-brand-mark" src="/static/img/favicon.svg" alt="" width="32" height="32">
         </a>
         {{/* A button rather than a fragment link: it runs a script and
              navigates nowhere, and a link that goes nowhere is announced as
@@ -122,10 +125,11 @@
               </select>
             </li>
             <li class="nav-item me-2">
-              {{/* The name is a setting, so a drawn wordmark would contradict
-                   whatever the operator typed. Text follows the name and the
-                   theme without a second asset to keep in step. */}}
-              <span class="navbar-wordmark fw-bold" data-field="panel-name">{{.PanelName}}</span>
+              {{/* The mark rather than the name. The name is a setting and
+                   belongs where there is room to read it, which is the title
+                   of the page and the footer. */}}
+              <img class="navbar-mark" src="/static/img/favicon.svg"
+                   alt="{{.PanelName}}" width="24" height="24">
             </li>
           </ul>
         </div>
@@ -139,7 +143,7 @@
 
         <footer class="content-footer footer bg-footer-theme">
           <div class="container-xxl d-flex flex-wrap justify-content-between py-2 flex-md-row flex-column">
-            <div class="mb-2 mb-md-0">{{tf "layout.copyright" .Year .PanelName}}</div>
+            <div class="mb-2 mb-md-0" data-field="panel-name">{{tf "layout.copyright" .Year .PanelName}}</div>
           </div>
         </footer>
 

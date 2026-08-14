@@ -205,21 +205,22 @@ button.layout-menu-toggle {
 
 /* --- Layout details ----------------------------------------------------- */
 
-.navbar-logo {
-  height: 36px;
+/* The mark stands where a name used to. It is the same file in all three
+   places, sized by where it sits, so there is one asset to keep in step
+   rather than one per position. */
+.app-brand-mark {
+  height: 32px;
   width: auto;
 }
 
-/* The name is a setting, so the navbar carries text rather than a drawn
-   wordmark that would contradict whatever the operator typed. */
-.navbar-wordmark {
-  font-size: 1.1rem;
-  line-height: 36px;
-  white-space: nowrap;
+.navbar-mark {
+  height: 24px;
+  width: auto;
 }
 
-.brand-title {
-  font-size: 1.25rem;
+.login-mark {
+  height: 56px;
+  width: auto;
 }
 
 /* --- htmx --------------------------------------------------------------- */

@@ -34,7 +34,6 @@ func TestStaticAssetsAreServedFromTheBinary(t *testing.T) {
 		"/static/fonts/publicsans/publicsans-latin-ext.woff2",
 		"/static/fonts/boxicons/boxicons.woff2",
 		"/static/img/favicon.svg",
-		"/static/img/janbound-wordmark.svg",
 	}
 
 	for _, asset := range assets {

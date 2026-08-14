@@ -310,8 +310,7 @@ html[data-color-scheme="dark"] .btn-close {
 /* --- Menu and navigation ------------------------------------------------- */
 
 html[data-color-scheme="dark"] .bg-menu-theme .menu-link,
-html[data-color-scheme="dark"] .bg-menu-theme .menu-link .menu-icon,
-html[data-color-scheme="dark"] .app-brand-text {
+html[data-color-scheme="dark"] .bg-menu-theme .menu-link .menu-icon {
     color: var(--panel-text);
 }
 
@@ -595,8 +594,7 @@ html[data-color-scheme="dark"] .log-viewer {
     }
 
     html[data-color-scheme="system"] .bg-menu-theme .menu-link,
-    html[data-color-scheme="system"] .bg-menu-theme .menu-link .menu-icon,
-    html[data-color-scheme="system"] .app-brand-text {
+    html[data-color-scheme="system"] .bg-menu-theme .menu-link .menu-icon {
         color: var(--panel-text);
     }
 

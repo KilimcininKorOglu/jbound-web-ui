@@ -78,10 +78,6 @@ a:hover {
 .menu-inner .menu-item > .menu-link:hover {
     color: #1B8A4E !important;
 }
-.app-brand-text {
-    color: #1B8A4E !important;
-}
-
 /* Navbar */
 .layout-navbar {
     border-bottom: 2px solid #E8F5EE;

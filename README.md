@@ -282,6 +282,12 @@ The panel is served on `http://127.0.0.1:8330`. `make dev-env` creates
 `CHANGEME` value is replaced. The test accounts are created inside the container
 by `docker/testusers.sh`.
 
+The first start also fills the panel: the three targets, their approved host
+keys and a group named `resolvers` over all of them, written by
+`docker/devseed`. It goes through the same service an operator goes through,
+and it leaves a panel that already holds a server alone, so anything you change
+afterwards stays changed.
+
 ### Checks
 
 ```

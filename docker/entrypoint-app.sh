@@ -86,6 +86,16 @@ unset DEV_PASSWORD_ROOT DEV_PASSWORD_DNSADMIN DEV_PASSWORD_DNSUSER \
       DEV_PASSWORD_SVCACCT DEV_PASSWORD_LOWUID DEV_PASSWORD_LOCKEDUSER \
       DEV_PASSWORD_EXPIREDUSER
 
+# --- Seed the panel ----------------------------------------------------------
+# The three targets, their approved host keys and one group over them, so a
+# developer opens a working panel instead of typing the same setup after every
+# start. It runs as the service account, because the database and the keys
+# belong to it, and it leaves a panel that already holds servers alone.
+if [ -d "$SRC_DIR/docker/devseed" ]; then
+    log "seeding the development panel"
+    runuser -u unbound-web -- go run ./docker/devseed
+fi
+
 # runuser rather than setpriv. setpriv performs the exec itself, which lets it
 # start a binary the target account has no execute permission on. That makes it
 # a poor tool for reasoning about the 4750 helper, and the same confusion would

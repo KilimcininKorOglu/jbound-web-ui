@@ -82,9 +82,12 @@ func Parse(content []byte) []Record {
 			if priority, err := strconv.Atoi(parts[2]); err == nil {
 				record.Priority = priority
 			}
-			record.Value = parts[3]
+			record.Value = strings.Join(parts[3:], " ")
 		} else {
-			record.Value = parts[2]
+			// Everything after the type, not just the next field. A TXT value
+			// is regularly several words, and an SPF policy cut after its
+			// first one is a policy that refuses the sender's own mail.
+			record.Value = strings.Join(parts[2:], " ")
 		}
 
 		records = append(records, record)

@@ -168,3 +168,40 @@ func TestParseMatchesTheSeededTargetFile(t *testing.T) {
 		})
 	}
 }
+
+func TestAValueKeepsEveryFieldAfterTheType(t *testing.T) {
+	// A multi-word value is normal in this file. An SPF policy cut after its
+	// first field is a policy that refuses the sender's own mail, and the
+	// truncated record is what the diff compares and what a repair writes.
+	const content = `local-data: "example.net. TXT v=spf1 include:_spf.example.net ~all"
+local-data: "mail.example.net. MX 10 mx1.example.net"
+local-data: "www.example.net. A 192.0.2.10"
+`
+
+	records := dnsfile.Parse([]byte(content))
+	if len(records) != 3 {
+		t.Fatalf("got %d records, want 3", len(records))
+	}
+
+	if want := "v=spf1 include:_spf.example.net ~all"; records[0].Value != want {
+		t.Errorf("TXT value = %q, want %q", records[0].Value, want)
+	}
+	if records[1].Value != "mx1.example.net" || records[1].Priority != 10 {
+		t.Errorf("MX = %q / %d", records[1].Value, records[1].Priority)
+	}
+	if records[2].Value != "192.0.2.10" {
+		t.Errorf("A value = %q", records[2].Value)
+	}
+}
+
+func TestAMultiWordMXTargetKeepsEveryFieldToo(t *testing.T) {
+	// The preference sits between the type and the value, so the join has to
+	// start one field further along.
+	records := dnsfile.Parse([]byte(`local-data: "example.net. MX 20 a b c"` + "\n"))
+	if len(records) != 1 {
+		t.Fatalf("got %d records, want 1", len(records))
+	}
+	if records[0].Value != "a b c" || records[0].Priority != 20 {
+		t.Errorf("got %q / %d", records[0].Value, records[0].Priority)
+	}
+}

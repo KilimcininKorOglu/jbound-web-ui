@@ -237,13 +237,32 @@ func (t *SSHTransport) run(ctx context.Context, command string,
 
 	select {
 	case <-ctx.Done():
-		// Closing the session unblocks Run. The remote command may still be
-		// running, which is why a write is built so that an interrupted
-		// transfer leaves the target file untouched.
+		// Closing the session asks the remote side to end the channel. The
+		// remote command may still be running, which is why a write is built
+		// so that an interrupted transfer leaves the target file untouched.
 		session.Close()
-		<-done
-		return outBuf.String(), errBuf.String(),
-			fmt.Errorf("%w: %v", ErrUnreachable, ctx.Err())
+
+		select {
+		case <-done:
+			// The channel closed, so nothing is writing to the buffers any
+			// more and what the command managed to say is worth returning.
+			return outBuf.String(), errBuf.String(),
+				fmt.Errorf("%w: %v", ErrUnreachable, ctx.Err())
+
+		case <-time.After(closeGrace):
+			// Closing the session did not end it. A remote command that holds
+			// the channel open keeps Run blocked for as long as it runs, which
+			// is exactly the wait the deadline exists to prevent: the timeout
+			// would be a suggestion and the caller would still hand over its
+			// whole runtime to the server.
+			//
+			// The connection goes rather than the session, because a channel
+			// that will not close leaves it in a state the panel cannot reason
+			// about. The buffers are left alone: the command is still writing
+			// to them, and reading them here would be a race.
+			t.dropConnection()
+			return "", "", fmt.Errorf("%w: %v", ErrUnreachable, ctx.Err())
+		}
 	case runErr := <-done:
 		if runErr != nil {
 			// The limit is the panel's own, so it is reported as an output it
@@ -282,6 +301,15 @@ const (
 	// rather than refused: an audit row shows four hundred characters of it,
 	// so a noisy command still succeeds and nothing readable is lost.
 	maxStderrBytes = 64 << 10
+
+	// closeGrace is how long a timed out command is given to end its session
+	// after the panel has closed it.
+	//
+	// It is a courtesy to a peer that answers, not a second deadline. A server
+	// that closes the channel gets its partial output read; one that holds the
+	// channel open loses the connection instead, because otherwise the command
+	// timeout bounds nothing at all.
+	closeGrace = 2 * time.Second
 )
 
 // boundedWriter collects what a remote command writes, up to a limit.

@@ -1,9 +1,11 @@
 package fleet
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"testing"
@@ -613,5 +615,46 @@ func TestTwoChangesToOneServerBothLand(t *testing.T) {
 	file := h.targets["dns1"].file()
 	if !strings.Contains(file, "new.example.net") || !strings.Contains(file, "second.example.net") {
 		t.Errorf("one of the two changes was lost:\n%s", file)
+	}
+}
+
+// captureLog sends the structured stream to a buffer for the length of one
+// test, so an assertion can read what an operator would read.
+func captureLog(t *testing.T) *bytes.Buffer {
+	t.Helper()
+
+	var buffer bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buffer, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	})))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	return &buffer
+}
+
+func TestAFailedWriteNamesTheServerInTheLog(t *testing.T) {
+	// The report table is the only other place a failure appears, and it lives
+	// exactly as long as the page it was rendered into.
+	logged := captureLog(t)
+
+	h := newWriteHarness(t, 3)
+	h.targets["dns2"].writeErr = transport.ErrCommandFailed
+
+	if _, err := h.writer.Apply(context.Background(), testActor(), groupTarget(), addOperation()); err != nil {
+		t.Fatalf("Apply returned an error: %v", err)
+	}
+
+	output := logged.String()
+	if !strings.Contains(output, "cannot write a record to a server") {
+		t.Fatalf("the failure was not logged:\n%s", output)
+	}
+	if !strings.Contains(output, "server=dns2") {
+		t.Errorf("the log does not name the server:\n%s", output)
+	}
+	if !strings.Contains(output, "operation=add") {
+		t.Errorf("the log does not name the operation:\n%s", output)
+	}
+	if strings.Contains(output, "server=dns1") {
+		t.Errorf("a server that succeeded was logged as a failure:\n%s", output)
 	}
 }

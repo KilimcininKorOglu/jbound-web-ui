@@ -53,6 +53,44 @@ var (
 	ErrRemoteOutput    = errors.New("remote shell produced unexpected output")
 )
 
+// Failure codes. A stored failure keeps the class and drops the text, because
+// the text names the remote command, its paths and its stderr.
+const (
+	CodeUnreachable     = "unreachable"
+	CodeHostKeyUnknown  = "host_key_unknown"
+	CodeHostKeyMismatch = "host_key_mismatch"
+	CodeAuth            = "auth"
+	CodeConflict        = "conflict"
+	CodeCommandFailed   = "command_failed"
+	CodeRemoteOutput    = "remote_output"
+	CodeUnknown         = "unknown"
+)
+
+// FailureCode names the class of a transport failure.
+//
+// The order matters. A probe wraps a command failure, so the more specific
+// class has to be tried before the one it is wrapped in.
+func FailureCode(err error) string {
+	switch {
+	case errors.Is(err, ErrHostKeyMismatch):
+		return CodeHostKeyMismatch
+	case errors.Is(err, ErrHostKeyUnknown):
+		return CodeHostKeyUnknown
+	case errors.Is(err, ErrAuth):
+		return CodeAuth
+	case errors.Is(err, ErrConflict):
+		return CodeConflict
+	case errors.Is(err, ErrRemoteOutput):
+		return CodeRemoteOutput
+	case errors.Is(err, ErrCommandFailed):
+		return CodeCommandFailed
+	case errors.Is(err, ErrUnreachable):
+		return CodeUnreachable
+	default:
+		return CodeUnknown
+	}
+}
+
 // ProbeStep names one stage of the connection test.
 type ProbeStep string
 

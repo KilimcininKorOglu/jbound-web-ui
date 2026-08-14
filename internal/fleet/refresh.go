@@ -201,10 +201,18 @@ func (r *Refresher) markApplied(ctx context.Context, serverID int64, digest stri
 
 // markUnreachable records why a server could not be read.
 //
+// Only the failure class is stored, because the text of a transport error
+// names the remote command, its paths and its stderr, and the row it lands in
+// is read by every signed in account. The cause itself goes to the log.
+//
 // The cached records stay. Old records with a warning next to them say more
 // than an empty page, which is what dropping them would leave behind.
 func (r *Refresher) markUnreachable(ctx context.Context, serverID int64, cause error) {
-	if err := r.states.SetUnreachable(ctx, serverID, cause.Error()); err != nil {
+	code := transport.FailureCode(cause)
+	slog.Error("cannot read a server",
+		"server", serverID, "code", code, "error", cause)
+
+	if err := r.states.SetUnreachable(ctx, serverID, code); err != nil {
 		slog.Error("cannot record that a server is unreachable",
 			"server", serverID, "error", err)
 	}

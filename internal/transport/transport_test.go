@@ -2,6 +2,7 @@ package transport
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -264,5 +265,52 @@ func TestSameEndpointNoticesEveryConnectionField(t *testing.T) {
 
 	if !sameEndpoint(base, base) {
 		t.Error("an unchanged record was treated as different")
+	}
+}
+
+func TestEveryFailureClassCarriesItsOwnCode(t *testing.T) {
+	// The stored class is what the interface layer turns into a sentence, so a
+	// wrong class shows the operator the wrong next step.
+	classes := map[error]string{
+		ErrUnreachable:     CodeUnreachable,
+		ErrHostKeyUnknown:  CodeHostKeyUnknown,
+		ErrHostKeyMismatch: CodeHostKeyMismatch,
+		ErrAuth:            CodeAuth,
+		ErrConflict:        CodeConflict,
+		ErrCommandFailed:   CodeCommandFailed,
+		ErrRemoteOutput:    CodeRemoteOutput,
+	}
+
+	for cause, want := range classes {
+		if got := FailureCode(cause); got != want {
+			t.Errorf("FailureCode(%v) = %q, want %q", cause, got, want)
+		}
+		wrapped := fmt.Errorf("read host entries: %w", cause)
+		if got := FailureCode(wrapped); got != want {
+			t.Errorf("FailureCode(wrapped %v) = %q, want %q", cause, got, want)
+		}
+	}
+}
+
+func TestACommandFailureIsClassifiedWithoutItsText(t *testing.T) {
+	// CommandError carries the remote command line and the remote stderr, and
+	// this is the value that used to reach the status page verbatim.
+	cause := &CommandError{
+		Command:  "/usr/bin/base64 -w0 /etc/unbound/host_entries.conf",
+		ExitCode: 1,
+		Stderr:   "sudo: a password is required",
+	}
+
+	if got := FailureCode(cause); got != CodeCommandFailed {
+		t.Errorf("FailureCode = %q, want %q", got, CodeCommandFailed)
+	}
+	if strings.Contains(FailureCode(cause), "base64") {
+		t.Error("the code carries the remote command line")
+	}
+}
+
+func TestAnUnknownFailureFallsBackToTheUnknownCode(t *testing.T) {
+	if got := FailureCode(errors.New("disk on fire")); got != CodeUnknown {
+		t.Errorf("FailureCode = %q, want %q", got, CodeUnknown)
 	}
 }

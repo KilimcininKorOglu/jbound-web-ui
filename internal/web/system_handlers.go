@@ -11,6 +11,7 @@ import (
 	"unbound-web/internal/fleet"
 	"unbound-web/internal/i18n"
 	"unbound-web/internal/server"
+	"unbound-web/internal/transport"
 )
 
 // The states a server can be in on the system page.
@@ -160,11 +161,32 @@ func (a *App) systemStatus(r *http.Request) (systemStatus, error) {
 			Reachable:     state.Reachable,
 			UnboundActive: state.UnboundActive,
 			FetchedAt:     state.FetchedAt,
-			CacheError:    state.LastError,
+			CacheError:    cacheErrorText(catalog, state.LastError),
 		})
 	}
 
 	return systemStatus{Servers: rows, Summary: systemSummary(catalog, rows)}, nil
+}
+
+// cacheErrorText turns a stored failure class into a sentence.
+//
+// A row written before the panel started storing a class holds the old text.
+// It falls back to the unknown sentence, so no remote command line reaches the
+// page from an old row either.
+func cacheErrorText(catalog *i18n.Catalog, code string) string {
+	if code == "" {
+		return ""
+	}
+
+	switch code {
+	case transport.CodeUnreachable, transport.CodeHostKeyUnknown,
+		transport.CodeHostKeyMismatch, transport.CodeAuth,
+		transport.CodeConflict, transport.CodeCommandFailed,
+		transport.CodeRemoteOutput:
+		return catalog.T("system.error." + code)
+	default:
+		return catalog.T("system.error." + transport.CodeUnknown)
+	}
 }
 
 // systemState classifies one server for the status card.

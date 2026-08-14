@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -462,5 +463,48 @@ func TestStaleIsDecidedAgainstTheLastRead(t *testing.T) {
 	}
 	if !(State{FetchedAt: &old}).Stale(now, 15*time.Minute) {
 		t.Error("an hour old read is not stale")
+	}
+}
+
+func TestAFailedReadStoresTheClassAndNotTheText(t *testing.T) {
+	// CommandError carries the remote command line, its paths and its stderr.
+	// The row it lands in is read by every signed in account, so only the
+	// class is allowed to survive the write.
+	target := workingTarget()
+	target.readErr = &transport.CommandError{
+		Command:  "/usr/bin/base64 -w0 /etc/unbound/host_entries.conf",
+		ExitCode: 1,
+		Stderr:   "sudo: a password is required",
+	}
+	h := newHarness(t, target)
+
+	if _, err := h.refresher.One(context.Background(), 1); err != nil {
+		t.Fatalf("One returned an error: %v", err)
+	}
+
+	stored := h.states.failure(1)
+	if stored != transport.CodeCommandFailed {
+		t.Fatalf("stored failure = %q, want %q", stored, transport.CodeCommandFailed)
+	}
+	if strings.Contains(stored, "base64") || strings.Contains(stored, "sudo") {
+		t.Errorf("stored failure carries the remote command: %q", stored)
+	}
+}
+
+func TestAnUnapprovedHostKeyStoresItsOwnClass(t *testing.T) {
+	// An operator who reads "no approved host key" goes to the trust button.
+	// One who reads "unreachable" goes to the network, which is the wrong step.
+	h := newHarness(t, workingTarget())
+
+	record := h.servers.records[1]
+	record.HostKey = ""
+	h.servers.records[1] = record
+
+	if _, err := h.refresher.One(context.Background(), 1); err != nil {
+		t.Fatalf("One returned an error: %v", err)
+	}
+
+	if stored := h.states.failure(1); stored != transport.CodeHostKeyUnknown {
+		t.Errorf("stored failure = %q, want %q", stored, transport.CodeHostKeyUnknown)
 	}
 }

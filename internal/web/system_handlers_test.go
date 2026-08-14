@@ -2,7 +2,7 @@ package web
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -13,6 +13,7 @@ import (
 	"unbound-web/internal/fleet"
 	"unbound-web/internal/i18n"
 	"unbound-web/internal/server"
+	"unbound-web/internal/transport"
 )
 
 // systemPage returns the rendered system page.
@@ -129,11 +130,13 @@ func TestTheSyslogCardNamesTheFacilityAndTheFile(t *testing.T) {
 	}
 }
 
-func TestAnUnreachableServerIsShownWithItsError(t *testing.T) {
+func TestAnUnreachableServerIsShownWithAClassifiedReason(t *testing.T) {
 	env := newFleetEnv(t)
 
-	// dns2 goes quiet, and the refresher records why.
-	env.target(2).failReads(errors.New("dial tcp 192.0.2.1:22: connect: no route to host"))
+	// dns2 goes quiet. The cause names the address it dialled, and every
+	// signed in account reads this page, so the page gets the class instead.
+	env.target(2).failReads(fmt.Errorf("%w: dial tcp 192.0.2.1:22: no route to host",
+		transport.ErrUnreachable))
 	if _, err := env.records.Refresh(context.Background()); err != nil {
 		t.Fatalf("cannot refresh the cache: %v", err)
 	}
@@ -142,8 +145,11 @@ func TestAnUnreachableServerIsShownWithItsError(t *testing.T) {
 	if !strings.Contains(body, `data-field="state">unreachable<`) {
 		t.Errorf("the server is not marked as unreachable:\n%s", body)
 	}
-	if !strings.Contains(body, "no route to host") {
+	if !strings.Contains(body, "The panel could not reach this server.") {
 		t.Errorf("the reason is missing:\n%s", body)
+	}
+	if strings.Contains(body, "no route to host") || strings.Contains(body, "192.0.2.1:22") {
+		t.Errorf("the raw cause reached the page:\n%s", body)
 	}
 	if !strings.Contains(body, "2 of 3 enabled servers answered the last read.") {
 		t.Errorf("the summary does not count the failure:\n%s", body)
@@ -331,5 +337,59 @@ func TestTheDatabaseSizeAddsUpTheCompanionFiles(t *testing.T) {
 	}
 	if databaseSize(env.app.Config.DBPath+".missing") != 0 {
 		t.Error("a path that does not exist reports a size")
+	}
+}
+
+func TestTheCacheFailureReachesThePageAsASentence(t *testing.T) {
+	// The stored value used to be the formatted transport error, which names
+	// the remote command, its paths and its stderr. Every signed in account
+	// reads this page, so nothing but a catalogue sentence may reach it.
+	catalogs, err := i18n.Load()
+	if err != nil {
+		t.Fatalf("cannot load the catalogues: %v", err)
+	}
+	catalog := catalogs.Catalog(i18n.Default)
+
+	codes := []string{
+		transport.CodeUnreachable,
+		transport.CodeHostKeyUnknown,
+		transport.CodeHostKeyMismatch,
+		transport.CodeAuth,
+		transport.CodeConflict,
+		transport.CodeCommandFailed,
+		transport.CodeRemoteOutput,
+		transport.CodeUnknown,
+	}
+
+	for _, code := range codes {
+		text := cacheErrorText(catalog, code)
+		if text == "" || strings.HasPrefix(text, "system.error.") {
+			t.Errorf("the %s class has no sentence, got %q", code, text)
+		}
+	}
+
+	if got := cacheErrorText(catalog, ""); got != "" {
+		t.Errorf("a server that never failed carries %q", got)
+	}
+}
+
+func TestALegacyFailureTextNeverReachesThePage(t *testing.T) {
+	// Rows written before the panel stored a class still hold the old text.
+	catalogs, err := i18n.Load()
+	if err != nil {
+		t.Fatalf("cannot load the catalogues: %v", err)
+	}
+	catalog := catalogs.Catalog(i18n.Default)
+
+	legacy := "remote command failed: /usr/bin/base64 -w0 " +
+		"/etc/unbound/host_entries.conf exited 1: sudo: a password is required"
+
+	got := cacheErrorText(catalog, legacy)
+	if strings.Contains(got, "base64") || strings.Contains(got, "sudo") ||
+		strings.Contains(got, "/etc/unbound") {
+		t.Errorf("the old text reached the page: %q", got)
+	}
+	if got != catalog.T("system.error."+transport.CodeUnknown) {
+		t.Errorf("got %q, want the unknown sentence", got)
 	}
 }

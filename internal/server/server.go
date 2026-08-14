@@ -19,7 +19,7 @@ import (
 // Defaults for a new server. They match a Debian install and every one of
 // them is editable.
 const (
-	DefaultHostEntriesPath = "/etc/unbound/host_entries.conf"
+	DefaultRecordsPath = "/etc/unbound/local_records.conf"
 
 	// The three rungs of a reload, in the order they are tried. The first one
 	// preserves the resolver cache, which is the whole reason it comes first:
@@ -61,13 +61,13 @@ type Server struct {
 	// operator has approved a fingerprint yet.
 	HostKey string
 
-	HostEntriesPath string
-	ReloadCmd       string
-	StatusCmd       string
-	Base64Path      string
-	TeePath         string
-	MvPath          string
-	Sha256Path      string
+	RecordsPath string
+	ReloadCmd   string
+	StatusCmd   string
+	Base64Path  string
+	TeePath     string
+	MvPath      string
+	Sha256Path  string
 
 	// CheckConfCmd validates the resolver configuration after a write. An
 	// empty command skips the check, which is a target whose sudoers rules
@@ -105,7 +105,7 @@ func (s *Server) ApplyDefaults() {
 	}
 
 	for field, value := range map[*string]string{
-		&s.HostEntriesPath:   DefaultHostEntriesPath,
+		&s.RecordsPath:       DefaultRecordsPath,
 		&s.ReloadCmd:         DefaultReloadCmd,
 		&s.StatusCmd:         DefaultStatusCmd,
 		&s.Base64Path:        DefaultBase64Path,
@@ -170,17 +170,17 @@ func (s Server) inputProblems() []string {
 	// Reuse the transport rules for the remote fields. One definition means
 	// the form and the connection can never disagree about what is allowed.
 	probe := transport.Config{
-		Host:            valueOr(s.Host, "placeholder"),
-		Port:            s.SSHPort,
-		User:            valueOr(s.SSHUser, "placeholder"),
-		KeyPath:         "/placeholder",
-		HostEntriesPath: s.HostEntriesPath,
-		ReloadCmd:       s.ReloadCmd,
-		StatusCmd:       s.StatusCmd,
-		Base64Path:      s.Base64Path,
-		TeePath:         s.TeePath,
-		MvPath:          s.MvPath,
-		Sha256Path:      s.Sha256Path,
+		Host:        valueOr(s.Host, "placeholder"),
+		Port:        s.SSHPort,
+		User:        valueOr(s.SSHUser, "placeholder"),
+		KeyPath:     "/placeholder",
+		RecordsPath: s.RecordsPath,
+		ReloadCmd:   s.ReloadCmd,
+		StatusCmd:   s.StatusCmd,
+		Base64Path:  s.Base64Path,
+		TeePath:     s.TeePath,
+		MvPath:      s.MvPath,
+		Sha256Path:  s.Sha256Path,
 
 		CheckConfCmd:      s.CheckConfCmd,
 		ReloadFallbackCmd: s.ReloadFallbackCmd,
@@ -212,20 +212,20 @@ func valueOr(value, fallback string) string {
 // directory can move.
 func (s Server) TransportConfig(dataDir string, connectTimeout, commandTimeout time.Duration) transport.Config {
 	return transport.Config{
-		ID:              s.ID,
-		Name:            s.Name,
-		Host:            s.Host,
-		Port:            s.SSHPort,
-		User:            s.SSHUser,
-		KeyPath:         filepath.Join(dataDir, s.SSHKeyPath),
-		HostKey:         s.HostKey,
-		HostEntriesPath: s.HostEntriesPath,
-		ReloadCmd:       s.ReloadCmd,
-		StatusCmd:       s.StatusCmd,
-		Base64Path:      s.Base64Path,
-		TeePath:         s.TeePath,
-		MvPath:          s.MvPath,
-		Sha256Path:      s.Sha256Path,
+		ID:          s.ID,
+		Name:        s.Name,
+		Host:        s.Host,
+		Port:        s.SSHPort,
+		User:        s.SSHUser,
+		KeyPath:     filepath.Join(dataDir, s.SSHKeyPath),
+		HostKey:     s.HostKey,
+		RecordsPath: s.RecordsPath,
+		ReloadCmd:   s.ReloadCmd,
+		StatusCmd:   s.StatusCmd,
+		Base64Path:  s.Base64Path,
+		TeePath:     s.TeePath,
+		MvPath:      s.MvPath,
+		Sha256Path:  s.Sha256Path,
 
 		CheckConfCmd:      s.CheckConfCmd,
 		ReloadFallbackCmd: s.ReloadFallbackCmd,

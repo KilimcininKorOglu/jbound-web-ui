@@ -15,16 +15,16 @@ import (
 
 // Transport is one managed server.
 type Transport interface {
-	// ReadHostEntries returns the host entries file and its SHA-256 digest.
-	ReadHostEntries(ctx context.Context) (data []byte, sha256 string, err error)
+	// ReadRecords returns the records file and its SHA-256 digest.
+	ReadRecords(ctx context.Context) (data []byte, sha256 string, err error)
 
-	// WriteHostEntries replaces the host entries file.
+	// WriteRecords replaces the records file.
 	//
 	// expectSHA256 is the digest the caller last saw. The write is refused
 	// when the remote file no longer matches it, because the read and the
 	// write now span a network and another operator may have written in
 	// between.
-	WriteHostEntries(ctx context.Context, data []byte, expectSHA256 string) error
+	WriteRecords(ctx context.Context, data []byte, expectSHA256 string) error
 
 	// CheckConfig asks the resolver to validate its configuration.
 	//
@@ -207,9 +207,9 @@ type Config struct {
 	// operator has approved a fingerprint yet.
 	HostKey string
 
-	HostEntriesPath string
-	ReloadCmd       string
-	StatusCmd       string
+	RecordsPath string
+	ReloadCmd   string
+	StatusCmd   string
 
 	// CheckConfCmd validates the resolver configuration. ReloadFallbackCmd and
 	// RestartCmd are the second and third rungs of a reload. Each one may be
@@ -251,7 +251,7 @@ func (c Config) Validate() error {
 	require("host", c.Host)
 	require("user", c.User)
 	require("key path", c.KeyPath)
-	require("host entries path", c.HostEntriesPath)
+	require("records path", c.RecordsPath)
 	require("reload command", c.ReloadCmd)
 	require("status command", c.StatusCmd)
 	require("base64 path", c.Base64Path)
@@ -266,7 +266,7 @@ func (c Config) Validate() error {
 	fields := map[string]string{
 		"host":                    c.Host,
 		"user":                    c.User,
-		"host entries path":       c.HostEntriesPath,
+		"records path":            c.RecordsPath,
 		"reload command":          c.ReloadCmd,
 		"status command":          c.StatusCmd,
 		"check config command":    c.CheckConfCmd,
@@ -287,11 +287,11 @@ func (c Config) Validate() error {
 	// An absolute path is what the sudoers rules name. A relative one would
 	// resolve against whatever directory the remote shell happens to start in.
 	for name, value := range map[string]string{
-		"host entries path": c.HostEntriesPath,
-		"base64 path":       c.Base64Path,
-		"tee path":          c.TeePath,
-		"mv path":           c.MvPath,
-		"sha256 path":       c.Sha256Path,
+		"records path": c.RecordsPath,
+		"base64 path":  c.Base64Path,
+		"tee path":     c.TeePath,
+		"mv path":      c.MvPath,
+		"sha256 path":  c.Sha256Path,
 	} {
 		if value != "" && !strings.HasPrefix(value, "/") {
 			problems = append(problems, name+" is not absolute: "+value)
@@ -309,7 +309,7 @@ func (c Config) Validate() error {
 // The name is fixed and sits in the target directory. Fixed, so the sudoers
 // rule needs no wildcard. Same directory, so the move is atomic.
 func (c Config) tempPath() string {
-	slash := strings.LastIndex(c.HostEntriesPath, "/")
-	dir, file := c.HostEntriesPath[:slash+1], c.HostEntriesPath[slash+1:]
+	slash := strings.LastIndex(c.RecordsPath, "/")
+	dir, file := c.RecordsPath[:slash+1], c.RecordsPath[slash+1:]
 	return dir + "." + file + ".tmp"
 }

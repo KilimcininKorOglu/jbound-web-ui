@@ -102,7 +102,7 @@ func newWritableTarget(content string) *writableTarget {
 	return &writableTarget{content: []byte(content), active: true}
 }
 
-func (t *writableTarget) ReadHostEntries(context.Context) ([]byte, string, error) {
+func (t *writableTarget) ReadRecords(context.Context) ([]byte, string, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -112,7 +112,7 @@ func (t *writableTarget) ReadHostEntries(context.Context) ([]byte, string, error
 	return append([]byte(nil), t.content...), contentDigest(t.content), nil
 }
 
-func (t *writableTarget) WriteHostEntries(_ context.Context, data []byte, expect string) error {
+func (t *writableTarget) WriteRecords(_ context.Context, data []byte, expect string) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 

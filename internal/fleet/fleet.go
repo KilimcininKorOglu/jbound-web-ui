@@ -1,6 +1,6 @@
 // Package fleet keeps the panel's view of what every managed server holds.
 //
-// The host entries file on each server stays authoritative. What lives here is
+// The records file on each server stays authoritative. What lives here is
 // a read cache, refilled after every write and on a timer, so a page load does
 // not have to reach out over SSH to answer.
 package fleet

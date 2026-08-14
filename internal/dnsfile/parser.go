@@ -1,4 +1,4 @@
-// Package dnsfile reads and writes the Unbound host entries file.
+// Package dnsfile reads and writes the Unbound records file.
 //
 // Everything here is a pure function over a byte slice. The file arrives from
 // a managed server over SSH and leaves the same way, so knowing nothing about
@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-// Record is one local-data line of the host entries file.
+// Record is one local-data line of the records file.
 type Record struct {
 	// Line is the one based position in the file the record was read from.
 	Line int
@@ -32,7 +32,7 @@ type Record struct {
 	Raw string
 }
 
-// localData matches a host entries line and captures what the quotes hold.
+// localData matches a records line and captures what the quotes hold.
 var localData = regexp.MustCompile(`^local-data:\s*"([^"]+)"`)
 
 // fields splits the quoted part on any run of whitespace.
@@ -60,7 +60,7 @@ func dropClass(parts []string) []string {
 	return slices.Delete(slices.Clone(parts), 1, 2)
 }
 
-// Parse reads every record of a host entries file.
+// Parse reads every record of a records file.
 //
 // A line that does not fit is skipped rather than reported. The file is edited
 // by hand on the target as well, and refusing to show the records because one

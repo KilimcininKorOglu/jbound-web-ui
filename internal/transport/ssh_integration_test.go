@@ -38,14 +38,14 @@ func devConfig(t *testing.T) Config {
 	}
 
 	return Config{
-		ID:              1,
-		Name:            testTarget,
-		Host:            testTarget,
-		Port:            22,
-		User:            testUser,
-		KeyPath:         testKeyPath,
-		HostEntriesPath: "/etc/unbound/host_entries.conf",
-		ReloadCmd:       "sudo /usr/sbin/service unbound reload",
+		ID:          1,
+		Name:        testTarget,
+		Host:        testTarget,
+		Port:        22,
+		User:        testUser,
+		KeyPath:     testKeyPath,
+		RecordsPath: "/etc/unbound/local_records.conf",
+		ReloadCmd:   "sudo /usr/sbin/service unbound reload",
 		// The containers carry no systemd, so the init script answers instead.
 		// Production uses systemctl, and both are configured per server.
 		StatusCmd: "/usr/sbin/service unbound status",
@@ -87,18 +87,18 @@ func newTransport(t *testing.T) *SSHTransport {
 	return transport
 }
 
-// preserveHostEntries restores the file after a test changed it.
-func preserveHostEntries(t *testing.T, transport *SSHTransport) {
+// preserveRecords restores the file after a test changed it.
+func preserveRecords(t *testing.T, transport *SSHTransport) {
 	t.Helper()
 	ctx := context.Background()
 
-	original, sum, err := transport.ReadHostEntries(ctx)
+	original, sum, err := transport.ReadRecords(ctx)
 	if err != nil {
-		t.Fatalf("cannot read the host entries file: %v", err)
+		t.Fatalf("cannot read the records file: %v", err)
 	}
 
 	t.Cleanup(func() {
-		_, current, err := transport.ReadHostEntries(context.Background())
+		_, current, err := transport.ReadRecords(context.Background())
 		if err != nil {
 			t.Errorf("cannot read the file back for the restore: %v", err)
 			return
@@ -106,8 +106,8 @@ func preserveHostEntries(t *testing.T, transport *SSHTransport) {
 		if current == sum {
 			return
 		}
-		if err := transport.WriteHostEntries(context.Background(), original, current); err != nil {
-			t.Errorf("cannot restore the host entries file: %v", err)
+		if err := transport.WriteRecords(context.Background(), original, current); err != nil {
+			t.Errorf("cannot restore the records file: %v", err)
 		}
 	})
 }
@@ -166,7 +166,7 @@ func TestAnApprovedKeyDecidesWhichOneTheServerOffers(t *testing.T) {
 	}
 	defer transport.Close()
 
-	if _, _, err := transport.ReadHostEntries(context.Background()); err != nil {
+	if _, _, err := transport.ReadRecords(context.Background()); err != nil {
 		t.Fatalf("the approved ecdsa key was refused: %v", err)
 	}
 }
@@ -190,7 +190,7 @@ func TestConnectingWithoutAnApprovedHostKeyIsRefused(t *testing.T) {
 	}
 	defer transport.Close()
 
-	_, _, err = transport.ReadHostEntries(context.Background())
+	_, _, err = transport.ReadRecords(context.Background())
 	if !errors.Is(err, ErrHostKeyUnknown) {
 		t.Fatalf("got %v, want ErrHostKeyUnknown", err)
 	}
@@ -212,7 +212,7 @@ func TestConnectingWithTheWrongHostKeyIsRefused(t *testing.T) {
 	}
 	defer transport.Close()
 
-	_, _, err = transport.ReadHostEntries(context.Background())
+	_, _, err = transport.ReadRecords(context.Background())
 	if !errors.Is(err, ErrHostKeyMismatch) {
 		t.Fatalf("got %v, want ErrHostKeyMismatch", err)
 	}
@@ -230,7 +230,7 @@ func TestAuthenticationFailureIsItsOwnClass(t *testing.T) {
 	}
 	defer transport.Close()
 
-	_, _, err = transport.ReadHostEntries(context.Background())
+	_, _, err = transport.ReadRecords(context.Background())
 	if !errors.Is(err, ErrAuth) {
 		t.Fatalf("got %v, want ErrAuth", err)
 	}
@@ -246,7 +246,7 @@ func TestUnreachableServerIsItsOwnClass(t *testing.T) {
 	}
 	defer transport.Close()
 
-	_, _, err = transport.ReadHostEntries(context.Background())
+	_, _, err = transport.ReadRecords(context.Background())
 	if !errors.Is(err, ErrUnreachable) {
 		t.Fatalf("got %v, want ErrUnreachable", err)
 	}
@@ -255,9 +255,9 @@ func TestUnreachableServerIsItsOwnClass(t *testing.T) {
 func TestReadReturnsTheSeededRecords(t *testing.T) {
 	transport := newTransport(t)
 
-	data, sum, err := transport.ReadHostEntries(context.Background())
+	data, sum, err := transport.ReadRecords(context.Background())
 	if err != nil {
-		t.Fatalf("ReadHostEntries returned an error: %v", err)
+		t.Fatalf("ReadRecords returned an error: %v", err)
 	}
 	if !strings.Contains(string(data), "local-data") {
 		t.Errorf("the file carries no records:\n%s", data)
@@ -269,12 +269,12 @@ func TestReadReturnsTheSeededRecords(t *testing.T) {
 
 func TestWriteRoundTripsThroughTheTransferProtocol(t *testing.T) {
 	transport := newTransport(t)
-	preserveHostEntries(t, transport)
+	preserveRecords(t, transport)
 	ctx := context.Background()
 
-	original, sum, err := transport.ReadHostEntries(ctx)
+	original, sum, err := transport.ReadRecords(ctx)
 	if err != nil {
-		t.Fatalf("ReadHostEntries returned an error: %v", err)
+		t.Fatalf("ReadRecords returned an error: %v", err)
 	}
 
 	// Content that would not survive a naive transfer: a quote, a backslash,
@@ -283,11 +283,11 @@ func TestWriteRoundTripsThroughTheTransferProtocol(t *testing.T) {
 	updated = append(updated,
 		[]byte("local-data: \"round.trip.test. A 10.9.9.9\"\n# tab\tquote\" backslash\\ ü\n")...)
 
-	if err := transport.WriteHostEntries(ctx, updated, sum); err != nil {
-		t.Fatalf("WriteHostEntries returned an error: %v", err)
+	if err := transport.WriteRecords(ctx, updated, sum); err != nil {
+		t.Fatalf("WriteRecords returned an error: %v", err)
 	}
 
-	readBack, _, err := transport.ReadHostEntries(ctx)
+	readBack, _, err := transport.ReadRecords(ctx)
 	if err != nil {
 		t.Fatalf("cannot read the file back: %v", err)
 	}
@@ -301,31 +301,31 @@ func TestWriteRefusesAStaleDigest(t *testing.T) {
 	// written in between. Overwriting them would lose their change without a
 	// trace.
 	transport := newTransport(t)
-	preserveHostEntries(t, transport)
+	preserveRecords(t, transport)
 	ctx := context.Background()
 
-	original, sum, err := transport.ReadHostEntries(ctx)
+	original, sum, err := transport.ReadRecords(ctx)
 	if err != nil {
-		t.Fatalf("ReadHostEntries returned an error: %v", err)
+		t.Fatalf("ReadRecords returned an error: %v", err)
 	}
 
 	// Somebody else writes first.
 	theirs := append(append([]byte(nil), original...),
 		[]byte("local-data: \"theirs.test. A 10.8.8.8\"\n")...)
-	if err := transport.WriteHostEntries(ctx, theirs, sum); err != nil {
+	if err := transport.WriteRecords(ctx, theirs, sum); err != nil {
 		t.Fatalf("the first write failed: %v", err)
 	}
 
 	// The stale caller still holds the digest from before.
 	mine := append(append([]byte(nil), original...),
 		[]byte("local-data: \"mine.test. A 10.7.7.7\"\n")...)
-	err = transport.WriteHostEntries(ctx, mine, sum)
+	err = transport.WriteRecords(ctx, mine, sum)
 
 	if !errors.Is(err, ErrConflict) {
 		t.Fatalf("got %v, want ErrConflict", err)
 	}
 
-	current, _, readErr := transport.ReadHostEntries(ctx)
+	current, _, readErr := transport.ReadRecords(ctx)
 	if readErr != nil {
 		t.Fatalf("cannot read the file back: %v", readErr)
 	}
@@ -338,16 +338,16 @@ func TestWriteAcceptsAnEmptyExpectation(t *testing.T) {
 	// An empty digest means the caller has no expectation, which is the case
 	// when a server is being seeded for the first time.
 	transport := newTransport(t)
-	preserveHostEntries(t, transport)
+	preserveRecords(t, transport)
 	ctx := context.Background()
 
-	original, _, err := transport.ReadHostEntries(ctx)
+	original, _, err := transport.ReadRecords(ctx)
 	if err != nil {
-		t.Fatalf("ReadHostEntries returned an error: %v", err)
+		t.Fatalf("ReadRecords returned an error: %v", err)
 	}
 
-	if err := transport.WriteHostEntries(ctx, original, ""); err != nil {
-		t.Fatalf("WriteHostEntries returned an error: %v", err)
+	if err := transport.WriteRecords(ctx, original, ""); err != nil {
+		t.Fatalf("WriteRecords returned an error: %v", err)
 	}
 }
 
@@ -411,7 +411,7 @@ func TestServiceStatusTreatsANonZeroExitAsAnAnswer(t *testing.T) {
 
 func TestProbePassesAgainstAWorkingTarget(t *testing.T) {
 	transport := newTransport(t)
-	preserveHostEntries(t, transport)
+	preserveRecords(t, transport)
 
 	if err := transport.Probe(context.Background()); err != nil {
 		t.Fatalf("Probe returned an error: %v", err)
@@ -449,7 +449,7 @@ func TestProbeReportsTheWriteStepWhenSudoRefuses(t *testing.T) {
 
 func TestProbeReportsTheReadStepWhenTheFileIsMissing(t *testing.T) {
 	cfg := approvedConfig(t)
-	cfg.HostEntriesPath = "/etc/unbound/no_such_file.conf"
+	cfg.RecordsPath = "/etc/unbound/no_such_file.conf"
 
 	transport, err := NewSSH(cfg)
 	if err != nil {
@@ -492,7 +492,7 @@ func TestContextCancellationStopsACommand(t *testing.T) {
 
 	// Warm the connection first, so the timeout lands on the command rather
 	// than on the handshake.
-	if _, _, err := transport.ReadHostEntries(context.Background()); err != nil {
+	if _, _, err := transport.ReadRecords(context.Background()); err != nil {
 		t.Fatalf("cannot warm the connection: %v", err)
 	}
 
@@ -527,7 +527,7 @@ func TestPoolReusesOneConnectionPerServer(t *testing.T) {
 		t.Error("the pool opened a second transport for the same server")
 	}
 
-	if _, _, err := first.ReadHostEntries(ctx); err != nil {
+	if _, _, err := first.ReadRecords(ctx); err != nil {
 		t.Fatalf("the pooled transport does not work: %v", err)
 	}
 }
@@ -561,13 +561,13 @@ func TestKeepaliveKeepsAConnectionUsable(t *testing.T) {
 	transport := newTransport(t)
 	ctx := context.Background()
 
-	if _, _, err := transport.ReadHostEntries(ctx); err != nil {
+	if _, _, err := transport.ReadRecords(ctx); err != nil {
 		t.Fatalf("cannot open the connection: %v", err)
 	}
 	if err := transport.keepalive(keepaliveTimeout); err != nil {
 		t.Fatalf("keepalive returned an error: %v", err)
 	}
-	if _, _, err := transport.ReadHostEntries(ctx); err != nil {
+	if _, _, err := transport.ReadRecords(ctx); err != nil {
 		t.Fatalf("the connection stopped working after a keepalive: %v", err)
 	}
 }
@@ -586,7 +586,7 @@ func TestDroppedConnectionIsReopened(t *testing.T) {
 	transport := newTransport(t)
 	ctx := context.Background()
 
-	if _, _, err := transport.ReadHostEntries(ctx); err != nil {
+	if _, _, err := transport.ReadRecords(ctx); err != nil {
 		t.Fatalf("cannot open the connection: %v", err)
 	}
 
@@ -599,7 +599,7 @@ func TestDroppedConnectionIsReopened(t *testing.T) {
 	}
 	client.Close()
 
-	if _, _, err := transport.ReadHostEntries(ctx); err != nil {
+	if _, _, err := transport.ReadRecords(ctx); err != nil {
 		t.Fatalf("the transport did not reconnect: %v", err)
 	}
 }
@@ -664,7 +664,7 @@ func TestTheTransportMutexSurvivesAHungCommand(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	if _, _, readErr := transport.ReadHostEntries(ctx); readErr != nil {
+	if _, _, readErr := transport.ReadRecords(ctx); readErr != nil {
 		t.Errorf("the next operation could not take the mutex: %v", readErr)
 	}
 }
@@ -682,15 +682,15 @@ func TestCheckConfigRefusesABrokenConfiguration(t *testing.T) {
 	// The whole point of the step. What it says has to reach the caller, so
 	// the operator reads the resolver's own complaint rather than "it failed".
 	transport := newTransport(t)
-	preserveHostEntries(t, transport)
+	preserveRecords(t, transport)
 
-	content, digest, err := transport.ReadHostEntries(context.Background())
+	content, digest, err := transport.ReadRecords(context.Background())
 	if err != nil {
 		t.Fatalf("cannot read the file: %v", err)
 	}
 
 	broken := append(append([]byte(nil), content...), []byte("this is not a directive\n")...)
-	if err := transport.WriteHostEntries(context.Background(), broken, digest); err != nil {
+	if err := transport.WriteRecords(context.Background(), broken, digest); err != nil {
 		t.Fatalf("cannot write the broken file: %v", err)
 	}
 

@@ -54,7 +54,7 @@ func (w *Writer) checkConfig(ctx context.Context, client transport.Transport,
 	// The digest of what the target holds now comes from the target rather
 	// than from a local hash of what was sent, so the rollback does not rest
 	// on the panel and the transport agreeing about which digest is used.
-	_, digest, readErr := client.ReadHostEntries(ctx)
+	_, digest, readErr := client.ReadRecords(ctx)
 	if readErr != nil {
 		logging.From(ctx).Error("cannot read the file back to undo a refused change",
 			"server", record.Name, "error", readErr)
@@ -63,7 +63,7 @@ func (w *Writer) checkConfig(ctx context.Context, client transport.Transport,
 			ErrConfigRefused, foldOutput(output, maxCheckOutput))
 	}
 
-	if restoreErr := client.WriteHostEntries(ctx, previous, digest); restoreErr != nil {
+	if restoreErr := client.WriteRecords(ctx, previous, digest); restoreErr != nil {
 		logging.From(ctx).Error("cannot put the previous file back",
 			"server", record.Name, "error", restoreErr)
 

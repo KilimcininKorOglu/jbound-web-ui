@@ -8,8 +8,8 @@ import (
 	"jbound/internal/dnsfile"
 )
 
-// golden is a host entries file holding every shape the parser has to survive.
-const golden = `# Unbound host entries, managed by the panel
+// golden is a records file holding every shape the parser has to survive.
+const golden = `# Unbound records, managed by the panel
 # comment lines are left alone
 
 local-data: "www.example.net. A 192.0.2.10"

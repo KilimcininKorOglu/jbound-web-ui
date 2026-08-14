@@ -35,7 +35,7 @@ const (
 	devStatusCmd = "/usr/sbin/service unbound status"
 
 	// entriesPath is the file the panel manages on every target.
-	entriesPath = "/etc/unbound/host_entries.conf"
+	entriesPath = "/etc/unbound/local_records.conf"
 
 	// downHost is from the RFC 5737 documentation block, so a connection there
 	// times out rather than landing somewhere real.
@@ -249,7 +249,7 @@ func (g *gateFleet) groupForm(values url.Values) url.Values {
 	return values
 }
 
-// fileOf reads the host entries file of one target, outside the panel.
+// fileOf reads the records file of one target, outside the panel.
 func (g *gateFleet) fileOf(t *testing.T, name string) string {
 	t.Helper()
 
@@ -329,8 +329,8 @@ func TestGateADifferenceIsFoundAndRepaired(t *testing.T) {
 	// target grants are the only way to write the file, so the edit goes
 	// through them rather than through the panel.
 	if output, err := runOnTarget("dns1", fmt.Sprintf(
-		"grep -v %s %s | sudo tee /etc/unbound/.host_entries.conf.tmp >/dev/null"+
-			" && sudo mv /etc/unbound/.host_entries.conf.tmp %s",
+		"grep -v %s %s | sudo tee /etc/unbound/.local_records.conf.tmp >/dev/null"+
+			" && sudo mv /etc/unbound/.local_records.conf.tmp %s",
 		record.FQDN, entriesPath, entriesPath)); err != nil {
 		t.Fatalf("cannot break the file on dns1: %v\n%s", err, output)
 	}

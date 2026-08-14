@@ -563,16 +563,16 @@ func serverFromForm(r *http.Request) (server.Server, error) {
 	}
 
 	record := server.Server{
-		Name:            strings.TrimSpace(r.PostFormValue("name")),
-		Host:            strings.TrimSpace(r.PostFormValue("host")),
-		SSHUser:         strings.TrimSpace(r.PostFormValue("ssh_user")),
-		HostEntriesPath: strings.TrimSpace(r.PostFormValue("host_entries_path")),
-		ReloadCmd:       strings.TrimSpace(r.PostFormValue("reload_cmd")),
-		StatusCmd:       strings.TrimSpace(r.PostFormValue("status_cmd")),
-		Base64Path:      strings.TrimSpace(r.PostFormValue("base64_path")),
-		TeePath:         strings.TrimSpace(r.PostFormValue("tee_path")),
-		MvPath:          strings.TrimSpace(r.PostFormValue("mv_path")),
-		Sha256Path:      strings.TrimSpace(r.PostFormValue("sha256_path")),
+		Name:        strings.TrimSpace(r.PostFormValue("name")),
+		Host:        strings.TrimSpace(r.PostFormValue("host")),
+		SSHUser:     strings.TrimSpace(r.PostFormValue("ssh_user")),
+		RecordsPath: strings.TrimSpace(r.PostFormValue("records_path")),
+		ReloadCmd:   strings.TrimSpace(r.PostFormValue("reload_cmd")),
+		StatusCmd:   strings.TrimSpace(r.PostFormValue("status_cmd")),
+		Base64Path:  strings.TrimSpace(r.PostFormValue("base64_path")),
+		TeePath:     strings.TrimSpace(r.PostFormValue("tee_path")),
+		MvPath:      strings.TrimSpace(r.PostFormValue("mv_path")),
+		Sha256Path:  strings.TrimSpace(r.PostFormValue("sha256_path")),
 
 		CheckConfCmd:      strings.TrimSpace(r.PostFormValue("check_conf_cmd")),
 		ReloadFallbackCmd: strings.TrimSpace(r.PostFormValue("reload_fallback_cmd")),

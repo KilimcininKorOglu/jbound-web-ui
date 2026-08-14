@@ -290,7 +290,7 @@ func (w *Writer) repairOne(ctx context.Context, actor server.Actor,
 		return result
 	}
 
-	content, digest, err := client.ReadHostEntries(ctx)
+	content, digest, err := client.ReadRecords(ctx)
 	if err != nil {
 		result.Status = StatusFailed
 		result.Message = failureMessage(err)
@@ -312,7 +312,7 @@ func (w *Writer) repairOne(ctx context.Context, actor server.Actor,
 	}
 	w.keepPrevious(ctx, record.ID, content, digest)
 
-	if err := client.WriteHostEntries(ctx, updated, digest); err != nil {
+	if err := client.WriteRecords(ctx, updated, digest); err != nil {
 		result.Status = StatusFailed
 		result.Message = failureMessage(err)
 		return result
@@ -449,7 +449,7 @@ func (w *Writer) readSource(ctx context.Context, source server.Server) ([]dnsfil
 	if err != nil {
 		return nil, err
 	}
-	content, _, err := client.ReadHostEntries(ctx)
+	content, _, err := client.ReadRecords(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -476,7 +476,7 @@ func (w *Writer) mirrorOne(ctx context.Context, actor server.Actor,
 		return result
 	}
 
-	content, digest, err := client.ReadHostEntries(ctx)
+	content, digest, err := client.ReadRecords(ctx)
 	if err != nil {
 		result.Status = StatusFailed
 		result.Message = failureMessage(err)
@@ -511,7 +511,7 @@ func (w *Writer) mirrorOne(ctx context.Context, actor server.Actor,
 	// source is brought back with.
 	w.keepPrevious(ctx, record.ID, content, digest)
 
-	if err := client.WriteHostEntries(ctx, updated, digest); err != nil {
+	if err := client.WriteRecords(ctx, updated, digest); err != nil {
 		logging.From(ctx).Error("cannot write a mirrored file",
 			"server", record.Name, "source", source.Name, "error", err)
 

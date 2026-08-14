@@ -475,7 +475,7 @@ func TestTheDefaultsFillTheFieldsTheFormLeftEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the form was refused: %v", err)
 	}
-	if record.SSHPort == 0 || record.HostEntriesPath == "" || record.ReloadCmd == "" {
+	if record.SSHPort == 0 || record.RecordsPath == "" || record.ReloadCmd == "" {
 		t.Errorf("the defaults did not fill the record: %+v", record)
 	}
 	if !record.Enabled {

@@ -382,7 +382,7 @@ func TestALegacyFailureTextNeverReachesThePage(t *testing.T) {
 	catalog := catalogs.Catalog(i18n.Default)
 
 	legacy := "remote command failed: /usr/bin/base64 -w0 " +
-		"/etc/unbound/host_entries.conf exited 1: sudo: a password is required"
+		"/etc/unbound/local_records.conf exited 1: sudo: a password is required"
 
 	got := cacheErrorText(catalog, legacy)
 	if strings.Contains(got, "base64") || strings.Contains(got, "sudo") ||

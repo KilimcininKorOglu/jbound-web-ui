@@ -27,8 +27,8 @@ func TestApplyDefaultsFillsTheEmptyFields(t *testing.T) {
 	if record.Transport != TransportSSH {
 		t.Errorf("transport = %q, want %q", record.Transport, TransportSSH)
 	}
-	if record.HostEntriesPath != DefaultHostEntriesPath {
-		t.Errorf("host entries path = %q", record.HostEntriesPath)
+	if record.RecordsPath != DefaultRecordsPath {
+		t.Errorf("records path = %q", record.RecordsPath)
 	}
 	if record.Sha256Path != DefaultSha256Path {
 		t.Errorf("sha256 path = %q", record.Sha256Path)
@@ -38,16 +38,16 @@ func TestApplyDefaultsFillsTheEmptyFields(t *testing.T) {
 func TestApplyDefaultsKeepsWhatTheOperatorTyped(t *testing.T) {
 	record := Server{
 		Name: "dns1", Host: "dns1.example", SSHUser: "dnsops",
-		SSHPort:         2222,
-		HostEntriesPath: "/opt/unbound/entries.conf",
+		SSHPort:     2222,
+		RecordsPath: "/opt/unbound/entries.conf",
 	}
 	record.ApplyDefaults()
 
 	if record.SSHPort != 2222 {
 		t.Errorf("port = %d, want the value that was entered", record.SSHPort)
 	}
-	if record.HostEntriesPath != "/opt/unbound/entries.conf" {
-		t.Errorf("host entries path = %q, want the value that was entered", record.HostEntriesPath)
+	if record.RecordsPath != "/opt/unbound/entries.conf" {
+		t.Errorf("records path = %q, want the value that was entered", record.RecordsPath)
 	}
 }
 

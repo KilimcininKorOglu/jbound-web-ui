@@ -292,7 +292,7 @@ func (t *SSHTransport) run(ctx context.Context, command string,
 // The output of one remote command is bounded, because the remote side chooses
 // how much it sends and the refresher runs several servers at once.
 const (
-	// maxStdoutBytes allows a base64 encoded host entries file of about six
+	// maxStdoutBytes allows a base64 encoded records file of about six
 	// megabytes, which is far above any resolver and far below what would
 	// trouble the panel host.
 	maxStdoutBytes = 8 << 20
@@ -346,11 +346,11 @@ func (w *boundedWriter) Write(p []byte) (int, error) {
 
 func (w *boundedWriter) String() string { return w.buf.String() }
 
-// ReadHostEntries fetches the host entries file.
+// ReadRecords fetches the records file.
 //
 // Reading needs no sudo. The file is world readable, and the panel only writes
 // through sudo.
-func (t *SSHTransport) ReadHostEntries(ctx context.Context) ([]byte, string, error) {
+func (t *SSHTransport) ReadRecords(ctx context.Context) ([]byte, string, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -365,7 +365,7 @@ func (t *SSHTransport) ReadHostEntries(ctx context.Context) ([]byte, string, err
 // file. The panel would then show no records, and the next write would replace
 // the real file with whatever the operator typed into an apparently empty one.
 func (t *SSHTransport) readLocked(ctx context.Context) ([]byte, string, error) {
-	command := fmt.Sprintf("%s -w0 %s", t.cfg.Base64Path, t.cfg.HostEntriesPath)
+	command := fmt.Sprintf("%s -w0 %s", t.cfg.Base64Path, t.cfg.RecordsPath)
 
 	stdout, _, err := t.run(ctx, command, nil)
 	if err != nil {
@@ -413,8 +413,8 @@ func digest(data []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// WriteHostEntries replaces the host entries file.
-func (t *SSHTransport) WriteHostEntries(ctx context.Context, data []byte,
+// WriteRecords replaces the records file.
+func (t *SSHTransport) WriteRecords(ctx context.Context, data []byte,
 	expectSHA256 string) error {
 
 	t.mu.Lock()
@@ -469,7 +469,7 @@ func (t *SSHTransport) writeLocked(ctx context.Context, data []byte) error {
 	// Same directory as the target, so the move is atomic. Either the old file
 	// or the new one is in place, never a half written one.
 	move := fmt.Sprintf("sudo %s %s %s",
-		t.cfg.MvPath, t.cfg.tempPath(), t.cfg.HostEntriesPath)
+		t.cfg.MvPath, t.cfg.tempPath(), t.cfg.RecordsPath)
 
 	if _, _, err := t.run(ctx, move, nil); err != nil {
 		return err

@@ -42,7 +42,7 @@ case "${1:-}" in
             echo "unbound is not running" >&2
             exit 1
         fi
-        # Unbound rereads its configuration, including host_entries.conf, on
+        # Unbound rereads its configuration, including local_records.conf, on
         # SIGHUP. This is what the panel triggers after writing records.
         kill -HUP "$pid"
         echo "unbound reloaded"

@@ -267,7 +267,7 @@ type stubTransport struct {
 	mu       sync.Mutex
 	probeErr error
 
-	// content is the host entries file this server holds, so a record change
+	// content is the records file this server holds, so a record change
 	// can be checked the way an operator would check it.
 	content  []byte
 	readErr  error
@@ -293,7 +293,7 @@ type stubTransport struct {
 	afterWrite func()
 }
 
-func (s *stubTransport) ReadHostEntries(ctx context.Context) ([]byte, string, error) {
+func (s *stubTransport) ReadRecords(ctx context.Context) ([]byte, string, error) {
 	if err := s.wait(ctx); err != nil {
 		return nil, "", err
 	}
@@ -307,7 +307,7 @@ func (s *stubTransport) ReadHostEntries(ctx context.Context) ([]byte, string, er
 	return append([]byte(nil), s.content...), digestOf(s.content), nil
 }
 
-func (s *stubTransport) WriteHostEntries(ctx context.Context, data []byte, expect string) error {
+func (s *stubTransport) WriteRecords(ctx context.Context, data []byte, expect string) error {
 	if err := s.wait(ctx); err != nil {
 		return err
 	}

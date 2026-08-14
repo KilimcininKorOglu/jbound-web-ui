@@ -250,7 +250,7 @@ func (r *Refresher) refresh(ctx context.Context, record server.Server) Result {
 		return result
 	}
 
-	content, digest, err := client.ReadHostEntries(ctx)
+	content, digest, err := client.ReadRecords(ctx)
 	if err != nil {
 		result.Err = err
 		r.markUnreachable(ctx, record.ID, err)

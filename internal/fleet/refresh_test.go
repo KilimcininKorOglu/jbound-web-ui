@@ -148,7 +148,7 @@ type fakeTransport struct {
 	release chan struct{}
 }
 
-func (f *fakeTransport) ReadHostEntries(context.Context) ([]byte, string, error) {
+func (f *fakeTransport) ReadRecords(context.Context) ([]byte, string, error) {
 	f.reads.Add(1)
 	if f.release != nil {
 		<-f.release
@@ -172,13 +172,13 @@ func (f *fakeTransport) ReadHostEntries(context.Context) ([]byte, string, error)
 	return f.content, f.digest, nil
 }
 
-func (f *fakeTransport) WriteHostEntries(context.Context, []byte, string) error { return nil }
-func (f *fakeTransport) Reload(context.Context) (string, error)                 { return "", nil }
-func (f *fakeTransport) ReloadFallback(context.Context) (string, error)         { return "", nil }
-func (f *fakeTransport) Restart(context.Context) (string, error)                { return "", nil }
-func (f *fakeTransport) CheckConfig(context.Context) (string, error)            { return "", nil }
-func (f *fakeTransport) Probe(context.Context) error                            { return nil }
-func (f *fakeTransport) Close() error                                           { return nil }
+func (f *fakeTransport) WriteRecords(context.Context, []byte, string) error { return nil }
+func (f *fakeTransport) Reload(context.Context) (string, error)             { return "", nil }
+func (f *fakeTransport) ReloadFallback(context.Context) (string, error)     { return "", nil }
+func (f *fakeTransport) Restart(context.Context) (string, error)            { return "", nil }
+func (f *fakeTransport) CheckConfig(context.Context) (string, error)        { return "", nil }
+func (f *fakeTransport) Probe(context.Context) error                        { return nil }
+func (f *fakeTransport) Close() error                                       { return nil }
 
 func (f *fakeTransport) ServiceStatus(context.Context) (bool, string, error) {
 	if f.statusErr != nil {
@@ -551,7 +551,7 @@ func TestAFailedReadStoresTheClassAndNotTheText(t *testing.T) {
 	// class is allowed to survive the write.
 	target := workingTarget()
 	target.readErr = &transport.CommandError{
-		Command:  "/usr/bin/base64 -w0 /etc/unbound/host_entries.conf",
+		Command:  "/usr/bin/base64 -w0 /etc/unbound/local_records.conf",
 		ExitCode: 1,
 		Stderr:   "sudo: a password is required",
 	}

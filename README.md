@@ -10,7 +10,7 @@ writes one include file, and reloads the resolver.
 
 ## What it does
 
-- Reads and writes `host_entries.conf` on every managed server over SSH.
+- Reads and writes `local_records.conf` on every managed server over SSH.
 - Adds, edits and deletes A, AAAA, CNAME, MX and TXT records on a single server
   or on a whole group, one record at a time or several in one pass.
 - Compares the servers of a group and repairs a record that is missing or
@@ -39,7 +39,7 @@ Panel host:
 
 Managed DNS server:
 
-- Unbound with an `include:` line for the host entries file.
+- Unbound with an `include:` line for the records file.
 - An SSH account, `sudo`, and six exact sudoers rules created by
   `deploy/setup-target.sh`.
 - `unbound-control` for the reload that keeps the cache. A resolver without it
@@ -107,14 +107,14 @@ sudo ./deploy/setup-target.sh -k "ssh-ed25519 AAAA... jbound"
 ```
 
 It creates the `dnsops` account, adds the public key the panel generated,
-creates `/etc/unbound/host_entries.conf` with mode `644` and installs six exact
+creates `/etc/unbound/local_records.conf` with mode `644` and installs six exact
 sudoers rules. The permissions of `/etc/unbound` are left alone: reading needs
 no sudo, and everything else goes through the rules.
 
 | Rule | What the panel does with it |
 | --- | --- |
 | `tee` | writes the new file to a fixed temporary path |
-| `mv` | moves it over the host entries file in one step |
+| `mv` | moves it over the records file in one step |
 | `unbound-checkconf` | asks the resolver whether it will load the result |
 | `unbound-control reload_keep_cache` | reloads without discarding the cache |
 | `service unbound reload` | reloads when the control socket is not there |
@@ -128,7 +128,7 @@ match the command the panel runs exactly, so the script resolves them with
 `/etc/unbound/unbound.conf`. `unbound-checkconf` reads it, so a resolver that
 keeps its configuration elsewhere needs the real path here.
 
-Re-run the script after changing the host entries path in the panel. The rules
+Re-run the script after changing the records path in the panel. The rules
 are derived from that path.
 
 **Re-run it on every server you prepared with an earlier version.** The last
@@ -141,7 +141,7 @@ back rather than applied.
 A change is one write, one check and one reload.
 
 The write goes to a temporary file in the same directory and is moved over the
-host entries file, so the resolver never reads a half written file. The panel
+records file, so the resolver never reads a half written file. The panel
 compares the digest of the temporary file against what it sent before it moves
 anything.
 
@@ -443,7 +443,7 @@ authhelper           the setuid PAM helper, the only privileged component
 internal/auth        sessions, CSRF, rate limiting, PAM
 internal/server      server and group records, SSH keys
 internal/transport   the SSH connection pool
-internal/dnsfile     the host entries format
+internal/dnsfile     the records format
 internal/fleet       actions that touch more than one server
 internal/audit       the audit trail and the CEF mirror
 internal/settings    the settings registry and their storage

@@ -7,7 +7,7 @@
 set -euo pipefail
 
 SSH_USER=${SSH_USER:-dnsops}
-HOST_ENTRIES_PATH=${HOST_ENTRIES_PATH:-/etc/unbound/host_entries.conf}
+RECORDS_PATH=${RECORDS_PATH:-/etc/unbound/local_records.conf}
 SEED_FILE=${SEED_FILE:-}
 PUBLIC_KEY_FILE=${PUBLIC_KEY_FILE:-/keys/dev_ed25519.pub}
 SHELL_POLLUTION=${SHELL_POLLUTION:-0}
@@ -30,7 +30,7 @@ ssh-keygen -A
 if [ -r "$PUBLIC_KEY_FILE" ]; then
     /usr/local/sbin/setup-target.sh \
         -u "$SSH_USER" \
-        -f "$HOST_ENTRIES_PATH" \
+        -f "$RECORDS_PATH" \
         -k "$(cat "$PUBLIC_KEY_FILE")"
 else
     log "public key not found at $PUBLIC_KEY_FILE"
@@ -40,11 +40,11 @@ fi
 
 # --- Seed records ------------------------------------------------------------
 # Only on first start. Later runs keep whatever the panel wrote.
-if [ -n "$SEED_FILE" ] && [ ! -s "$HOST_ENTRIES_PATH" ]; then
+if [ -n "$SEED_FILE" ] && [ ! -s "$RECORDS_PATH" ]; then
     if [ -r "$SEED_FILE" ]; then
-        cp "$SEED_FILE" "$HOST_ENTRIES_PATH"
-        chmod 644 "$HOST_ENTRIES_PATH"
-        log "seeded $HOST_ENTRIES_PATH from $SEED_FILE"
+        cp "$SEED_FILE" "$RECORDS_PATH"
+        chmod 644 "$RECORDS_PATH"
+        log "seeded $RECORDS_PATH from $SEED_FILE"
     else
         log "seed file not readable: $SEED_FILE"
         exit 1

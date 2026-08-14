@@ -23,7 +23,7 @@ func NewServers(db *sql.DB) *Servers { return &Servers{db: db} }
 // field is shown somewhere in the interface.
 const serverColumns = `
     id, name, host, ssh_port, transport, ssh_user, ssh_key_path, host_key,
-    host_entries_path, reload_cmd, status_cmd,
+    records_path, reload_cmd, status_cmd,
     base64_path, tee_path, mv_path, sha256_path,
     check_conf_cmd, reload_fallback_cmd, restart_cmd,
     enabled, last_seen_at, last_error, created_at, updated_at`
@@ -33,7 +33,7 @@ func (s *Servers) Create(ctx context.Context, record server.Server) (server.Serv
 	const query = `
 INSERT INTO servers
     (name, host, ssh_port, transport, ssh_user, ssh_key_path, host_key,
-     host_entries_path, reload_cmd, status_cmd,
+     records_path, reload_cmd, status_cmd,
      base64_path, tee_path, mv_path, sha256_path,
      check_conf_cmd, reload_fallback_cmd, restart_cmd, enabled)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
@@ -41,7 +41,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	result, err := s.db.ExecContext(ctx, query,
 		record.Name, record.Host, record.SSHPort, record.Transport,
 		record.SSHUser, record.SSHKeyPath, record.HostKey,
-		record.HostEntriesPath, record.ReloadCmd, record.StatusCmd,
+		record.RecordsPath, record.ReloadCmd, record.StatusCmd,
 		record.Base64Path, record.TeePath, record.MvPath, record.Sha256Path,
 		record.CheckConfCmd, record.ReloadFallbackCmd, record.RestartCmd,
 		boolToInt(record.Enabled),
@@ -68,7 +68,7 @@ func (s *Servers) Update(ctx context.Context, record server.Server) error {
 	const query = `
 UPDATE servers
    SET name = ?, host = ?, ssh_port = ?, ssh_user = ?,
-       host_entries_path = ?, reload_cmd = ?, status_cmd = ?,
+       records_path = ?, reload_cmd = ?, status_cmd = ?,
        base64_path = ?, tee_path = ?, mv_path = ?, sha256_path = ?,
        check_conf_cmd = ?, reload_fallback_cmd = ?, restart_cmd = ?,
        enabled = ?
@@ -76,7 +76,7 @@ UPDATE servers
 
 	result, err := s.db.ExecContext(ctx, query,
 		record.Name, record.Host, record.SSHPort, record.SSHUser,
-		record.HostEntriesPath, record.ReloadCmd, record.StatusCmd,
+		record.RecordsPath, record.ReloadCmd, record.StatusCmd,
 		record.Base64Path, record.TeePath, record.MvPath, record.Sha256Path,
 		record.CheckConfCmd, record.ReloadFallbackCmd, record.RestartCmd,
 		boolToInt(record.Enabled), record.ID,
@@ -214,7 +214,7 @@ func scanServer(row scanner) (server.Server, error) {
 	err := row.Scan(
 		&record.ID, &record.Name, &record.Host, &record.SSHPort,
 		&record.Transport, &record.SSHUser, &record.SSHKeyPath, &record.HostKey,
-		&record.HostEntriesPath, &record.ReloadCmd, &record.StatusCmd,
+		&record.RecordsPath, &record.ReloadCmd, &record.StatusCmd,
 		&record.Base64Path, &record.TeePath, &record.MvPath, &record.Sha256Path,
 		&record.CheckConfCmd, &record.ReloadFallbackCmd, &record.RestartCmd,
 		&enabled, &lastSeen, &record.LastError, &created, &updated,

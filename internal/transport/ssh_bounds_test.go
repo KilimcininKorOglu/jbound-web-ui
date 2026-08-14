@@ -174,7 +174,7 @@ func TestAServerCannotChooseHowMuchThePanelAllocates(t *testing.T) {
 	server := startFloodServer(t, maxStdoutBytes+(64<<10), 0)
 	transport := transportTo(t, server)
 
-	_, _, err := transport.ReadHostEntries(context.Background())
+	_, _, err := transport.ReadRecords(context.Background())
 	if !errors.Is(err, ErrRemoteOutput) {
 		t.Fatalf("read error = %v, want an output the panel refuses", err)
 	}
@@ -190,7 +190,7 @@ func TestAnOversizedReadIsRefusedRatherThanTruncated(t *testing.T) {
 	server := startFloodServer(t, maxStdoutBytes+1024, 0)
 	transport := transportTo(t, server)
 
-	data, _, err := transport.ReadHostEntries(context.Background())
+	data, _, err := transport.ReadRecords(context.Background())
 	if err == nil {
 		t.Fatalf("the read returned %d bytes instead of failing", len(data))
 	}
@@ -216,7 +216,7 @@ func TestNoisyDiagnosticsDoNotFailACommand(t *testing.T) {
 func openConnection(t *testing.T, client *SSHTransport) {
 	t.Helper()
 
-	if _, _, err := client.ReadHostEntries(context.Background()); err != nil {
+	if _, _, err := client.ReadRecords(context.Background()); err != nil {
 		t.Fatalf("cannot open the connection: %v", err)
 	}
 }

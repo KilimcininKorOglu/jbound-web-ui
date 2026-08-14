@@ -531,7 +531,7 @@ func (w *Writer) write(ctx context.Context, record server.Server, op Operation) 
 		return err
 	}
 
-	content, digest, err := client.ReadHostEntries(ctx)
+	content, digest, err := client.ReadRecords(ctx)
 	if err != nil {
 		return err
 	}
@@ -547,7 +547,7 @@ func (w *Writer) write(ctx context.Context, record server.Server, op Operation) 
 
 	// The digest travels back with the write, so a file that changed on the
 	// target between the read and the write is refused rather than replaced.
-	if err := client.WriteHostEntries(ctx, updated, digest); err != nil {
+	if err := client.WriteRecords(ctx, updated, digest); err != nil {
 		return err
 	}
 	return w.checkConfig(ctx, client, record, content)

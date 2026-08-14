@@ -19,7 +19,7 @@ import (
 func TestParseDigestReadsTheFirstField(t *testing.T) {
 	const sum = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
-	got, err := parseDigest(sum + "  /etc/unbound/.host_entries.conf.tmp\n")
+	got, err := parseDigest(sum + "  /etc/unbound/.local_records.conf.tmp\n")
 	if err != nil {
 		t.Fatalf("parseDigest returned an error: %v", err)
 	}

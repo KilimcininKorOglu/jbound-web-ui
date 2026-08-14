@@ -2,7 +2,7 @@
 //
 // SQLite holds panel state only: managed servers, groups, per server state,
 // the record cache, audit logs, login attempts and sessions. DNS records
-// themselves stay in the host entries file on each managed server.
+// themselves stay in the records file on each managed server.
 package database
 
 import (

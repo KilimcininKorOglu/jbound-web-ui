@@ -170,17 +170,17 @@ type fakeTransport struct {
 	probeErr error
 }
 
-func (f *fakeTransport) ReadHostEntries(context.Context) ([]byte, string, error) {
+func (f *fakeTransport) ReadRecords(context.Context) ([]byte, string, error) {
 	return nil, "", nil
 }
-func (f *fakeTransport) WriteHostEntries(context.Context, []byte, string) error { return nil }
-func (f *fakeTransport) Reload(context.Context) (string, error)                 { return "", nil }
-func (f *fakeTransport) ReloadFallback(context.Context) (string, error)         { return "", nil }
-func (f *fakeTransport) Restart(context.Context) (string, error)                { return "", nil }
-func (f *fakeTransport) CheckConfig(context.Context) (string, error)            { return "", nil }
-func (f *fakeTransport) ServiceStatus(context.Context) (bool, string, error)    { return true, "", nil }
-func (f *fakeTransport) Probe(context.Context) error                            { return f.probeErr }
-func (f *fakeTransport) Close() error                                           { return nil }
+func (f *fakeTransport) WriteRecords(context.Context, []byte, string) error  { return nil }
+func (f *fakeTransport) Reload(context.Context) (string, error)              { return "", nil }
+func (f *fakeTransport) ReloadFallback(context.Context) (string, error)      { return "", nil }
+func (f *fakeTransport) Restart(context.Context) (string, error)             { return "", nil }
+func (f *fakeTransport) CheckConfig(context.Context) (string, error)         { return "", nil }
+func (f *fakeTransport) ServiceStatus(context.Context) (bool, string, error) { return true, "", nil }
+func (f *fakeTransport) Probe(context.Context) error                         { return f.probeErr }
+func (f *fakeTransport) Close() error                                        { return nil }
 
 type fakeConnector struct {
 	transport *fakeTransport
@@ -637,7 +637,7 @@ func TestAFailedConnectionTestIsAuditedByItsClass(t *testing.T) {
 	h.connector.transport.probeErr = &transport.ProbeError{
 		Step: transport.StepWrite,
 		Err: &transport.CommandError{
-			Command:  "/usr/bin/base64 -w0 /etc/unbound/host_entries.conf",
+			Command:  "/usr/bin/base64 -w0 /etc/unbound/local_records.conf",
 			ExitCode: 1,
 			Stderr:   "sudo: a password is required",
 		},
@@ -658,7 +658,7 @@ func TestAFailedConnectionTestIsAuditedByItsClass(t *testing.T) {
 	if !strings.Contains(entry.Details, transport.CodeCommandFailed) {
 		t.Errorf("the entry does not carry the failure class: %q", entry.Details)
 	}
-	for _, secret := range []string{"base64", "host_entries.conf", "sudo"} {
+	for _, secret := range []string{"base64", "local_records.conf", "sudo"} {
 		if strings.Contains(entry.Details, secret) {
 			t.Errorf("the entry carries %q: %s", secret, entry.Details)
 		}
@@ -830,7 +830,7 @@ func TestARecordedProbeFailureKeepsItsTextOutOfTheDatabase(t *testing.T) {
 	h.connector.transport.probeErr = &transport.ProbeError{
 		Step: transport.StepWrite,
 		Err: &transport.CommandError{
-			Command:  "/usr/bin/base64 -w0 /etc/unbound/host_entries.conf",
+			Command:  "/usr/bin/base64 -w0 /etc/unbound/local_records.conf",
 			ExitCode: 1,
 			Stderr:   "sudo: a password is required",
 		},
@@ -849,7 +849,7 @@ func TestARecordedProbeFailureKeepsItsTextOutOfTheDatabase(t *testing.T) {
 		t.Errorf("stored failure = %q, want the class %q",
 			stored.LastError, transport.CodeCommandFailed)
 	}
-	for _, secret := range []string{"base64", "host_entries.conf", "sudo"} {
+	for _, secret := range []string{"base64", "local_records.conf", "sudo"} {
 		if strings.Contains(stored.LastError, secret) {
 			t.Errorf("the stored failure carries %q", secret)
 		}

@@ -291,7 +291,7 @@ func TestTheRestoreButtonWaitsUntilThereIsSomethingToRestore(t *testing.T) {
 	}
 }
 
-// previousFile stands in for the host entries file as it was before a change
+// previousFile stands in for the records file as it was before a change
 // the operator wants back.
 const previousFile = "local-data: \"www.example.net. A 192.0.2.10\"\n"
 
@@ -645,7 +645,7 @@ func TestServerFormCarriesTheDefaults(t *testing.T) {
 	body := env.do(t, httptest.NewRequest(http.MethodGet, "/servers/new", nil), cookie).Body.String()
 
 	for _, want := range []string{
-		"/etc/unbound/host_entries.conf",
+		"/etc/unbound/local_records.conf",
 		"sudo /usr/sbin/service unbound reload",
 		"/usr/bin/sha256sum",
 	} {
@@ -738,7 +738,7 @@ func TestTheServerTableTooltipCarriesNoRemoteCommand(t *testing.T) {
 	env.transport.probeErr = &transport.ProbeError{
 		Step: transport.StepWrite,
 		Err: &transport.CommandError{
-			Command:  "/usr/bin/base64 -w0 /etc/unbound/host_entries.conf",
+			Command:  "/usr/bin/base64 -w0 /etc/unbound/local_records.conf",
 			ExitCode: 1,
 			Stderr:   "sudo: a password is required",
 		},
@@ -751,7 +751,7 @@ func TestTheServerTableTooltipCarriesNoRemoteCommand(t *testing.T) {
 	}
 
 	body := table.Body.String()
-	for _, secret := range []string{"base64", "host_entries.conf", "a password is required"} {
+	for _, secret := range []string{"base64", "local_records.conf", "a password is required"} {
 		if strings.Contains(body, secret) {
 			t.Errorf("the table carries %q:\n%s", secret, body)
 		}

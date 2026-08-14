@@ -17,7 +17,7 @@ import (
 // rather than a fault.
 var ErrNoBackup = errors.New("no previous file is stored")
 
-// FileBackup is the host entries file of one server as it was before the panel
+// FileBackup is the records file of one server as it was before the panel
 // last wrote to it.
 type FileBackup struct {
 	ServerID int64
@@ -44,7 +44,7 @@ type BackupStore interface {
 // for an operator who cannot work, and the copy is only ever read by hand.
 func (w *Writer) keepPrevious(ctx context.Context, serverID int64, content []byte, digest string) {
 	if err := w.backups.Save(ctx, serverID, content, digest, time.Now()); err != nil {
-		logging.From(ctx).Error("cannot keep the previous host entries file",
+		logging.From(ctx).Error("cannot keep the previous records file",
 			"server", serverID, "error", err)
 	}
 }
@@ -94,7 +94,7 @@ func (w *Writer) RestoreFile(ctx context.Context, actor server.Actor,
 		return result, nil
 	}
 
-	current, digest, err := client.ReadHostEntries(ctx)
+	current, digest, err := client.ReadRecords(ctx)
 	if err != nil {
 		result.Status = StatusFailed
 		result.Message = failureMessage(err)
@@ -115,8 +115,8 @@ func (w *Writer) RestoreFile(ctx context.Context, actor server.Actor,
 	// out of a bad state, and a check that refused it would take the recovery
 	// path away at the moment it is needed. What goes back is what the server
 	// held before, so it is a state the resolver already ran with.
-	if err := client.WriteHostEntries(ctx, backup.Content, digest); err != nil {
-		logging.From(ctx).Error("cannot restore the previous host entries file",
+	if err := client.WriteRecords(ctx, backup.Content, digest); err != nil {
+		logging.From(ctx).Error("cannot restore the previous records file",
 			"server", record.Name, "error", err)
 
 		result.Status = StatusFailed
@@ -151,7 +151,7 @@ func (w *Writer) writeRestoreAudit(ctx context.Context, actor server.Actor,
 		ServerID:   &serverID,
 		ServerName: record.Name,
 		Action:     audit.ActionFileRestore,
-		Details: "Restored the host entries file of " + record.Name +
+		Details: "Restored the records file of " + record.Name +
 			" as it stood on " + backup.SavedAt.Format(time.RFC3339),
 		IPAddress: actor.IPAddress,
 	})

@@ -309,3 +309,53 @@ func TestTheLadderMigrationLeavesTheStoredReloadCommandAlone(t *testing.T) {
 		t.Errorf("reload command = %q, want the stored %q", reload, chosen)
 	}
 }
+
+func TestTheRenameKeepsTheStoredRecordsPath(t *testing.T) {
+	// The stored path names a file the sudoers rules on that target were
+	// written for. An upgrade that rewrote it to the new default would point
+	// the panel at a file that is not there, on every server that was set up
+	// with anything other than the default.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "panel.db")
+
+	db, err := Open(context.Background(), path)
+	if err != nil {
+		t.Fatalf("Open returned an error: %v", err)
+	}
+
+	// Put the database back to where it was before this migration ran, then
+	// seed a server that names its own file.
+	const chosen = "/opt/unbound/zones/managed.conf"
+	for _, statement := range []string{
+		"ALTER TABLE servers RENAME COLUMN records_path TO host_entries_path",
+		"DELETE FROM schema_migrations WHERE name = '0007_records_path.sql'",
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatalf("cannot undo the migration (%s): %v", statement, err)
+		}
+	}
+	if _, err := db.Exec(
+		`INSERT INTO servers (name, host, ssh_user, ssh_key_path, host_entries_path)
+		 VALUES ('dns1', 'dns1', 'dnsops', 'keys/1.key', ?)`, chosen); err != nil {
+		t.Fatalf("cannot seed a server: %v", err)
+	}
+	db.Close()
+
+	upgraded, err := Open(context.Background(), path)
+	if err != nil {
+		t.Fatalf("the upgrade failed: %v", err)
+	}
+	defer upgraded.Close()
+
+	if hasColumn(t, upgraded, "servers", "host_entries_path") {
+		t.Error("the old column is still there after the rename")
+	}
+
+	var stored string
+	if err := upgraded.QueryRow("SELECT records_path FROM servers").Scan(&stored); err != nil {
+		t.Fatalf("cannot read the server back: %v", err)
+	}
+	if stored != chosen {
+		t.Errorf("records path = %q, want the stored %q", stored, chosen)
+	}
+}

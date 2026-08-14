@@ -10,8 +10,8 @@ set -uo pipefail
 
 COMPOSE=(docker compose -f docker-compose.dev.yml --env-file .env.dev)
 TARGET=${1:-dns1}
-ENTRIES=/etc/unbound/host_entries.conf
-TMP=/etc/unbound/.host_entries.conf.tmp
+ENTRIES=/etc/unbound/local_records.conf
+TMP=/etc/unbound/.local_records.conf.tmp
 
 FAILURES=0
 pass() { printf '  \033[32mOK\033[0m    %s\n' "$1"; }
@@ -107,9 +107,9 @@ fi
 # --- Ownership and permissions must be unchanged -----------------------------
 STAT=$(remote "stat -c '%a %U:%G' $ENTRIES" | tr -d '\r')
 if [ "$STAT" = "644 root:root" ]; then
-    pass "host entries file kept mode 644 and owner root:root"
+    pass "records file kept mode 644 and owner root:root"
 else
-    fail "host entries file is now '$STAT', expected '644 root:root'"
+    fail "records file is now '$STAT', expected '644 root:root'"
 fi
 
 DIR_MODE=$(remote "stat -c '%a' /etc/unbound" | tr -d '\r')

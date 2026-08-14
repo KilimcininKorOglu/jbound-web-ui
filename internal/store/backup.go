@@ -10,7 +10,7 @@ import (
 	"jbound/internal/fleet"
 )
 
-// Backups holds the host entries file of each server as it was before the
+// Backups holds the records file of each server as it was before the
 // panel last wrote it.
 type Backups struct {
 	db *sql.DB

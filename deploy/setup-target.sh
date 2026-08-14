@@ -4,23 +4,23 @@
 # Run this as root on every managed DNS server.
 #
 # Usage:
-#   setup-target.sh [-u USER] [-f HOST_ENTRIES_PATH] [-c MAIN_CONFIG] [-k KEY]
+#   setup-target.sh [-u USER] [-f RECORDS_PATH] [-c MAIN_CONFIG] [-k KEY]
 #
 #   -u  SSH account the panel connects as.       Default: dnsops
-#   -f  Path of the Unbound host entries file.   Default: /etc/unbound/host_entries.conf
+#   -f  Path of the Unbound records file.     Default: /etc/unbound/local_records.conf
 #   -c  Path of the main Unbound configuration.  Default: /etc/unbound/unbound.conf
 #   -k  Public key the panel generated. When omitted the key step is skipped.
 #
 # The script does NOT change the permissions of the Unbound configuration
 # directory. Writing happens through six exact sudoers rules instead.
 #
-# Re-run this script whenever the host entries path changes in the panel,
+# Re-run this script whenever the records path changes in the panel,
 # because the sudoers rules are derived from that path.
 
 set -eu
 
 SSH_USER=dnsops
-HOST_ENTRIES_PATH=/etc/unbound/host_entries.conf
+RECORDS_PATH=/etc/unbound/local_records.conf
 MAIN_CONFIG_PATH=/etc/unbound/unbound.conf
 AUTHORIZED_KEY=
 SUDOERS_FILE=/etc/sudoers.d/jbound-target
@@ -28,7 +28,7 @@ SUDOERS_FILE=/etc/sudoers.d/jbound-target
 while getopts 'u:f:c:k:h' opt; do
     case "$opt" in
         u) SSH_USER=$OPTARG ;;
-        f) HOST_ENTRIES_PATH=$OPTARG ;;
+        f) RECORDS_PATH=$OPTARG ;;
         c) MAIN_CONFIG_PATH=$OPTARG ;;
         k) AUTHORIZED_KEY=$OPTARG ;;
         h) sed -n '2,20p' "$0"; exit 0 ;;
@@ -41,9 +41,9 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
-case "$HOST_ENTRIES_PATH" in
+case "$RECORDS_PATH" in
     /*) ;;
-    *) echo "error: host entries path must be absolute: $HOST_ENTRIES_PATH" >&2; exit 1 ;;
+    *) echo "error: records path must be absolute: $RECORDS_PATH" >&2; exit 1 ;;
 esac
 
 case "$MAIN_CONFIG_PATH" in
@@ -51,9 +51,9 @@ case "$MAIN_CONFIG_PATH" in
     *) echo "error: main config path must be absolute: $MAIN_CONFIG_PATH" >&2; exit 1 ;;
 esac
 
-ENTRIES_DIR=$(dirname "$HOST_ENTRIES_PATH")
-ENTRIES_FILE=$(basename "$HOST_ENTRIES_PATH")
-TMP_PATH="$ENTRIES_DIR/.$ENTRIES_FILE.tmp"
+RECORDS_DIR=$(dirname "$RECORDS_PATH")
+RECORDS_FILE=$(basename "$RECORDS_PATH")
+TMP_PATH="$RECORDS_DIR/.$RECORDS_FILE.tmp"
 
 # --- Resolve absolute command paths -----------------------------------------
 # Distributions disagree on these locations, and sudoers rules must match the
@@ -104,15 +104,15 @@ else
     echo "no public key given, skipping authorized_keys step"
 fi
 
-# --- Host entries file -------------------------------------------------------
+# --- Records file ------------------------------------------------------------
 # Mode 644 lets the panel read without sudo. Writing goes through sudo, so the
 # directory permissions stay untouched.
-if [ ! -e "$HOST_ENTRIES_PATH" ]; then
-    mkdir -p "$ENTRIES_DIR"
-    : > "$HOST_ENTRIES_PATH"
-    echo "created $HOST_ENTRIES_PATH"
+if [ ! -e "$RECORDS_PATH" ]; then
+    mkdir -p "$RECORDS_DIR"
+    : > "$RECORDS_PATH"
+    echo "created $RECORDS_PATH"
 fi
-chmod 644 "$HOST_ENTRIES_PATH"
+chmod 644 "$RECORDS_PATH"
 
 # --- Sudoers rules -----------------------------------------------------------
 # Six exact rules, no wildcards. The temp path is fixed so the mv rule can be
@@ -126,9 +126,9 @@ trap 'rm -f "$TMP_SUDOERS"' EXIT
 
 cat > "$TMP_SUDOERS" <<EOF
 # Managed by jbound setup-target.sh. Do not edit by hand.
-# Re-run the script after changing the host entries path in the panel.
+# Re-run the script after changing the records path in the panel.
 $SSH_USER ALL=(ALL) NOPASSWD: $TEE_PATH $TMP_PATH
-$SSH_USER ALL=(ALL) NOPASSWD: $MV_PATH $TMP_PATH $HOST_ENTRIES_PATH
+$SSH_USER ALL=(ALL) NOPASSWD: $MV_PATH $TMP_PATH $RECORDS_PATH
 $SSH_USER ALL=(ALL) NOPASSWD: $SERVICE_PATH unbound reload
 $SSH_USER ALL=(ALL) NOPASSWD: $CHECKCONF_PATH $MAIN_CONFIG_PATH
 $SSH_USER ALL=(ALL) NOPASSWD: $CONTROL_PATH reload_keep_cache
@@ -152,7 +152,7 @@ cat <<EOF
 Enter these values in the panel server record:
 
   ssh_user            $SSH_USER
-  host_entries_path   $HOST_ENTRIES_PATH
+  records_path        $RECORDS_PATH
   base64_path         $BASE64_PATH
   tee_path            $TEE_PATH
   mv_path             $MV_PATH

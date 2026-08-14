@@ -14,7 +14,7 @@ import (
 	"jbound/internal/fleet"
 )
 
-// Records stores the cached view of every server's host entries file.
+// Records stores the cached view of every server's records file.
 type Records struct {
 	db *sql.DB
 }

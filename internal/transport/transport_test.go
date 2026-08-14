@@ -11,21 +11,21 @@ import (
 
 func validConfig() Config {
 	return Config{
-		ID:              1,
-		Name:            "dns1",
-		Host:            "dns1.example",
-		Port:            22,
-		User:            "dnsops",
-		KeyPath:         "/var/lib/jbound/keys/1.key",
-		HostEntriesPath: "/etc/unbound/host_entries.conf",
-		ReloadCmd:       "sudo /usr/sbin/service unbound reload",
-		StatusCmd:       "systemctl is-active unbound",
-		Sha256Path:      "/usr/bin/sha256sum",
-		Base64Path:      "/usr/bin/base64",
-		TeePath:         "/usr/bin/tee",
-		MvPath:          "/bin/mv",
-		ConnectTimeout:  10 * time.Second,
-		CommandTimeout:  30 * time.Second,
+		ID:             1,
+		Name:           "dns1",
+		Host:           "dns1.example",
+		Port:           22,
+		User:           "dnsops",
+		KeyPath:        "/var/lib/jbound/keys/1.key",
+		RecordsPath:    "/etc/unbound/local_records.conf",
+		ReloadCmd:      "sudo /usr/sbin/service unbound reload",
+		StatusCmd:      "systemctl is-active unbound",
+		Sha256Path:     "/usr/bin/sha256sum",
+		Base64Path:     "/usr/bin/base64",
+		TeePath:        "/usr/bin/tee",
+		MvPath:         "/bin/mv",
+		ConnectTimeout: 10 * time.Second,
+		CommandTimeout: 30 * time.Second,
 	}
 }
 
@@ -39,25 +39,25 @@ func TestValidateRefusesShellMetacharacters(t *testing.T) {
 	// Remote commands do pass through a shell, so a metacharacter in a server
 	// record is the difference between a path and a second command.
 	injections := []string{
-		"/etc/unbound/host_entries.conf; rm -rf /",
-		"/etc/unbound/host_entries.conf && id",
+		"/etc/unbound/local_records.conf; rm -rf /",
+		"/etc/unbound/local_records.conf && id",
 		"/etc/unbound/`id`.conf",
 		"/etc/unbound/$USER.conf",
-		"/etc/unbound/host_entries.conf | mail me",
+		"/etc/unbound/local_records.conf | mail me",
 		"/etc/unbound/*.conf",
-		"/etc/unbound/host\nentries.conf",
+		"/etc/unbound/local\nrecords.conf",
 	}
 
 	for _, value := range injections {
 		t.Run(value, func(t *testing.T) {
 			cfg := validConfig()
-			cfg.HostEntriesPath = value
+			cfg.RecordsPath = value
 
 			err := cfg.Validate()
 			if err == nil {
 				t.Fatalf("Validate accepted %q", value)
 			}
-			if !strings.Contains(err.Error(), "host entries path") {
+			if !strings.Contains(err.Error(), "records path") {
 				t.Errorf("the error does not name the field: %v", err)
 			}
 		})
@@ -102,7 +102,7 @@ func TestTempPathSitsBesideTheTarget(t *testing.T) {
 	// needs no wildcard.
 	cfg := validConfig()
 
-	if got := cfg.tempPath(); got != "/etc/unbound/.host_entries.conf.tmp" {
+	if got := cfg.tempPath(); got != "/etc/unbound/.local_records.conf.tmp" {
 		t.Errorf("tempPath = %q", got)
 	}
 }
@@ -118,7 +118,7 @@ func TestCleanBase64AcceptsASingleLine(t *testing.T) {
 }
 
 func TestCleanBase64AcceptsEmptyOutput(t *testing.T) {
-	// An empty host entries file is a normal state for a fresh server.
+	// An empty records file is a normal state for a fresh server.
 	if _, err := cleanBase64(""); err != nil {
 		t.Fatalf("an empty file was refused: %v", err)
 	}
@@ -154,7 +154,7 @@ func TestCleanBase64RefusesShellPollution(t *testing.T) {
 }
 
 func TestCleanBase64RefusesOutputThatIsNotBase64(t *testing.T) {
-	_, err := cleanBase64("cat: /etc/unbound/host_entries.conf: No such file")
+	_, err := cleanBase64("cat: /etc/unbound/local_records.conf: No such file")
 	if !errors.Is(err, ErrRemoteOutput) {
 		t.Fatalf("got %v, want ErrRemoteOutput", err)
 	}
@@ -292,7 +292,7 @@ func TestEveryFailureClassCarriesItsOwnCode(t *testing.T) {
 		if got := FailureCode(cause); got != want {
 			t.Errorf("FailureCode(%v) = %q, want %q", cause, got, want)
 		}
-		wrapped := fmt.Errorf("read host entries: %w", cause)
+		wrapped := fmt.Errorf("read records: %w", cause)
 		if got := FailureCode(wrapped); got != want {
 			t.Errorf("FailureCode(wrapped %v) = %q, want %q", cause, got, want)
 		}
@@ -303,7 +303,7 @@ func TestACommandFailureIsClassifiedWithoutItsText(t *testing.T) {
 	// CommandError carries the remote command line and the remote stderr, and
 	// this is the value that used to reach the status page verbatim.
 	cause := &CommandError{
-		Command:  "/usr/bin/base64 -w0 /etc/unbound/host_entries.conf",
+		Command:  "/usr/bin/base64 -w0 /etc/unbound/local_records.conf",
 		ExitCode: 1,
 		Stderr:   "sudo: a password is required",
 	}

@@ -3,6 +3,7 @@
   "client.confirm_title": "Emin misiniz?",
   "client.logout_question": "Oturumu kapatmak istiyor musunuz?",
   "client.logout_title": "Çıkış",
+  "client.prompt_title": "Bir değer girin",
   "client.request_failed": "İstek %s durumuyla başarısız oldu.",
   "client.unreachable": "Panele ulaşılamıyor.",
   "client.yes": "Evet",

@@ -115,3 +115,73 @@ func extractStaticPaths(body string) []string {
 	}
 	return found
 }
+
+// ownScripts are the files the panel writes, as opposed to the ones it
+// vendors. A rule about how the panel behaves can only be held against these.
+var ownScripts = []string{
+	"static/js/app.js",
+	"static/js/layout.js",
+}
+
+func TestThePanelWritesNoBrowserDialog(t *testing.T) {
+	// A native dialog freezes the page, ignores the language and the theme the
+	// reader chose, and words its buttons in the browser's language rather
+	// than the panel's. Every confirmation goes through SweetAlert2 instead,
+	// and the way that stays true is that nothing here calls the originals.
+	for _, name := range ownScripts {
+		t.Run(path.Base(name), func(t *testing.T) {
+			body, err := fs.ReadFile(staticFS, name)
+			if err != nil {
+				t.Fatalf("cannot read %s: %v", name, err)
+			}
+
+			for _, call := range []string{"alert(", "confirm(", "prompt("} {
+				if strings.Contains(string(body), call) {
+					t.Errorf("%s calls %s", name, call)
+				}
+			}
+		})
+	}
+}
+
+func TestBothHtmxDialogsAreHandedToSweetAlert(t *testing.T) {
+	// htmx calls window.confirm for hx-confirm and window.prompt for
+	// hx-prompt. Those two are the only native dialogs the panel can produce,
+	// and each one appears only when nothing has taken the event first. Losing
+	// either handler brings the browser dialog back with no error anywhere.
+	body, err := fs.ReadFile(staticFS, "static/js/app.js")
+	if err != nil {
+		t.Fatalf("cannot read app.js: %v", err)
+	}
+	source := string(body)
+
+	for _, event := range []string{"htmx:confirm", "htmx:prompt"} {
+		if !strings.Contains(source, event) {
+			t.Errorf("app.js does not handle %s", event)
+		}
+	}
+	// Taking the event without preventing the default leaves htmx free to open
+	// the native dialog anyway.
+	if strings.Count(source, "event.preventDefault()") < 2 {
+		t.Error("a dialog handler does not stop the browser dialog behind it")
+	}
+}
+
+func TestEveryDialogOpensInTheMiddleOfThePage(t *testing.T) {
+	// A dialog that asks whether to delete a record from every server of a
+	// group has to be read before it is answered. The toast may sit in the
+	// corner; a question may not.
+	body, err := fs.ReadFile(staticFS, "static/js/app.js")
+	if err != nil {
+		t.Fatalf("cannot read app.js: %v", err)
+	}
+	source := string(body)
+
+	// Every Swal.fire is either a dialog placed in the middle or the toast
+	// mixin, which is built once and says where it goes.
+	dialogs := strings.Count(source, "Swal.fire({")
+	centred := strings.Count(source, "position: 'center'")
+	if dialogs != centred {
+		t.Errorf("%d dialog(s) open and %d say they open in the middle", dialogs, centred)
+	}
+}

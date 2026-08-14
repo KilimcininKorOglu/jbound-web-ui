@@ -112,8 +112,16 @@
     showToast('error', text('client.unreachable'));
   });
 
-  /* hx-confirm asks for a plain browser dialog. This replaces it with the
-     dialog the rest of the interface uses. */
+  /* No browser dialog reaches the reader.
+   *
+   * htmx calls window.confirm for hx-confirm and window.prompt for hx-prompt,
+   * and both are handed over here instead. They are the only two native
+   * dialogs the panel can produce: nothing it writes calls alert, confirm or
+   * prompt, and a test holds that.
+   *
+   * A native dialog is worth replacing for more than its looks. It freezes the
+   * page, it ignores the panel's language and theme, and its wording is the
+   * browser's rather than the operator's. */
   document.body.addEventListener('htmx:confirm', function (event) {
     if (!event.detail.question) {
       return;
@@ -124,6 +132,7 @@
       titleText: event.target.getAttribute('data-confirm-title') || text('client.confirm_title'),
       text: event.detail.question,
       icon: 'warning',
+      position: 'center',
       showCancelButton: true,
       confirmButtonColor: PRIMARY,
       cancelButtonColor: SECONDARY,
@@ -133,6 +142,33 @@
       if (result.isConfirmed) {
         event.detail.issueRequest(true);
       }
+    });
+  });
+
+  /* hx-prompt, before htmx reaches window.prompt for it.
+   *
+   * The panel uses no hx-prompt today. The handler is here so that adding one
+   * cannot quietly bring the browser dialog back, which is the failure nobody
+   * would notice until a screenshot. */
+  document.body.addEventListener('htmx:prompt', function (event) {
+    event.preventDefault();
+
+    Swal.fire({
+      titleText: event.detail.prompt || text('client.prompt_title'),
+      input: 'text',
+      inputAttributes: { autocapitalize: 'off', spellcheck: 'false' },
+      icon: 'question',
+      position: 'center',
+      showCancelButton: true,
+      confirmButtonColor: PRIMARY,
+      cancelButtonColor: SECONDARY,
+      confirmButtonText: text('client.yes'),
+      cancelButtonText: text('client.cancel')
+    }).then(function (result) {
+      /* An empty answer is still an answer. Cancelling is the only way to
+         call the whole thing off. */
+      event.detail.promptValue = result.isConfirmed ? (result.value || '') : null;
+      event.detail.issueRequest();
     });
   });
 
@@ -290,6 +326,7 @@
       titleText: text('client.logout_title'),
       text: text('client.logout_question'),
       icon: 'warning',
+      position: 'center',
       showCancelButton: true,
       confirmButtonColor: PRIMARY,
       cancelButtonColor: SECONDARY,

@@ -3,6 +3,7 @@
   "client.confirm_title": "Are you sure?",
   "client.logout_question": "Are you sure you want to sign out?",
   "client.logout_title": "Logout",
+  "client.prompt_title": "Enter a value",
   "client.request_failed": "The request failed with status %s.",
   "client.unreachable": "The panel is unreachable.",
   "client.yes": "Yes",

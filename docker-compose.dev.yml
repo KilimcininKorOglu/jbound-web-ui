@@ -49,7 +49,10 @@ services:
       SHELL_POLLUTION: "0"
     volumes:
       - ./docker/seed:/seed:ro
-      - ./docker/keys:/keys:ro
+      # The public half only. A target authorises the panel with it and never
+      # reads the private key, so mounting the directory would put the
+      # credential that opens the other two targets inside each one.
+      - ./docker/keys/dev_ed25519.pub:/keys/dev_ed25519.pub:ro
     ports:
       - "127.0.0.1:8331:53/tcp"
       - "127.0.0.1:8331:53/udp"
@@ -69,7 +72,7 @@ services:
       SHELL_POLLUTION: "0"
     volumes:
       - ./docker/seed:/seed:ro
-      - ./docker/keys:/keys:ro
+      - ./docker/keys/dev_ed25519.pub:/keys/dev_ed25519.pub:ro
     ports:
       - "127.0.0.1:8332:53/tcp"
       - "127.0.0.1:8332:53/udp"
@@ -90,7 +93,7 @@ services:
       SHELL_POLLUTION: "${SHELL_POLLUTION:-0}"
     volumes:
       - ./docker/seed:/seed:ro
-      - ./docker/keys:/keys:ro
+      - ./docker/keys/dev_ed25519.pub:/keys/dev_ed25519.pub:ro
     ports:
       - "127.0.0.1:8333:53/tcp"
       - "127.0.0.1:8333:53/udp"

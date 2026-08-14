@@ -144,9 +144,12 @@
     </select>
   </div>
 
-  <div class="col-md-2" data-field="priority" {{if ne .Record.Type "MX"}}hidden{{end}}>
+  {{/* The column keeps its width whether or not the preference applies, so
+       the captions above the rows go on naming the control beneath them. */}}
+  <div class="col-md-2">
     <input class="form-control" name="priority" type="number" min="0" max="65535"
-           value="{{.Record.Priority}}" aria-label="{{t "record.preference"}}">
+           value="{{.Record.Priority}}" aria-label="{{t "record.preference"}}"
+           data-field="priority" {{if ne .Record.Type "MX"}}hidden{{end}}>
   </div>
 
   <div class="col-md-3">

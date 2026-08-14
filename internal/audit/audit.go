@@ -128,6 +128,19 @@ func (l *Logger) forwards() bool {
 // where a record is worth having when the panel database is the thing that
 // went wrong.
 func (l *Logger) Write(ctx context.Context, entry Entry) error {
+	return l.write(ctx, entry, l.forwards())
+}
+
+// WriteMirrored stores one entry and mirrors it whatever the switch says.
+//
+// The action that turns the mirror off is the one entry a receiver cannot
+// afford to miss, because everything after it is silence. By the time it is
+// written the switch already answers false, so it needs its own way in.
+func (l *Logger) WriteMirrored(ctx context.Context, entry Entry) error {
+	return l.write(ctx, entry, l.forwarder != nil)
+}
+
+func (l *Logger) write(ctx context.Context, entry Entry, mirror bool) error {
 	if entry.Action == "" {
 		return fmt.Errorf("audit entry has no action")
 	}
@@ -139,7 +152,7 @@ func (l *Logger) Write(ctx context.Context, entry Entry) error {
 			"action", entry.Action, "username", entry.Username, "error", err)
 	}
 
-	if l.forwards() {
+	if mirror {
 		if forwardErr := l.forwarder.Forward(entry); forwardErr != nil {
 			// The entry is in the database. Failing the action over a syslog
 			// socket would be worse than reporting that the mirror is down.

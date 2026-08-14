@@ -88,6 +88,11 @@ func (a *App) handleSettingsSave(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Save swaps the snapshot before it returns, so a submission that turns the
+	// SIEM mirror off has to be judged against the state that is still here.
+	silencing := a.Settings.Bool(settings.SIEMForwardingEnabled) &&
+		submitted[settings.SIEMForwardingEnabled] == boolValue(false)
+
 	if err := a.Settings.Save(r.Context(), submitted); err != nil {
 		var refusal *settings.Refusal
 		if errors.As(err, &refusal) {
@@ -98,7 +103,7 @@ func (a *App) handleSettingsSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.auditSettings(r)
+	a.auditSettings(r, silencing)
 	SetToast(w, ToastSuccess, a.catalog(r).T("toast.settings_saved"))
 	a.RenderPartial(w, r, http.StatusOK, "settings-panel", a.settingsPageData(a.catalog(r), nil, nil))
 }
@@ -152,16 +157,25 @@ func (a *App) settingsPageData(catalog *i18n.Catalog, submitted map[string]strin
 //
 // The values are not listed. Reading them back is one page load, and a details
 // column carrying fifteen keys is a line nobody reads.
-func (a *App) auditSettings(r *http.Request) {
+//
+// mirrored asks for the entry to reach the receiver even though the switch
+// this save turned off already answers false.
+func (a *App) auditSettings(r *http.Request, mirrored bool) {
 	actor := a.actor(r)
 
-	_ = a.Audit.Write(r.Context(), audit.Entry{
+	entry := audit.Entry{
 		UID:       actor.UID,
 		Username:  actor.Username,
 		Action:    audit.ActionSettingsUpdate,
 		Details:   "Panel settings updated",
 		IPAddress: actor.IPAddress,
-	})
+	}
+
+	if mirrored {
+		_ = a.Audit.WriteMirrored(r.Context(), entry)
+		return
+	}
+	_ = a.Audit.Write(r.Context(), entry)
 }
 
 // problemText writes one refused value out in the language of the reader.

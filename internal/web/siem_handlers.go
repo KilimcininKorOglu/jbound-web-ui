@@ -83,6 +83,9 @@ func (a *App) handleSIEMForwarding(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	enabled := r.PostForm.Has("forwarding")
+	// Save swaps the snapshot before it returns, so the state the entry has to
+	// be judged against is the one that is still in place here.
+	wasEnabled := a.Settings.Bool(appsettings.SIEMForwardingEnabled)
 
 	err := a.Settings.Save(r.Context(), map[string]string{
 		appsettings.SIEMForwardingEnabled: boolValue(enabled),
@@ -96,7 +99,7 @@ func (a *App) handleSIEMForwarding(w http.ResponseWriter, r *http.Request) {
 	if enabled {
 		state = "enabled"
 	}
-	a.auditSIEM(r, audit.ActionSIEMConfig, "SIEM forwarding "+state)
+	a.auditSIEM(r, audit.ActionSIEMConfig, "SIEM forwarding "+state, wasEnabled && !enabled)
 
 	catalog := a.catalog(r)
 	SetToast(w, ToastSuccess, catalog.Tf("toast.forwarding_state",
@@ -118,7 +121,7 @@ func (a *App) handleSIEMSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.auditSIEM(r, audit.ActionSIEMConfig, "SIEM forwarding configuration updated")
+	a.auditSIEM(r, audit.ActionSIEMConfig, "SIEM forwarding configuration updated", false)
 	SetToast(w, ToastSuccess, a.catalog(r).T("toast.rules_saved"))
 	a.handleSIEMPanel(w, r)
 }
@@ -134,7 +137,7 @@ func (a *App) handleSIEMTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.auditSIEM(r, audit.ActionSIEMTest, message)
+	a.auditSIEM(r, audit.ActionSIEMTest, message, false)
 
 	data, err := a.siemPageData(r)
 	if err != nil {
@@ -166,16 +169,25 @@ func (a *App) siemProblem(w http.ResponseWriter, r *http.Request,
 }
 
 // auditSIEM records a change to the panel's own forwarding.
-func (a *App) auditSIEM(r *http.Request, action, details string) {
+//
+// mirrored asks for the entry to reach the receiver even though the switch it
+// just turned off already answers false.
+func (a *App) auditSIEM(r *http.Request, action, details string, mirrored bool) {
 	actor := a.actor(r)
 
-	_ = a.Audit.Write(r.Context(), audit.Entry{
+	entry := audit.Entry{
 		UID:       actor.UID,
 		Username:  actor.Username,
 		Action:    action,
 		Details:   details,
 		IPAddress: actor.IPAddress,
-	})
+	}
+
+	if mirrored {
+		_ = a.Audit.WriteMirrored(r.Context(), entry)
+		return
+	}
+	_ = a.Audit.Write(r.Context(), entry)
 }
 
 // siemMessage turns a refusal into a sentence the form can show.

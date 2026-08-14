@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"unbound-web/internal/audit"
 	appsettings "unbound-web/internal/settings"
 )
 
@@ -249,5 +250,64 @@ func TestAPanelWithNoLogYetSaysSo(t *testing.T) {
 	body := env.siemPanel(t)
 	if !strings.Contains(body, "No events yet.") {
 		t.Errorf("the viewer does not explain the empty state:\n%s", body)
+	}
+}
+
+func TestTurningTheMirrorOffReachesTheMirror(t *testing.T) {
+	// Everything after this entry is silence, so a receiver that never sees it
+	// cannot tell a silenced panel from a quiet one.
+	env := newFleetEnv(t)
+
+	before := len(env.forwarder.sent())
+	if recorder := env.setForwarding(t, false); recorder.Code != http.StatusOK {
+		t.Fatalf("POST /siem/forwarding = %d, want 200", recorder.Code)
+	}
+
+	sent := env.forwarder.sent()[before:]
+	if len(sent) != 1 {
+		t.Fatalf("%d entry(s) reached the mirror, want the one that silenced it", len(sent))
+	}
+	if !strings.Contains(sent[0].Details, "disabled") {
+		t.Errorf("the forwarded entry reads %q, want the disabling one", sent[0].Details)
+	}
+}
+
+func TestTurningTheMirrorOffTwiceForwardsNothingTheSecondTime(t *testing.T) {
+	// The switch was already off, so nobody is listening and the entry has no
+	// receiver to reach. Forwarding it anyway would defeat the switch.
+	env := newFleetEnv(t)
+	env.setForwarding(t, false)
+
+	before := len(env.forwarder.sent())
+	env.setForwarding(t, false)
+
+	if after := len(env.forwarder.sent()); after != before {
+		t.Errorf("%d entry(s) were forwarded with the switch already off, want none",
+			after-before)
+	}
+}
+
+func TestTheSettingsPageCannotSilenceTheMirrorUnnoticed(t *testing.T) {
+	// The same switch lives on the settings page, and it saves every setting
+	// in one submission.
+	env := newFleetEnv(t)
+
+	before := len(env.forwarder.sent())
+	// An unchecked switch sends nothing at all, which is how the handler reads
+	// a false.
+	body := env.settingsForm(t, map[string]string{appsettings.SIEMForwardingEnabled: ""})
+
+	if recorder := env.do(t, postForm("/settings", body), env.adminCookie(t)); recorder.Code != http.StatusOK {
+		t.Fatalf("POST /settings = %d, want 200", recorder.Code)
+	}
+
+	var forwarded bool
+	for _, entry := range env.forwarder.sent()[before:] {
+		if entry.Action == audit.ActionSettingsUpdate {
+			forwarded = true
+		}
+	}
+	if !forwarded {
+		t.Error("the save that silenced the mirror never reached it")
 	}
 }

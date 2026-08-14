@@ -3,9 +3,11 @@ package web
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
+	"runtime/debug"
 	"time"
 
 	"unbound-web/internal/auth"
@@ -155,11 +157,21 @@ func securityHeaders(next http.Handler) http.Handler {
 type statusRecorder struct {
 	http.ResponseWriter
 	status int
+
+	// written says the response has started, which is what decides whether a
+	// recovered panic can still answer with a status of its own.
+	written bool
 }
 
 func (s *statusRecorder) WriteHeader(status int) {
 	s.status = status
+	s.written = true
 	s.ResponseWriter.WriteHeader(status)
+}
+
+func (s *statusRecorder) Write(body []byte) (int, error) {
+	s.written = true
+	return s.ResponseWriter.Write(body)
 }
 
 // requestLog records one line per request.
@@ -171,14 +183,55 @@ func requestLog(next http.Handler) http.Handler {
 		started := time.Now()
 		recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 
-		next.ServeHTTP(recorder, r)
+		// Deferred, so the request that crashed is not the one request that
+		// leaves no line behind.
+		defer func() {
+			slog.Info("request",
+				"method", r.Method,
+				"path", r.URL.Path,
+				"status", recorder.status,
+				"duration_ms", time.Since(started).Milliseconds(),
+				"ip", auth.ClientIP(r),
+			)
+		}()
 
-		slog.Info("request",
-			"method", r.Method,
-			"path", r.URL.Path,
-			"status", recorder.status,
-			"duration_ms", time.Since(started).Milliseconds(),
-			"ip", auth.ClientIP(r),
-		)
+		next.ServeHTTP(recorder, r)
+	})
+}
+
+// recoverPanic turns a crashed handler into a logged failure and a 500.
+//
+// Without it the panic reaches the per connection recovery of net/http, which
+// drops the connection with no response and writes the stack through the
+// server's error logger rather than through the structured stream.
+func recoverPanic(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			cause := recover()
+			if cause == nil {
+				return
+			}
+			if cause == http.ErrAbortHandler {
+				// A deliberate abort, not a fault. net/http knows what to do
+				// with it and logs nothing.
+				panic(cause)
+			}
+
+			slog.Error("handler panicked",
+				"method", r.Method,
+				"path", r.URL.Path,
+				"panic", fmt.Sprint(cause),
+				"stack", string(debug.Stack()),
+			)
+
+			if recorder, ok := w.(*statusRecorder); ok && recorder.written {
+				// The response already started. Adding a status now would only
+				// produce a superfluous header warning.
+				return
+			}
+			http.Error(w, "internal error", http.StatusInternalServerError)
+		}()
+
+		next.ServeHTTP(w, r)
 	})
 }

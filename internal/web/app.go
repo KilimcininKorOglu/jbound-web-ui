@@ -172,7 +172,7 @@ func (a *App) Router() http.Handler {
 		mux.Handle(pattern, a.requireAuth(a.requireAdmin(a.requireCSRF(handler))))
 	}
 
-	return requestLog(securityHeaders(mux))
+	return requestLog(recoverPanic(securityHeaders(mux)))
 }
 
 func (a *App) handleHealth(w http.ResponseWriter, _ *http.Request) {

@@ -179,8 +179,12 @@ func run() error {
 	handler := app.Router()
 
 	server := &http.Server{
-		Addr:              cfg.ListenAddr,
-		Handler:           handler,
+		Addr:    cfg.ListenAddr,
+		Handler: handler,
+		// Whatever net/http reports for itself, a bad TLS record or a panic it
+		// recovered, joins the structured stream instead of landing on stderr
+		// in another format.
+		ErrorLog:          slog.NewLogLogger(slog.Default().Handler(), slog.LevelError),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      60 * time.Second,

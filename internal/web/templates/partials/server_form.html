@@ -47,6 +47,27 @@
              value="{{.Server.StatusCmd}}" spellcheck="false">
     </div>
 
+    <div class="col-md-6">
+      <label class="form-label" for="reload_fallback_cmd">{{t "serverform.reload_fallback_cmd"}}</label>
+      <input class="form-control" id="reload_fallback_cmd" name="reload_fallback_cmd"
+             value="{{.Server.ReloadFallbackCmd}}" spellcheck="false">
+    </div>
+    <div class="col-md-6">
+      <label class="form-label" for="restart_cmd">{{t "serverform.restart_cmd"}}</label>
+      <input class="form-control" id="restart_cmd" name="restart_cmd"
+             value="{{.Server.RestartCmd}}" spellcheck="false">
+    </div>
+    <div class="col-12">
+      <div class="form-text">{{t "serverform.ladder_help"}}</div>
+    </div>
+
+    <div class="col-12">
+      <label class="form-label" for="check_conf_cmd">{{t "serverform.check_conf_cmd"}}</label>
+      <input class="form-control" id="check_conf_cmd" name="check_conf_cmd"
+             value="{{.Server.CheckConfCmd}}" spellcheck="false">
+      <div class="form-text">{{t "serverform.check_conf_cmd_help"}}</div>
+    </div>
+
     <div class="col-12">
       <details>
         <summary class="mb-2">{{t "serverform.tool_paths"}}</summary>

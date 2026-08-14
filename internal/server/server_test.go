@@ -172,3 +172,70 @@ func TestGroupValidateAcceptsAGroupWithNoMembers(t *testing.T) {
 		t.Fatalf("an empty group was refused: %v", err)
 	}
 }
+
+func TestANewServerCarriesEveryRungOfTheReloadAndTheCheck(t *testing.T) {
+	// A record created without them would have no configuration check and no
+	// escalation, which is the behaviour these fields exist to replace.
+	record := Server{Name: "dns1", Host: "dns1.example", SSHUser: "dnsops"}
+	record.ApplyDefaults()
+
+	for name, got := range map[string]string{
+		"reload":          record.ReloadCmd,
+		"reload fallback": record.ReloadFallbackCmd,
+		"restart":         record.RestartCmd,
+		"config check":    record.CheckConfCmd,
+	} {
+		if strings.TrimSpace(got) == "" {
+			t.Errorf("the %s command is empty", name)
+		}
+	}
+
+	// The first rung preserves the cache. A fleet that drops it on every
+	// record change answers slowly until it is filled again.
+	if !strings.Contains(record.ReloadCmd, "reload_keep_cache") {
+		t.Errorf("reload command = %q, want the cache preserved", record.ReloadCmd)
+	}
+}
+
+func TestTheNewCommandsReachTheTransport(t *testing.T) {
+	record := validServer()
+	cfg := record.TransportConfig("/var/lib/jbound", time.Second, 2*time.Second)
+
+	if cfg.CheckConfCmd != record.CheckConfCmd ||
+		cfg.ReloadFallbackCmd != record.ReloadFallbackCmd ||
+		cfg.RestartCmd != record.RestartCmd {
+		t.Errorf("the transport config lost a command: %+v", cfg)
+	}
+}
+
+func TestACommandThatWouldRunASecondCommandIsRefused(t *testing.T) {
+	// The new fields reach a remote shell like the old ones, so they go
+	// through the same metacharacter check rather than a new one.
+	for name, mutate := range map[string]func(*Server){
+		"check":    func(s *Server) { s.CheckConfCmd = "sudo unbound-checkconf; rm -rf /" },
+		"fallback": func(s *Server) { s.ReloadFallbackCmd = "sudo service unbound reload && id" },
+		"restart":  func(s *Server) { s.RestartCmd = "sudo service unbound restart `id`" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			record := validServer()
+			mutate(&record)
+
+			if err := record.Validate(); err == nil {
+				t.Error("the record was accepted")
+			}
+		})
+	}
+}
+
+func TestALadderRungMayBeLeftEmpty(t *testing.T) {
+	// A target whose sudoers rules do not name a command yet skips that rung
+	// rather than failing every change.
+	record := validServer()
+	record.CheckConfCmd = ""
+	record.ReloadFallbackCmd = ""
+	record.RestartCmd = ""
+
+	if err := record.Validate(); err != nil {
+		t.Errorf("the record was refused: %v", err)
+	}
+}

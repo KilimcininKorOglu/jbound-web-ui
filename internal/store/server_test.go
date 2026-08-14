@@ -384,3 +384,37 @@ func TestGroupCreateRefusesAMemberThatDoesNotExist(t *testing.T) {
 		t.Fatal("Create accepted a member that does not exist")
 	}
 }
+
+func TestTheLadderCommandsSurviveARoundTrip(t *testing.T) {
+	// Three columns the panel reads on every change. A column that is written
+	// and never read back leaves the ladder running on defaults nobody chose.
+	f := newFixture(t)
+	ctx := context.Background()
+	record := f.mustCreate(t, "dns1")
+
+	if record.CheckConfCmd == "" || record.ReloadFallbackCmd == "" || record.RestartCmd == "" {
+		t.Fatalf("the created record lost a command: %+v", record)
+	}
+
+	record.CheckConfCmd = "sudo /usr/sbin/unbound-checkconf /etc/unbound/other.conf"
+	record.ReloadFallbackCmd = ""
+	record.RestartCmd = "sudo /bin/systemctl restart unbound"
+
+	if err := f.servers.Update(ctx, record); err != nil {
+		t.Fatalf("Update returned an error: %v", err)
+	}
+
+	read, err := f.servers.Get(ctx, record.ID)
+	if err != nil {
+		t.Fatalf("Get returned an error: %v", err)
+	}
+	if read.CheckConfCmd != record.CheckConfCmd {
+		t.Errorf("check command = %q", read.CheckConfCmd)
+	}
+	if read.ReloadFallbackCmd != "" {
+		t.Errorf("the emptied rung came back as %q", read.ReloadFallbackCmd)
+	}
+	if read.RestartCmd != record.RestartCmd {
+		t.Errorf("restart command = %q", read.RestartCmd)
+	}
+}

@@ -191,6 +191,14 @@ type Config struct {
 	ReloadCmd       string
 	StatusCmd       string
 
+	// CheckConfCmd validates the resolver configuration. ReloadFallbackCmd and
+	// RestartCmd are the second and third rungs of a reload. Each one may be
+	// empty, which is a target whose sudoers rules do not name that command
+	// yet, and the step is skipped rather than failed.
+	CheckConfCmd      string
+	ReloadFallbackCmd string
+	RestartCmd        string
+
 	Base64Path string
 	TeePath    string
 	MvPath     string
@@ -236,15 +244,18 @@ func (c Config) Validate() error {
 	}
 
 	fields := map[string]string{
-		"host":              c.Host,
-		"user":              c.User,
-		"host entries path": c.HostEntriesPath,
-		"reload command":    c.ReloadCmd,
-		"status command":    c.StatusCmd,
-		"base64 path":       c.Base64Path,
-		"tee path":          c.TeePath,
-		"mv path":           c.MvPath,
-		"sha256 path":       c.Sha256Path,
+		"host":                    c.Host,
+		"user":                    c.User,
+		"host entries path":       c.HostEntriesPath,
+		"reload command":          c.ReloadCmd,
+		"status command":          c.StatusCmd,
+		"check config command":    c.CheckConfCmd,
+		"reload fallback command": c.ReloadFallbackCmd,
+		"restart command":         c.RestartCmd,
+		"base64 path":             c.Base64Path,
+		"tee path":                c.TeePath,
+		"mv path":                 c.MvPath,
+		"sha256 path":             c.Sha256Path,
 	}
 	for name, value := range fields {
 		if i := strings.IndexAny(value, shellMetacharacters); i >= 0 {

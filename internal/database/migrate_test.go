@@ -212,3 +212,100 @@ func TestAFreshDatabaseKeepsNoPreMigrationCopy(t *testing.T) {
 		}
 	}
 }
+
+func TestTheLadderMigrationFillsTheServersThatWereAlreadyThere(t *testing.T) {
+	// ApplyDefaults only runs when a record is created, so a panel upgraded
+	// into these columns would otherwise carry servers with no configuration
+	// check and no escalation, and nothing in the interface would say so.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "panel.db")
+
+	db, err := Open(context.Background(), path)
+	if err != nil {
+		t.Fatalf("Open returned an error: %v", err)
+	}
+	if _, err := db.Exec(
+		`INSERT INTO servers (name, host, ssh_user, ssh_key_path)
+		 VALUES ('dns1', 'dns1', 'dnsops', 'keys/1.key')`); err != nil {
+		t.Fatalf("cannot seed a server: %v", err)
+	}
+
+	// Put the database back to where it was before this migration ran.
+	for _, statement := range []string{
+		"ALTER TABLE servers DROP COLUMN check_conf_cmd",
+		"ALTER TABLE servers DROP COLUMN reload_fallback_cmd",
+		"ALTER TABLE servers DROP COLUMN restart_cmd",
+		"DELETE FROM schema_migrations WHERE name = '0006_reload_ladder.sql'",
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatalf("cannot undo the migration (%s): %v", statement, err)
+		}
+	}
+	db.Close()
+
+	upgraded, err := Open(context.Background(), path)
+	if err != nil {
+		t.Fatalf("the upgrade failed: %v", err)
+	}
+	defer upgraded.Close()
+
+	var check, fallback, restart string
+	if err := upgraded.QueryRow(
+		"SELECT check_conf_cmd, reload_fallback_cmd, restart_cmd FROM servers").
+		Scan(&check, &fallback, &restart); err != nil {
+		t.Fatalf("cannot read the server back: %v", err)
+	}
+	for name, got := range map[string]string{
+		"check":    check,
+		"fallback": fallback,
+		"restart":  restart,
+	} {
+		if strings.TrimSpace(got) == "" {
+			t.Errorf("the %s command of the existing server is empty", name)
+		}
+	}
+}
+
+func TestTheLadderMigrationLeavesTheStoredReloadCommandAlone(t *testing.T) {
+	// The reload command names a path a sudoers rule on that target holds.
+	// Rewriting it during an upgrade would point the panel at a command the
+	// target refuses.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "panel.db")
+
+	db, err := Open(context.Background(), path)
+	if err != nil {
+		t.Fatalf("Open returned an error: %v", err)
+	}
+	const chosen = "sudo /usr/sbin/service unbound reload"
+	if _, err := db.Exec(
+		`INSERT INTO servers (name, host, ssh_user, ssh_key_path, reload_cmd)
+		 VALUES ('dns1', 'dns1', 'dnsops', 'keys/1.key', ?)`, chosen); err != nil {
+		t.Fatalf("cannot seed a server: %v", err)
+	}
+	for _, statement := range []string{
+		"ALTER TABLE servers DROP COLUMN check_conf_cmd",
+		"ALTER TABLE servers DROP COLUMN reload_fallback_cmd",
+		"ALTER TABLE servers DROP COLUMN restart_cmd",
+		"DELETE FROM schema_migrations WHERE name = '0006_reload_ladder.sql'",
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatalf("cannot undo the migration (%s): %v", statement, err)
+		}
+	}
+	db.Close()
+
+	upgraded, err := Open(context.Background(), path)
+	if err != nil {
+		t.Fatalf("the upgrade failed: %v", err)
+	}
+	defer upgraded.Close()
+
+	var reload string
+	if err := upgraded.QueryRow("SELECT reload_cmd FROM servers").Scan(&reload); err != nil {
+		t.Fatalf("cannot read the server back: %v", err)
+	}
+	if reload != chosen {
+		t.Errorf("reload command = %q, want the stored %q", reload, chosen)
+	}
+}

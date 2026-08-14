@@ -4,14 +4,15 @@
 # Run this as root on every managed DNS server.
 #
 # Usage:
-#   setup-target.sh [-u USER] [-f HOST_ENTRIES_PATH] [-k AUTHORIZED_KEY]
+#   setup-target.sh [-u USER] [-f HOST_ENTRIES_PATH] [-c MAIN_CONFIG] [-k KEY]
 #
 #   -u  SSH account the panel connects as.       Default: dnsops
 #   -f  Path of the Unbound host entries file.   Default: /etc/unbound/host_entries.conf
+#   -c  Path of the main Unbound configuration.  Default: /etc/unbound/unbound.conf
 #   -k  Public key the panel generated. When omitted the key step is skipped.
 #
 # The script does NOT change the permissions of the Unbound configuration
-# directory. Writing happens through three exact sudoers rules instead.
+# directory. Writing happens through six exact sudoers rules instead.
 #
 # Re-run this script whenever the host entries path changes in the panel,
 # because the sudoers rules are derived from that path.
@@ -20,13 +21,15 @@ set -eu
 
 SSH_USER=dnsops
 HOST_ENTRIES_PATH=/etc/unbound/host_entries.conf
+MAIN_CONFIG_PATH=/etc/unbound/unbound.conf
 AUTHORIZED_KEY=
 SUDOERS_FILE=/etc/sudoers.d/jbound-target
 
-while getopts 'u:f:k:h' opt; do
+while getopts 'u:f:c:k:h' opt; do
     case "$opt" in
         u) SSH_USER=$OPTARG ;;
         f) HOST_ENTRIES_PATH=$OPTARG ;;
+        c) MAIN_CONFIG_PATH=$OPTARG ;;
         k) AUTHORIZED_KEY=$OPTARG ;;
         h) sed -n '2,20p' "$0"; exit 0 ;;
         *) echo "run with -h for usage" >&2; exit 2 ;;
@@ -41,6 +44,11 @@ fi
 case "$HOST_ENTRIES_PATH" in
     /*) ;;
     *) echo "error: host entries path must be absolute: $HOST_ENTRIES_PATH" >&2; exit 1 ;;
+esac
+
+case "$MAIN_CONFIG_PATH" in
+    /*) ;;
+    *) echo "error: main config path must be absolute: $MAIN_CONFIG_PATH" >&2; exit 1 ;;
 esac
 
 ENTRIES_DIR=$(dirname "$HOST_ENTRIES_PATH")
@@ -64,6 +72,8 @@ MV_PATH=$(resolve mv)
 BASE64_PATH=$(resolve base64)
 SHA256_PATH=$(resolve sha256sum)
 SERVICE_PATH=$(resolve service)
+CHECKCONF_PATH=$(resolve unbound-checkconf)
+CONTROL_PATH=$(resolve unbound-control)
 
 # --- SSH account -------------------------------------------------------------
 if ! id -u "$SSH_USER" >/dev/null 2>&1; then
@@ -105,8 +115,12 @@ fi
 chmod 644 "$HOST_ENTRIES_PATH"
 
 # --- Sudoers rules -----------------------------------------------------------
-# Three exact rules, no wildcards. The temp path is fixed so the mv rule can be
+# Six exact rules, no wildcards. The temp path is fixed so the mv rule can be
 # an exact match.
+#
+# The first three write the file. The last three are what a change runs after
+# it: the configuration check, the cache preserving reload, and the restart the
+# panel falls back to when a reload leaves the resolver stopped.
 TMP_SUDOERS=$(mktemp)
 trap 'rm -f "$TMP_SUDOERS"' EXIT
 
@@ -116,6 +130,9 @@ cat > "$TMP_SUDOERS" <<EOF
 $SSH_USER ALL=(ALL) NOPASSWD: $TEE_PATH $TMP_PATH
 $SSH_USER ALL=(ALL) NOPASSWD: $MV_PATH $TMP_PATH $HOST_ENTRIES_PATH
 $SSH_USER ALL=(ALL) NOPASSWD: $SERVICE_PATH unbound reload
+$SSH_USER ALL=(ALL) NOPASSWD: $CHECKCONF_PATH $MAIN_CONFIG_PATH
+$SSH_USER ALL=(ALL) NOPASSWD: $CONTROL_PATH reload_keep_cache
+$SSH_USER ALL=(ALL) NOPASSWD: $SERVICE_PATH unbound restart
 EOF
 
 chmod 440 "$TMP_SUDOERS"
@@ -134,13 +151,16 @@ cat <<EOF
 
 Enter these values in the panel server record:
 
-  ssh_user           $SSH_USER
-  host_entries_path  $HOST_ENTRIES_PATH
-  base64_path        $BASE64_PATH
-  tee_path           $TEE_PATH
-  mv_path            $MV_PATH
-  sha256_path        $SHA256_PATH
-  reload_cmd         sudo $SERVICE_PATH unbound reload
-  status_cmd         systemctl is-active unbound
+  ssh_user            $SSH_USER
+  host_entries_path   $HOST_ENTRIES_PATH
+  base64_path         $BASE64_PATH
+  tee_path            $TEE_PATH
+  mv_path             $MV_PATH
+  sha256_path         $SHA256_PATH
+  reload_cmd          sudo $CONTROL_PATH reload_keep_cache
+  reload_fallback_cmd sudo $SERVICE_PATH unbound reload
+  restart_cmd         sudo $SERVICE_PATH unbound restart
+  check_conf_cmd      sudo $CHECKCONF_PATH $MAIN_CONFIG_PATH
+  status_cmd          systemctl is-active unbound
 
 EOF

@@ -25,6 +25,7 @@ const serverColumns = `
     id, name, host, ssh_port, transport, ssh_user, ssh_key_path, host_key,
     host_entries_path, reload_cmd, status_cmd,
     base64_path, tee_path, mv_path, sha256_path,
+    check_conf_cmd, reload_fallback_cmd, restart_cmd,
     enabled, last_seen_at, last_error, created_at, updated_at`
 
 // Create inserts a server and returns it with its identifier.
@@ -33,14 +34,16 @@ func (s *Servers) Create(ctx context.Context, record server.Server) (server.Serv
 INSERT INTO servers
     (name, host, ssh_port, transport, ssh_user, ssh_key_path, host_key,
      host_entries_path, reload_cmd, status_cmd,
-     base64_path, tee_path, mv_path, sha256_path, enabled)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+     base64_path, tee_path, mv_path, sha256_path,
+     check_conf_cmd, reload_fallback_cmd, restart_cmd, enabled)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	result, err := s.db.ExecContext(ctx, query,
 		record.Name, record.Host, record.SSHPort, record.Transport,
 		record.SSHUser, record.SSHKeyPath, record.HostKey,
 		record.HostEntriesPath, record.ReloadCmd, record.StatusCmd,
 		record.Base64Path, record.TeePath, record.MvPath, record.Sha256Path,
+		record.CheckConfCmd, record.ReloadFallbackCmd, record.RestartCmd,
 		boolToInt(record.Enabled),
 	)
 	if err != nil {
@@ -67,6 +70,7 @@ UPDATE servers
    SET name = ?, host = ?, ssh_port = ?, ssh_user = ?,
        host_entries_path = ?, reload_cmd = ?, status_cmd = ?,
        base64_path = ?, tee_path = ?, mv_path = ?, sha256_path = ?,
+       check_conf_cmd = ?, reload_fallback_cmd = ?, restart_cmd = ?,
        enabled = ?
  WHERE id = ?`
 
@@ -74,6 +78,7 @@ UPDATE servers
 		record.Name, record.Host, record.SSHPort, record.SSHUser,
 		record.HostEntriesPath, record.ReloadCmd, record.StatusCmd,
 		record.Base64Path, record.TeePath, record.MvPath, record.Sha256Path,
+		record.CheckConfCmd, record.ReloadFallbackCmd, record.RestartCmd,
 		boolToInt(record.Enabled), record.ID,
 	)
 	if err != nil {
@@ -211,6 +216,7 @@ func scanServer(row scanner) (server.Server, error) {
 		&record.Transport, &record.SSHUser, &record.SSHKeyPath, &record.HostKey,
 		&record.HostEntriesPath, &record.ReloadCmd, &record.StatusCmd,
 		&record.Base64Path, &record.TeePath, &record.MvPath, &record.Sha256Path,
+		&record.CheckConfCmd, &record.ReloadFallbackCmd, &record.RestartCmd,
 		&enabled, &lastSeen, &record.LastError, &created, &updated,
 	)
 	if err != nil {

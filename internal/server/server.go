@@ -20,13 +20,25 @@ import (
 // them is editable.
 const (
 	DefaultHostEntriesPath = "/etc/unbound/host_entries.conf"
-	DefaultReloadCmd       = "sudo /usr/sbin/service unbound reload"
-	DefaultStatusCmd       = "systemctl is-active unbound"
-	DefaultBase64Path      = "/usr/bin/base64"
-	DefaultTeePath         = "/usr/bin/tee"
-	DefaultMvPath          = "/bin/mv"
-	DefaultSha256Path      = "/usr/bin/sha256sum"
-	DefaultSSHPort         = 22
+
+	// The three rungs of a reload, in the order they are tried. The first one
+	// preserves the resolver cache, which is the whole reason it comes first:
+	// a fleet that drops its cache on every record change answers slowly for
+	// as long as it takes to fill again.
+	DefaultReloadCmd         = "sudo /usr/sbin/unbound-control reload_keep_cache"
+	DefaultReloadFallbackCmd = "sudo /usr/sbin/service unbound reload"
+	DefaultRestartCmd        = "sudo /usr/sbin/service unbound restart"
+
+	// The included file sits inside a server clause and cannot be validated on
+	// its own, so the check names the main configuration file.
+	DefaultCheckConfCmd = "sudo /usr/sbin/unbound-checkconf /etc/unbound/unbound.conf"
+
+	DefaultStatusCmd  = "systemctl is-active unbound"
+	DefaultBase64Path = "/usr/bin/base64"
+	DefaultTeePath    = "/usr/bin/tee"
+	DefaultMvPath     = "/bin/mv"
+	DefaultSha256Path = "/usr/bin/sha256sum"
+	DefaultSSHPort    = 22
 )
 
 // TransportSSH is the only transport version one speaks.
@@ -57,6 +69,16 @@ type Server struct {
 	MvPath          string
 	Sha256Path      string
 
+	// CheckConfCmd validates the resolver configuration after a write. An
+	// empty command skips the check, which is a target whose sudoers rules
+	// have not been extended yet.
+	CheckConfCmd string
+
+	// ReloadFallbackCmd and RestartCmd are the second and third rungs of a
+	// reload. An empty command skips that rung.
+	ReloadFallbackCmd string
+	RestartCmd        string
+
 	Enabled    bool
 	LastSeenAt *time.Time
 	LastError  string
@@ -83,13 +105,16 @@ func (s *Server) ApplyDefaults() {
 	}
 
 	for field, value := range map[*string]string{
-		&s.HostEntriesPath: DefaultHostEntriesPath,
-		&s.ReloadCmd:       DefaultReloadCmd,
-		&s.StatusCmd:       DefaultStatusCmd,
-		&s.Base64Path:      DefaultBase64Path,
-		&s.TeePath:         DefaultTeePath,
-		&s.MvPath:          DefaultMvPath,
-		&s.Sha256Path:      DefaultSha256Path,
+		&s.HostEntriesPath:   DefaultHostEntriesPath,
+		&s.ReloadCmd:         DefaultReloadCmd,
+		&s.StatusCmd:         DefaultStatusCmd,
+		&s.Base64Path:        DefaultBase64Path,
+		&s.TeePath:           DefaultTeePath,
+		&s.MvPath:            DefaultMvPath,
+		&s.Sha256Path:        DefaultSha256Path,
+		&s.CheckConfCmd:      DefaultCheckConfCmd,
+		&s.ReloadFallbackCmd: DefaultReloadFallbackCmd,
+		&s.RestartCmd:        DefaultRestartCmd,
 	} {
 		if strings.TrimSpace(*field) == "" {
 			*field = value
@@ -156,6 +181,10 @@ func (s Server) inputProblems() []string {
 		TeePath:         s.TeePath,
 		MvPath:          s.MvPath,
 		Sha256Path:      s.Sha256Path,
+
+		CheckConfCmd:      s.CheckConfCmd,
+		ReloadFallbackCmd: s.ReloadFallbackCmd,
+		RestartCmd:        s.RestartCmd,
 	}
 	if err := probe.Validate(); err != nil {
 		problems = append(problems, strings.TrimPrefix(err.Error(), "invalid server configuration: "))
@@ -197,7 +226,12 @@ func (s Server) TransportConfig(dataDir string, connectTimeout, commandTimeout t
 		TeePath:         s.TeePath,
 		MvPath:          s.MvPath,
 		Sha256Path:      s.Sha256Path,
-		ConnectTimeout:  connectTimeout,
-		CommandTimeout:  commandTimeout,
+
+		CheckConfCmd:      s.CheckConfCmd,
+		ReloadFallbackCmd: s.ReloadFallbackCmd,
+		RestartCmd:        s.RestartCmd,
+
+		ConnectTimeout: connectTimeout,
+		CommandTimeout: commandTimeout,
 	}
 }

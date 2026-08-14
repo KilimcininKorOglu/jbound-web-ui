@@ -573,7 +573,12 @@ func serverFromForm(r *http.Request) (server.Server, error) {
 		TeePath:         strings.TrimSpace(r.PostFormValue("tee_path")),
 		MvPath:          strings.TrimSpace(r.PostFormValue("mv_path")),
 		Sha256Path:      strings.TrimSpace(r.PostFormValue("sha256_path")),
-		Enabled:         r.PostFormValue("enabled") != "",
+
+		CheckConfCmd:      strings.TrimSpace(r.PostFormValue("check_conf_cmd")),
+		ReloadFallbackCmd: strings.TrimSpace(r.PostFormValue("reload_fallback_cmd")),
+		RestartCmd:        strings.TrimSpace(r.PostFormValue("restart_cmd")),
+
+		Enabled: r.PostFormValue("enabled") != "",
 	}
 
 	raw := strings.TrimSpace(r.PostFormValue("ssh_port"))

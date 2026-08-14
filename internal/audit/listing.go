@@ -82,7 +82,7 @@ func (p Page) Offset() int { return (p.Page - 1) * p.PerPage }
 // them. A filter built from this list cannot miss an action the panel records.
 func Actions() []string {
 	return []string{
-		ActionLogin, ActionLogout, ActionLoginFailed,
+		ActionLogin, ActionLogout, ActionLoginFailed, ActionSessionRevoke,
 		ActionDNSAdd, ActionDNSEdit, ActionDNSDelete,
 		ActionDNSRestart, ActionDNSQuery,
 		ActionDiffRepair, ActionDiffSync, ActionCacheRefresh,

@@ -15,9 +15,10 @@ import (
 // Actions written by the panel. They are constants so a typo cannot create a
 // second spelling that the log filters then miss.
 const (
-	ActionLogin       = "login"
-	ActionLogout      = "logout"
-	ActionLoginFailed = "login_failed"
+	ActionLogin         = "login"
+	ActionLogout        = "logout"
+	ActionLoginFailed   = "login_failed"
+	ActionSessionRevoke = "session_revoke"
 
 	ActionServerCreate = "server_create"
 	ActionServerUpdate = "server_update"

@@ -41,6 +41,7 @@ var pageLayouts = map[string]string{
 	"logs":     "app",
 	"siem":     "app",
 	"settings": "app",
+	"sessions": "app",
 	"system":   "app",
 }
 

@@ -298,7 +298,7 @@ func TestASessionIsRemovedOnItsOwnAndByAccount(t *testing.T) {
 		t.Errorf("the second delete returned %v", err)
 	}
 
-	if err := sessions.DeleteByUID(ctx, 1001); err != nil {
+	if _, err := sessions.DeleteByUIDExcept(ctx, 1001, "kept"); err != nil {
 		t.Fatalf("cannot delete the sessions of the account: %v", err)
 	}
 	if _, err := sessions.Get(ctx, "two"); err == nil {

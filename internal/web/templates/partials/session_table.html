@@ -1,0 +1,64 @@
+{{/* One row per account rather than per session. No session identifier reaches
+     the page: it is the credential the browser presents, and the answer to a
+     compromised account is the whole account anyway. */}}
+{{define "session-table"}}
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-hover">
+      <caption class="visually-hidden">{{t "sessions.caption"}}</caption>
+      <thead>
+        <tr>
+          <th scope="col">{{t "sessions.account"}}</th>
+          <th scope="col">{{t "sessions.role"}}</th>
+          <th scope="col">{{t "sessions.count"}}</th>
+          <th scope="col">{{t "sessions.first_seen"}}</th>
+          <th scope="col">{{t "sessions.last_active"}}</th>
+          <th scope="col" class="text-end">{{t "common.actions"}}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Accounts}}
+        <tr>
+          <td>
+            <strong>{{.Username}}</strong>
+            {{if .Self}}<span class="badge bg-label-secondary ms-1">{{t "sessions.you"}}</span>{{end}}
+            <div class="text-muted small">{{tf "logs.uid" .UID}}</div>
+          </td>
+          <td>
+            {{if .IsAdmin}}
+            <span class="badge bg-label-primary">{{t "sessions.role_admin"}}</span>
+            {{else}}
+            <span class="badge bg-label-secondary">{{t "sessions.role_user"}}</span>
+            {{end}}
+          </td>
+          <td class="text-muted">{{.Count}}</td>
+          <td class="text-muted text-nowrap">{{localTime .FirstSeen}}</td>
+          <td class="text-muted text-nowrap">{{localTime .LastActive}}</td>
+          <td class="text-end">
+            {{if and .Self (eq .Count 1)}}
+            <span class="text-body-secondary small">{{t "sessions.only_yours"}}</span>
+            {{else}}
+            <form hx-post="/sessions/revoke"
+                  hx-target="#session-table" hx-swap="innerHTML"
+                  hx-confirm="{{tf "sessions.revoke_question" .Username}}"
+                  data-confirm-title="{{t "sessions.revoke_title"}}">
+              <input type="hidden" name="uid" value="{{.UID}}">
+              <input type="hidden" name="username" value="{{.Username}}">
+              <button class="btn btn-outline-danger btn-sm" type="submit"
+                      data-field="revoke-{{.UID}}">
+                {{if .Self}}{{t "sessions.revoke_others"}}{{else}}{{t "sessions.revoke"}}{{end}}
+              </button>
+            </form>
+            {{end}}
+          </td>
+        </tr>
+        {{else}}
+        <tr>
+          <td colspan="6" class="text-center text-muted py-4">{{t "sessions.none"}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+{{end}}

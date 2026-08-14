@@ -143,26 +143,122 @@ func TestTouchAndRotateReportAMissingRow(t *testing.T) {
 	}
 }
 
-func TestDeleteByUIDRemovesEverySessionOfAnAccount(t *testing.T) {
+func TestRevokingAnAccountLeavesTheCallersOwnSessionAlone(t *testing.T) {
+	// The administrator who signs an attacker out of an account must not be
+	// signed out by the same click, or they cannot see whether it worked.
 	sessions := newSessionStore(t)
 	ctx := context.Background()
 
-	first := sampleSession()
-	second := sampleSession()
-	second.ID = "session-id-2"
+	mine := sampleSession()
+	theirs := sampleSession()
+	theirs.ID = "session-id-2"
+	other := sampleSession()
+	other.ID = "session-id-3"
+	other.UID = mine.UID + 1
+	other.Username = "someone-else"
 
-	for _, session := range []auth.Session{first, second} {
+	for _, session := range []auth.Session{mine, theirs, other} {
 		if err := sessions.Create(ctx, session); err != nil {
 			t.Fatalf("Create returned an error: %v", err)
 		}
 	}
 
-	if err := sessions.DeleteByUID(ctx, first.UID); err != nil {
-		t.Fatalf("DeleteByUID returned an error: %v", err)
+	removed, err := sessions.DeleteByUIDExcept(ctx, mine.UID, mine.ID)
+	if err != nil {
+		t.Fatalf("DeleteByUIDExcept returned an error: %v", err)
 	}
-	for _, id := range []string{first.ID, second.ID} {
-		if _, err := sessions.Get(ctx, id); !errors.Is(err, store.ErrNotFound) {
-			t.Errorf("session %s survived", id)
+	if removed != 1 {
+		t.Errorf("removed = %d, want 1", removed)
+	}
+
+	if _, err := sessions.Get(ctx, mine.ID); err != nil {
+		t.Errorf("the caller's own session was removed: %v", err)
+	}
+	if _, err := sessions.Get(ctx, theirs.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Error("the other session of the account survived")
+	}
+	if _, err := sessions.Get(ctx, other.ID); err != nil {
+		t.Errorf("a session of another account was removed: %v", err)
+	}
+}
+
+func TestRevokingEverythingLeavesTheCallersOwnSessionAlone(t *testing.T) {
+	sessions := newSessionStore(t)
+	ctx := context.Background()
+
+	mine := sampleSession()
+	other := sampleSession()
+	other.ID = "session-id-2"
+	other.UID = mine.UID + 1
+	other.Username = "someone-else"
+
+	for _, session := range []auth.Session{mine, other} {
+		if err := sessions.Create(ctx, session); err != nil {
+			t.Fatalf("Create returned an error: %v", err)
 		}
+	}
+
+	removed, err := sessions.DeleteAllExcept(ctx, mine.ID)
+	if err != nil {
+		t.Fatalf("DeleteAllExcept returned an error: %v", err)
+	}
+	if removed != 1 {
+		t.Errorf("removed = %d, want 1", removed)
+	}
+
+	if _, err := sessions.Get(ctx, mine.ID); err != nil {
+		t.Errorf("the caller's own session was removed: %v", err)
+	}
+	if _, err := sessions.Get(ctx, other.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Error("a session survived the revocation")
+	}
+}
+
+func TestListLiveGroupsTheSessionsOfOneAccount(t *testing.T) {
+	sessions := newSessionStore(t)
+	ctx := context.Background()
+
+	now := time.Now().UTC().Truncate(time.Second)
+
+	first := sampleSession()
+	first.CreatedAt = now.Add(-2 * time.Hour)
+	first.LastActive = now.Add(-time.Minute)
+
+	second := sampleSession()
+	second.ID = "session-id-2"
+	second.CreatedAt = now.Add(-time.Hour)
+	second.LastActive = now
+
+	// Past the cutoff below, so it is a row nobody can use any more.
+	stale := sampleSession()
+	stale.ID = "session-id-3"
+	stale.UID = first.UID + 1
+	stale.Username = "gone"
+	stale.CreatedAt = now.Add(-5 * time.Hour)
+	stale.LastActive = now.Add(-4 * time.Hour)
+
+	for _, session := range []auth.Session{first, second, stale} {
+		if err := sessions.Create(ctx, session); err != nil {
+			t.Fatalf("Create returned an error: %v", err)
+		}
+	}
+
+	live, err := sessions.ListLive(ctx, now.Add(-30*time.Minute))
+	if err != nil {
+		t.Fatalf("ListLive returned an error: %v", err)
+	}
+	if len(live) != 1 {
+		t.Fatalf("got %d accounts, want the one with live sessions: %+v", len(live), live)
+	}
+
+	summary := live[0]
+	if summary.Username != first.Username || summary.Count != 2 {
+		t.Errorf("got %+v", summary)
+	}
+	if !summary.FirstSeen.Equal(first.CreatedAt) {
+		t.Errorf("FirstSeen = %v, want the earlier login %v", summary.FirstSeen, first.CreatedAt)
+	}
+	if !summary.LastActive.Equal(second.LastActive) {
+		t.Errorf("LastActive = %v, want the latest activity %v", summary.LastActive, second.LastActive)
 	}
 }

@@ -1,0 +1,22 @@
+{{define "content"}}
+<div class="d-flex flex-wrap align-items-center justify-content-between mb-3">
+  <h1 class="h5 mb-0">{{t "nav.sessions"}}</h1>
+
+  {{if .Data.Total}}
+  <button class="btn btn-outline-danger btn-sm" type="button" data-field="revoke-all"
+          hx-post="/sessions/revoke-all"
+          hx-target="#session-table" hx-swap="innerHTML"
+          hx-confirm="{{tf "sessions.revoke_all_question" .Data.Total}}"
+          data-confirm-title="{{t "sessions.revoke_all_title"}}">
+    <i class="bx bx-power-off me-1" aria-hidden="true"></i>{{t "sessions.revoke_all"}}
+  </button>
+  {{end}}
+</div>
+
+<p class="text-muted">{{t "sessions.help"}}</p>
+
+<div id="session-table"
+     hx-get="/sessions/table"
+     hx-trigger="sessions-changed from:body"
+     hx-swap="innerHTML">{{template "session-table" .Data}}</div>
+{{end}}

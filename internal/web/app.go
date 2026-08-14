@@ -156,6 +156,11 @@ func (a *App) Router() http.Handler {
 		"GET /settings":  a.handleSettingsPage,
 		"POST /settings": a.handleSettingsSave,
 
+		"GET /sessions":             a.handleSessionsPage,
+		"GET /sessions/table":       a.handleSessionsTable,
+		"POST /sessions/revoke":     a.handleSessionRevoke,
+		"POST /sessions/revoke-all": a.handleSessionRevokeAll,
+
 		"GET /siem":       a.handleSIEMPage,
 		"GET /siem/panel": a.handleSIEMPanel,
 		"POST /siem":      a.handleSIEMSave,

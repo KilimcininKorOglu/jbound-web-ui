@@ -45,6 +45,22 @@ type Session struct {
 // IsAdmin reports whether the session may reach the admin only areas.
 func (s Session) IsAdmin() bool { return s.Role == RoleAdmin }
 
+// SessionSummary is what one account has open, as a page may see it.
+//
+// No identifier is carried. The identifier is the credential the browser
+// presents, so a view that held one would be handing it out.
+type SessionSummary struct {
+	UID        int
+	Username   string
+	Role       string
+	Count      int
+	FirstSeen  time.Time
+	LastActive time.Time
+}
+
+// IsAdmin reports whether the account holds the admin role.
+func (s SessionSummary) IsAdmin() bool { return s.Role == RoleAdmin }
+
 // SessionRepository stores sessions. Rotation is one operation rather than a
 // delete and an insert, because a crash between the two would log the user out.
 type SessionRepository interface {
@@ -53,6 +69,9 @@ type SessionRepository interface {
 	Touch(ctx context.Context, id string, at time.Time) error
 	Rotate(ctx context.Context, oldID, newID string, at time.Time) error
 	Delete(ctx context.Context, id string) error
+	ListLive(ctx context.Context, since time.Time) ([]SessionSummary, error)
+	DeleteByUIDExcept(ctx context.Context, uid int, keepID string) (int, error)
+	DeleteAllExcept(ctx context.Context, keepID string) (int, error)
 }
 
 // SessionManager applies the session rules to HTTP requests.
@@ -201,6 +220,40 @@ func (m *SessionManager) Destroy(ctx context.Context, w http.ResponseWriter,
 		return fmt.Errorf("cannot delete the session: %w", err)
 	}
 	return nil
+}
+
+// Live summarises the accounts that have a session open.
+//
+// The idle timeout is read here rather than passed in, so no caller can decide
+// on its own what counts as live and show sessions nobody can use.
+func (m *SessionManager) Live(ctx context.Context) ([]SessionSummary, error) {
+	summaries, err := m.repo.ListLive(ctx, m.now().UTC().Add(-m.idle()))
+	if err != nil {
+		return nil, fmt.Errorf("cannot list the sessions: %w", err)
+	}
+	return summaries, nil
+}
+
+// RevokeAccount ends every session of one account and reports how many went.
+//
+// keepID stays alive. It is the caller's own session, which would otherwise be
+// closed by the same click that closed the attacker's and leave nobody able to
+// see the result.
+func (m *SessionManager) RevokeAccount(ctx context.Context, uid int, keepID string) (int, error) {
+	removed, err := m.repo.DeleteByUIDExcept(ctx, uid, keepID)
+	if err != nil {
+		return 0, fmt.Errorf("cannot revoke the sessions of an account: %w", err)
+	}
+	return removed, nil
+}
+
+// RevokeAll ends every session on the panel but the caller's own.
+func (m *SessionManager) RevokeAll(ctx context.Context, keepID string) (int, error) {
+	removed, err := m.repo.DeleteAllExcept(ctx, keepID)
+	if err != nil {
+		return 0, fmt.Errorf("cannot revoke the sessions: %w", err)
+	}
+	return removed, nil
 }
 
 // destroy removes a rejected session. The error is swallowed on purpose: the

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 	"time"
 
@@ -64,6 +65,60 @@ func (f *fakeSessionRepo) Rotate(_ context.Context, oldID, newID string, at time
 func (f *fakeSessionRepo) Delete(_ context.Context, id string) error {
 	delete(f.sessions, id)
 	return nil
+}
+
+func (f *fakeSessionRepo) ListLive(_ context.Context, since time.Time) ([]SessionSummary, error) {
+	byUID := map[int]*SessionSummary{}
+	for _, session := range f.sessions {
+		if session.LastActive.Before(since) {
+			continue
+		}
+
+		summary, ok := byUID[session.UID]
+		if !ok {
+			byUID[session.UID] = &SessionSummary{
+				UID: session.UID, Username: session.Username, Role: session.Role,
+				Count: 1, FirstSeen: session.CreatedAt, LastActive: session.LastActive,
+			}
+			continue
+		}
+		summary.Count++
+		if session.CreatedAt.Before(summary.FirstSeen) {
+			summary.FirstSeen = session.CreatedAt
+		}
+		if session.LastActive.After(summary.LastActive) {
+			summary.LastActive = session.LastActive
+		}
+	}
+
+	summaries := make([]SessionSummary, 0, len(byUID))
+	for _, summary := range byUID {
+		summaries = append(summaries, *summary)
+	}
+	slices.SortFunc(summaries, func(a, b SessionSummary) int { return a.UID - b.UID })
+	return summaries, nil
+}
+
+func (f *fakeSessionRepo) DeleteByUIDExcept(_ context.Context, uid int, keepID string) (int, error) {
+	removed := 0
+	for id, session := range f.sessions {
+		if session.UID == uid && id != keepID {
+			delete(f.sessions, id)
+			removed++
+		}
+	}
+	return removed, nil
+}
+
+func (f *fakeSessionRepo) DeleteAllExcept(_ context.Context, keepID string) (int, error) {
+	removed := 0
+	for id := range f.sessions {
+		if id != keepID {
+			delete(f.sessions, id)
+			removed++
+		}
+	}
+	return removed, nil
 }
 
 const testUserAgent = "Mozilla/5.0 (test)"

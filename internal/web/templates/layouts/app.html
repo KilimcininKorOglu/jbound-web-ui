@@ -82,7 +82,7 @@
 
     <div class="layout-page">
       <nav class="layout-navbar container-xxl navbar navbar-expand-xl navbar-detached align-items-center bg-navbar-theme"
-           id="layout-navbar" aria-label="{{.PanelName}}">
+           id="layout-navbar" aria-label="{{t "nav.user"}}">
         <div class="navbar-nav-right d-flex align-items-center" id="navbar-collapse">
           <div class="d-flex align-items-center">
             <div class="nav-item d-flex align-items-center me-3">
@@ -114,7 +114,7 @@
                 {{end}}
               </select>
             </li>
-            <li class="nav-item me-3">
+            <li class="nav-item">
               <label class="visually-hidden" for="theme-choice">{{t "layout.theme"}}</label>
               <select class="form-select form-select-sm" id="theme-choice" name="theme"
                       data-field="theme-choice"
@@ -123,13 +123,6 @@
                 <option value="light" {{if eq .Theme "light"}}selected{{end}}>{{t "layout.theme.light"}}</option>
                 <option value="dark" {{if eq .Theme "dark"}}selected{{end}}>{{t "layout.theme.dark"}}</option>
               </select>
-            </li>
-            <li class="nav-item me-2">
-              {{/* The mark rather than the name. The name is a setting and
-                   belongs where there is room to read it, which is the title
-                   of the page and the footer. */}}
-              <img class="navbar-mark" src="/static/img/favicon.svg"
-                   alt="{{.PanelName}}" width="24" height="24">
             </li>
           </ul>
         </div>

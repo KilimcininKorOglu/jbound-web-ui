@@ -134,6 +134,7 @@
   "nav.siem_config": "SIEM Config",
   "nav.system_info": "System Info",
   "nav.toggle": "Show or hide the menu",
+  "nav.user": "User settings",
   "query.agree": "Every server that answered gave the same answer.",
   "query.answer": "Answer",
   "query.any": "Any",

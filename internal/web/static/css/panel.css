@@ -205,16 +205,11 @@ button.layout-menu-toggle {
 
 /* --- Layout details ----------------------------------------------------- */
 
-/* The mark stands where a name used to. It is the same file in all three
-   places, sized by where it sits, so there is one asset to keep in step
-   rather than one per position. */
+/* The mark stands where a name used to. It is the same file in both places,
+   sized by where it sits, so there is one asset to keep in step rather than
+   one per position. */
 .app-brand-mark {
   height: 32px;
-  width: auto;
-}
-
-.navbar-mark {
-  height: 24px;
   width: auto;
 }
 

@@ -270,7 +270,7 @@ by `docker/testusers.sh`.
 ### Checks
 
 ```
-make check        # vet, staticcheck, modernize, govulncheck and the unit tests
+make check        # every check that needs no container
 make test         # unit tests only
 make dev-itest    # integration tests against the containers
 make cppcheck     # the setuid helper, on top of -Wall -Wextra -Werror
@@ -278,8 +278,13 @@ make shellcheck   # the install and setup scripts
 make coverage     # coverage of every package
 ```
 
-The analysers are pinned and run through `go run`, so a checkout needs nothing
-installed beyond the Go toolchain.
+`check` covers the Go analysers, the vulnerability scan and the unit tests, and
+it covers the setuid helper and the scripts that run as root during install,
+which are the two highest risk artefacts here. Those two need `cppcheck` and
+`shellcheck` on the host, and say so rather than passing quietly when they are
+missing. `make dev-cppcheck` runs the helper analyser inside the panel
+container instead, for a workstation that has no `cppcheck`. The Go analysers are pinned and run through `go run`, so they need
+nothing installed beyond the Go toolchain.
 
 `.github/workflows/check.yml` runs the same checks on every push and pull
 request, and the vulnerability scan again once a week, because an advisory

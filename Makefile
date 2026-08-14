@@ -168,7 +168,10 @@ coverage: ## Report the test coverage of every package
 	@go tool cover -func=coverage.out | tail -1
 
 .PHONY: check
-check: lint vuln test ## Run every check that needs no container
+check: lint vuln test cppcheck shellcheck ## Run every check that needs no container
+	# The setuid helper and the scripts that run as root during install are
+	# the two highest risk artefacts here, so they belong in the aggregate
+	# rather than in a target somebody has to remember.
 
 .PHONY: clean
 clean: ## Remove build output

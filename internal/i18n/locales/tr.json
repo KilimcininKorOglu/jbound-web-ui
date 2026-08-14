@@ -322,7 +322,7 @@
   "setting.login_rate_max_attempts.label": "Pencere başına giriş denemesi",
   "setting.login_rate_window.help": "Bir adresin başarısız giriş denemelerinin sayıldığı süre.",
   "setting.login_rate_window.label": "Giriş deneme penceresi",
-  "setting.panel_name.help": "Sayfa başlığında ve altbilgide görünür.",
+  "setting.panel_name.help": "Menüde, sayfa başlığında ve altbilgide görünür.",
   "setting.panel_name.label": "Panel adı",
   "setting.records_per_page.help": "Kayıt tablosunun başlangıçtaki sayfa boyutu.",
   "setting.records_per_page.label": "Sayfa başına kayıt",

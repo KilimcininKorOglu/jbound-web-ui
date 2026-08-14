@@ -322,7 +322,7 @@
   "setting.login_rate_max_attempts.label": "Login attempts per window",
   "setting.login_rate_window.help": "The period the failed login attempts of one address are counted over.",
   "setting.login_rate_window.label": "Login rate window",
-  "setting.panel_name.help": "Shown in the page title and the footer.",
+  "setting.panel_name.help": "Shown in the menu, the page title and the footer.",
   "setting.panel_name.label": "Panel name",
   "setting.records_per_page.help": "The page size the record table starts with.",
   "setting.records_per_page.label": "Records per page",

@@ -214,12 +214,22 @@ button.layout-menu-toggle {
 }
 
 /* The name is a setting, so it can be longer than the word the template was
-   drawn for. It wraps rather than pushing the menu wider. */
+   drawn for. The vendor sheet refuses to shrink this element and the brand
+   block hides what overflows, so a long name was cut mid-word with no sign
+   that anything was missing. It now wraps inside the menu and stops after two
+   lines, which is what the fixed height of the block holds. The whole name
+   stays readable in the page title and the footer. */
 .app-brand-text {
+  display: -webkit-box;
+  flex-shrink: 1;
+  min-width: 0;
   font-size: 1.125rem;
   line-height: 1.3;
   white-space: normal;
   overflow-wrap: anywhere;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 .login-mark {

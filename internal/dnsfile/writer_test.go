@@ -487,3 +487,68 @@ func TestTheZeroPreferenceIsARecordOfItsOwn(t *testing.T) {
 		t.Errorf("the record is still there:\n%s", left)
 	}
 }
+
+// The value written to the file has to be the value that was checked. The line
+// is rendered with %q, so anything that renders escaped would land in the file
+// as a backslash the value never had, parse back as a different string, and
+// then be refused by the validator, leaving a record only a hand edit on the
+// target could remove.
+func TestATextValueTheWriterWouldEscapeIsRefused(t *testing.T) {
+	refused := map[string]string{
+		"a vertical tab":     "v=spf1\vall",
+		"a null byte":        "v=spf1\x00all",
+		"a bell":             "alert\a",
+		"an escape":          "\x1b[31mred",
+		"a delete":           "text\x7f",
+		"invalid utf-8":      "text\xff",
+		"a zero width space": "text\u200b",
+	}
+
+	for name, value := range refused {
+		t.Run(name, func(t *testing.T) {
+			record := dnsfile.Record{
+				FQDN: "spf.example.local", Type: dnsfile.TypeTXT, Value: value}
+
+			if err := record.Validate(); !errors.Is(err, dnsfile.ErrInvalid) {
+				t.Fatalf("Validate returned %v, want a refusal", err)
+			}
+			if _, err := dnsfile.Add(nil, record); !errors.Is(err, dnsfile.ErrInvalid) {
+				t.Errorf("Add returned %v, want a refusal", err)
+			}
+		})
+	}
+}
+
+// Everything the validator accepts has to survive the round trip, which is the
+// property the refusals above exist to protect.
+func TestAnAcceptedTextValueReadsBackUnchanged(t *testing.T) {
+	accepted := []string{
+		"v=spf1",
+		"v=spf1-include:_spf.example.net-all",
+		"google-site-verification=abc123",
+		"héllo-wörld",
+		"日本語",
+	}
+
+	for _, value := range accepted {
+		t.Run(value, func(t *testing.T) {
+			record := dnsfile.Record{
+				FQDN: "spf.example.local", Type: dnsfile.TypeTXT, Value: value}
+			if err := record.Validate(); err != nil {
+				t.Fatalf("Validate refused %q: %v", value, err)
+			}
+
+			parsed := dnsfile.Parse([]byte(record.BuildLine()))
+			if len(parsed) != 1 {
+				t.Fatalf("the line parsed into %d records", len(parsed))
+			}
+			if parsed[0].Value != value {
+				t.Errorf("read back %q, want %q", parsed[0].Value, value)
+			}
+			// And what came back is still a record the panel can remove.
+			if err := parsed[0].ValidateForRemoval(); err != nil {
+				t.Errorf("the record it wrote is one it refuses: %v", err)
+			}
+		})
+	}
+}

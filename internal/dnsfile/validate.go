@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // The record types the panel manages. Anything else in the file is left alone.
@@ -151,7 +153,16 @@ func (r Record) validate(family bool) error {
 //
 // The file format quotes the whole record, so a quote inside the text would
 // end the record early and the rest would become something else entirely.
+//
+// The rule is that the value written to the file has to be the value that was
+// checked. The line is rendered with %q, which escapes a quote, a backslash,
+// every non printable rune and every byte that is not valid UTF-8. Each of
+// those would land in the file as a backslash the value never had, parse back
+// as a different string, and then be refused by this very function, leaving a
+// record only a hand edit on the target could remove.
 func validateText(value string) error {
+	notPrintable := func(r rune) bool { return !unicode.IsPrint(r) }
+
 	switch {
 	case value == "":
 		return fmt.Errorf("%w: the text is empty", ErrInvalid)
@@ -165,6 +176,10 @@ func validateText(value string) error {
 		// A space would split into several fields and the parser would read
 		// only the first one back.
 		return fmt.Errorf("%w: the text may not hold whitespace", ErrInvalid)
+	case !utf8.ValidString(value):
+		return fmt.Errorf("%w: the text is not valid UTF-8", ErrInvalid)
+	case strings.ContainsFunc(value, notPrintable):
+		return fmt.Errorf("%w: the text may only hold printable characters", ErrInvalid)
 	}
 	return nil
 }

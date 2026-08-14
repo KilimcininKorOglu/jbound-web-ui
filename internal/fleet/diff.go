@@ -286,14 +286,14 @@ func (w *Writer) repairOne(ctx context.Context, actor server.Actor,
 	client, err := w.pool.Get(w.transportConfig(record))
 	if err != nil {
 		result.Status = StatusFailed
-		result.Message = err.Error()
+		result.Message = failureMessage(err)
 		return result
 	}
 
 	content, digest, err := client.ReadHostEntries(ctx)
 	if err != nil {
 		result.Status = StatusFailed
-		result.Message = err.Error()
+		result.Message = failureMessage(err)
 		return result
 	}
 
@@ -307,12 +307,12 @@ func (w *Writer) repairOne(ctx context.Context, actor server.Actor,
 	updated, err := op.apply(content)
 	if err != nil {
 		result.Status = StatusFailed
-		result.Message = err.Error()
+		result.Message = failureMessage(err)
 		return result
 	}
 	if err := client.WriteHostEntries(ctx, updated, digest); err != nil {
 		result.Status = StatusFailed
-		result.Message = err.Error()
+		result.Message = failureMessage(err)
 		return result
 	}
 
@@ -461,14 +461,14 @@ func (w *Writer) mirrorOne(ctx context.Context, actor server.Actor,
 	client, err := w.pool.Get(w.transportConfig(record))
 	if err != nil {
 		result.Status = StatusFailed
-		result.Message = err.Error()
+		result.Message = failureMessage(err)
 		return result
 	}
 
 	content, digest, err := client.ReadHostEntries(ctx)
 	if err != nil {
 		result.Status = StatusFailed
-		result.Message = err.Error()
+		result.Message = failureMessage(err)
 		return result
 	}
 
@@ -490,7 +490,7 @@ func (w *Writer) mirrorOne(ctx context.Context, actor server.Actor,
 				"operation", op.Kind, "fqdn", op.Record.FQDN, "error", err)
 
 			result.Status = StatusFailed
-			result.Message = err.Error()
+			result.Message = failureMessage(err)
 			return result
 		}
 	}
@@ -500,7 +500,7 @@ func (w *Writer) mirrorOne(ctx context.Context, actor server.Actor,
 			"server", record.Name, "source", source.Name, "error", err)
 
 		result.Status = StatusFailed
-		result.Message = err.Error()
+		result.Message = failureMessage(err)
 		return result
 	}
 

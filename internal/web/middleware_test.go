@@ -5,8 +5,12 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
+	"time"
+
+	"unbound-web/internal/settings"
 )
 
 // captureLog sends the structured stream to a buffer for the length of one
@@ -117,4 +121,42 @@ func TestADeliberateAbortIsLeftToTheServer(t *testing.T) {
 	}()
 
 	chain.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/dns", nil))
+}
+
+func TestAFleetRouteCarriesTheConfiguredDeadline(t *testing.T) {
+	// A fan-out route can outlast the write timeout of the server, and a
+	// request that dies there leaves the operator with no report at all. The
+	// deadline the panel sets is what turns that into a per-server result.
+	env := newTestEnv(t)
+
+	var deadline time.Time
+	var ok bool
+	handler := env.app.withFleetDeadline(func(_ http.ResponseWriter, r *http.Request) {
+		deadline, ok = r.Context().Deadline()
+	})
+
+	before := time.Now()
+	handler(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/dns/apply", nil))
+	if !ok {
+		t.Fatal("the request carries no deadline")
+	}
+
+	want := env.app.Settings.Duration(settings.FleetOperationTimeout)
+	if got := deadline.Sub(before); got < want-time.Second || got > want+time.Second {
+		t.Errorf("deadline in %s, want the configured %s", got, want)
+	}
+}
+
+func TestEveryFanOutRouteReachesTheServersWithADeadline(t *testing.T) {
+	// Wrapping the middleware is only half of the fix. The route has to carry
+	// it, or the deadline is a function nobody calls.
+	env := newFleetEnv(t)
+
+	env.adminForm(t, http.MethodPost, "/dns/refresh", env.cookie, url.Values{})
+
+	for id := int64(1); id <= 3; id++ {
+		if !env.target(id).hadDeadline() {
+			t.Errorf("the refresh reached server %d with no deadline", id)
+		}
+	}
 }

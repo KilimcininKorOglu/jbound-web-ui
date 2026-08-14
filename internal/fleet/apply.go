@@ -346,7 +346,7 @@ func (w *Writer) applyOne(ctx context.Context, actor server.Actor,
 			"fqdn", op.Record.FQDN, "type", op.Record.Type, "error", err)
 
 		result.Status = StatusFailed
-		result.Message = err.Error()
+		result.Message = failureMessage(err)
 		return result
 	}
 
@@ -385,6 +385,22 @@ func refuse(record server.Server) (ServerResult, bool) {
 		return ServerResult{}, false
 	}
 	return result, true
+}
+
+// failureMessage turns one server's failure into the line the report shows.
+//
+// The deadline of the whole operation reads as "context deadline exceeded",
+// which tells the operator nothing about what happened or what to do. Every
+// other failure keeps its own text.
+func failureMessage(err error) string {
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		return "The operation ran out of time before this server was finished"
+	case errors.Is(err, context.Canceled):
+		return "The operation was stopped before this server was finished"
+	default:
+		return err.Error()
+	}
 }
 
 // write performs the read, change and write of one server.

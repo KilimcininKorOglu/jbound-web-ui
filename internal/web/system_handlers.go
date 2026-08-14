@@ -182,7 +182,8 @@ func cacheErrorText(catalog *i18n.Catalog, code string) string {
 	case transport.CodeUnreachable, transport.CodeHostKeyUnknown,
 		transport.CodeHostKeyMismatch, transport.CodeAuth,
 		transport.CodeConflict, transport.CodeCommandFailed,
-		transport.CodeRemoteOutput:
+		transport.CodeRemoteOutput, transport.CodeTimeout,
+		transport.CodeCancelled:
 		return catalog.T("system.error." + code)
 	default:
 		return catalog.T("system.error." + transport.CodeUnknown)

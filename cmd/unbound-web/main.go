@@ -35,6 +35,12 @@ const (
 	// cleanupInterval controls how often expired sessions and stale login
 	// attempts are removed.
 	cleanupInterval = 10 * time.Minute
+
+	// httpWriteTimeout is the last resort against a client that stops reading.
+	// It has to stay above the largest fleet_operation_timeout an operator can
+	// configure, or a long operation loses its report to the transport again.
+	// A test holds the two together.
+	httpWriteTimeout = 15 * time.Minute
 )
 
 // usage is printed for an argument the command does not know.
@@ -217,8 +223,13 @@ func run() error {
 		ErrorLog:          slog.NewLogLogger(slog.Default().Handler(), slog.LevelError),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      60 * time.Second,
-		IdleTimeout:       120 * time.Second,
+		// A transport deadline, not a handler one: it cancels nothing and
+		// produces no status, so a fleet operation that outlives it loses the
+		// per-server report the operator needs. The panel bounds those
+		// handlers itself with fleet_operation_timeout, and this stays above
+		// its maximum so the report always lands.
+		WriteTimeout: httpWriteTimeout,
+		IdleTimeout:  120 * time.Second,
 	}
 
 	serverErr := make(chan error, 1)

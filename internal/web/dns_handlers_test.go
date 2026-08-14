@@ -899,3 +899,40 @@ func TestARefreshTheOperatorAskedForIsAudited(t *testing.T) {
 		t.Errorf("details = %q", details)
 	}
 }
+
+func TestAFleetOperationThatRunsOutOfTimeStillReportsPerServer(t *testing.T) {
+	// One slow machine used to take the whole answer with it: the write timeout
+	// of the server dropped the connection, and the operator never learned that
+	// two of the three servers already carry the record.
+	env := newFleetEnv(t)
+	env.target(2).slowDown(time.Minute)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+
+	body := groupForm(url.Values{
+		"fqdn": {"slow.example.local"}, "type": {"A"}, "value": {"10.0.0.90"},
+	}).Encode()
+
+	request := httptest.NewRequest(http.MethodPost, "/dns/records",
+		strings.NewReader(body)).WithContext(ctx)
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.Header.Set(auth.CSRFHeader, env.csrfTokenOf(t, env.cookie))
+
+	recorder := env.do(t, request, env.cookie)
+	if recorder.Code != http.StatusMultiStatus {
+		t.Fatalf("status = %d, want 207:\n%s", recorder.Code, recorder.Body.String())
+	}
+
+	page := recorder.Body.String()
+	if !strings.Contains(page, "ran out of time") {
+		t.Errorf("the report does not say the server ran out of time:\n%s", page)
+	}
+	// The two that answered carry the record, which is exactly what the
+	// operator has to know before deciding what to do about the third.
+	for _, id := range []int64{1, 3} {
+		if !strings.Contains(env.target(id).file(), "10.0.0.90") {
+			t.Errorf("server %d did not get the record", id)
+		}
+	}
+}

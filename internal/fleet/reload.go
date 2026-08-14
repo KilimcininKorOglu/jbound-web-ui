@@ -49,14 +49,14 @@ func (w *Writer) reloadOne(ctx context.Context, actor server.Actor,
 	client, err := w.pool.Get(w.transportConfig(record))
 	if err != nil {
 		result.Status = StatusFailed
-		result.Message = err.Error()
+		result.Message = failureMessage(err)
 		return result
 	}
 
 	output, err := client.Reload(ctx)
 	if err != nil {
 		result.Status = StatusFailed
-		result.Message = err.Error()
+		result.Message = failureMessage(err)
 		return result
 	}
 

@@ -116,20 +116,24 @@ func (a *App) Router() http.Handler {
 		"GET /dns/records":      a.handleDNSRecords,
 		"GET /dns/records/new":  a.handleRecordForm,
 		"GET /dns/records/edit": a.handleRecordForm,
-		"POST /dns/records":     a.handleRecordCreate,
-		"PUT /dns/records":      a.handleRecordUpdate,
-		"DELETE /dns/records":   a.handleRecordDelete,
-		"POST /dns/refresh":     a.handleRecordRefresh,
-		"POST /dns/apply":       a.handleRecordApply,
-		"GET /dns/query":        a.handleQueryForm,
-		"POST /dns/query":       a.handleQuery,
+		// Every route below that reaches more than one server carries the
+		// panel's own deadline, so a slow machine cannot push the response
+		// past the transport write timeout and take the per-server report
+		// with it.
+		"POST /dns/records":   a.withFleetDeadline(a.handleRecordCreate),
+		"PUT /dns/records":    a.withFleetDeadline(a.handleRecordUpdate),
+		"DELETE /dns/records": a.withFleetDeadline(a.handleRecordDelete),
+		"POST /dns/refresh":   a.withFleetDeadline(a.handleRecordRefresh),
+		"POST /dns/apply":     a.withFleetDeadline(a.handleRecordApply),
+		"GET /dns/query":      a.handleQueryForm,
+		"POST /dns/query":     a.withFleetDeadline(a.handleQuery),
 
 		"GET /logs":       a.handleLogsPage,
 		"GET /logs/table": a.handleLogsTable,
 
 		"GET /diff":         a.handleDiffPage,
 		"GET /diff/table":   a.handleDiffTable,
-		"POST /diff/repair": a.handleDiffRepair,
+		"POST /diff/repair": a.withFleetDeadline(a.handleDiffRepair),
 	}
 	for pattern, handler := range records {
 		if strings.HasPrefix(pattern, "GET ") {
@@ -166,7 +170,7 @@ func (a *App) Router() http.Handler {
 		"GET /siem/panel": a.handleSIEMPanel,
 		"POST /siem":      a.handleSIEMSave,
 		"POST /siem/test": a.handleSIEMTest,
-		"POST /diff/sync": a.handleDiffSync,
+		"POST /diff/sync": a.withFleetDeadline(a.handleDiffSync),
 
 		"POST /siem/forwarding": a.handleSIEMForwarding,
 

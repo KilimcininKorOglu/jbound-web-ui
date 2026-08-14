@@ -50,6 +50,11 @@ const (
 	SSHIdleTimeout       = "ssh_idle_timeout"
 	DNSQueryTimeout      = "dns_query_timeout"
 
+	// FleetOperationTimeout bounds one whole fan-out request. Its maximum has
+	// to stay well under the server's WriteTimeout in cmd/unbound-web, because
+	// a request that outlives that deadline loses its per-server report.
+	FleetOperationTimeout = "fleet_operation_timeout"
+
 	LoginRateWindow      = "login_rate_window"
 	LoginRateMaxAttempts = "login_rate_max_attempts"
 	FleetMaxConcurrent   = "fleet_max_concurrent"
@@ -128,6 +133,14 @@ var registry = []Definition{
 	{
 		Key: DNSQueryTimeout, Group: GroupTiming, Kind: KindDuration,
 		Default: "10s", Min: time.Second, Max: 2 * time.Minute,
+	},
+	{
+		// One operation reaches every server of a target, several SSH commands
+		// each, in batches of fleet_max_concurrent. How long that may take
+		// depends on the size of the fleet and the speed of the machines, so
+		// it is a setting rather than a number chosen here.
+		Key: FleetOperationTimeout, Group: GroupTiming, Kind: KindDuration,
+		Default: "5m", Min: 30 * time.Second, Max: 10 * time.Minute,
 	},
 
 	{

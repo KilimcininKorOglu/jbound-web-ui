@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -279,6 +280,12 @@ func TestEveryFailureClassCarriesItsOwnCode(t *testing.T) {
 		ErrConflict:        CodeConflict,
 		ErrCommandFailed:   CodeCommandFailed,
 		ErrRemoteOutput:    CodeRemoteOutput,
+
+		// The deadline of the whole fleet operation. An SSH dial that is cut
+		// short reads as unreachable otherwise, which sends the operator to
+		// the network rather than to the limit they configured.
+		context.DeadlineExceeded: CodeTimeout,
+		context.Canceled:         CodeCancelled,
 	}
 
 	for cause, want := range classes {

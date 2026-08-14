@@ -261,9 +261,22 @@ type stubTransport struct {
 	// which is what Apply Rules is checked against.
 	reloads   int
 	reloadErr error
+
+	// delay is how long every operation on this server takes. A real machine
+	// that answers slowly is the only way to reach the deadline of a fleet
+	// operation, and this stands in for one.
+	delay time.Duration
+
+	// deadlineSeen says whether the last operation arrived with a deadline,
+	// which is how a route that has to carry one is checked.
+	deadlineSeen bool
 }
 
-func (s *stubTransport) ReadHostEntries(context.Context) ([]byte, string, error) {
+func (s *stubTransport) ReadHostEntries(ctx context.Context) ([]byte, string, error) {
+	if err := s.wait(ctx); err != nil {
+		return nil, "", err
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -273,7 +286,11 @@ func (s *stubTransport) ReadHostEntries(context.Context) ([]byte, string, error)
 	return append([]byte(nil), s.content...), digestOf(s.content), nil
 }
 
-func (s *stubTransport) WriteHostEntries(_ context.Context, data []byte, expect string) error {
+func (s *stubTransport) WriteHostEntries(ctx context.Context, data []byte, expect string) error {
+	if err := s.wait(ctx); err != nil {
+		return err
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -305,6 +322,46 @@ func (s *stubTransport) setFile(content string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.content = []byte(content)
+}
+
+// hadDeadline reports whether the last operation carried one.
+func (s *stubTransport) hadDeadline() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.deadlineSeen
+}
+
+// slowDown makes every operation on this server take the given time.
+func (s *stubTransport) slowDown(d time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.delay = d
+}
+
+// wait holds the caller for the configured delay, or until the operation ends,
+// whichever comes first. It reports what the context says either way, so a
+// server that is still working when the deadline passes fails the way a real
+// one does.
+func (s *stubTransport) wait(ctx context.Context) error {
+	_, hasDeadline := ctx.Deadline()
+
+	s.mu.Lock()
+	s.deadlineSeen = hasDeadline
+	delay := s.delay
+	s.mu.Unlock()
+
+	if delay == 0 {
+		return ctx.Err()
+	}
+
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+
+	select {
+	case <-timer.C:
+	case <-ctx.Done():
+	}
+	return ctx.Err()
 }
 
 func (s *stubTransport) Reload(context.Context) (string, error) {

@@ -63,6 +63,8 @@ const (
 	CodeConflict        = "conflict"
 	CodeCommandFailed   = "command_failed"
 	CodeRemoteOutput    = "remote_output"
+	CodeTimeout         = "timeout"
+	CodeCancelled       = "cancelled"
 	CodeUnknown         = "unknown"
 )
 
@@ -72,6 +74,13 @@ const (
 // class has to be tried before the one it is wrapped in.
 func FailureCode(err error) string {
 	switch {
+	// The deadline of the whole operation, which the panel sets and the
+	// operator configures. It reads as unreachable otherwise, and that would
+	// send them looking at the network instead of at the limit.
+	case errors.Is(err, context.DeadlineExceeded):
+		return CodeTimeout
+	case errors.Is(err, context.Canceled):
+		return CodeCancelled
 	case errors.Is(err, ErrHostKeyMismatch):
 		return CodeHostKeyMismatch
 	case errors.Is(err, ErrHostKeyUnknown):

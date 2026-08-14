@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"unbound-web/internal/auth"
+	"unbound-web/internal/settings"
 )
 
 // contextKey keeps the session out of the string keyed context namespace, so
@@ -23,6 +24,28 @@ var sessionKey = &contextKey{name: "session"}
 func SessionFrom(ctx context.Context) (auth.Session, bool) {
 	session, ok := ctx.Value(sessionKey).(auth.Session)
 	return session, ok
+}
+
+// withFleetDeadline bounds a handler that reaches several servers at once.
+//
+// One operation runs several SSH commands per server, each bounded by
+// ssh_command_timeout, in batches of fleet_max_concurrent, so a slow machine
+// can push the response past the server's write deadline. That deadline
+// belongs to the transport: it cancels nothing and produces no status, so the
+// browser sees a failed request while the write has already landed on some of
+// the servers, and the per-server report is lost exactly when it matters.
+//
+// The deadline is read per request, so a change on the settings page applies
+// without a restart. When it expires the fan-out finishes with the servers it
+// could not reach marked failed, which is a report the operator can act on.
+func (a *App) withFleetDeadline(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(),
+			a.Settings.Duration(settings.FleetOperationTimeout))
+		defer cancel()
+
+		next(w, r.WithContext(ctx))
+	}
 }
 
 // requireAuth rejects requests without a valid session.

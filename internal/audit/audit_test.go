@@ -21,11 +21,19 @@ type fakeRepo struct {
 	page      Page
 	lastQuery Query
 	listErr   error
+
+	// ctxErr is what the context said when the write arrived, and deadline is
+	// how long it had left. A row that must survive a cancelled request is
+	// checked against both.
+	ctxErr   error
+	deadline time.Time
 }
 
-func (f *fakeRepo) Write(_ context.Context, entry Entry, at time.Time) error {
+func (f *fakeRepo) Write(ctx context.Context, entry Entry, at time.Time) error {
 	f.entries = append(f.entries, entry)
 	f.at = append(f.at, at)
+	f.ctxErr = ctx.Err()
+	f.deadline, _ = ctx.Deadline()
 	return f.err
 }
 
@@ -335,4 +343,47 @@ func declaredActions(t *testing.T) map[string]string {
 		t.Fatal("no action constant was found in audit.go")
 	}
 	return found
+}
+
+func TestACancelledRequestStillGetsItsAuditRow(t *testing.T) {
+	// The entry describes a resolver that has already been changed. htmx
+	// cancels a request whenever it fires a second one from the same element,
+	// and that used to take the row with it.
+	repo := &fakeRepo{}
+	logger := NewLogger(repo, nil)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if err := logger.Write(ctx, Entry{
+		Username: "dnsadmin", Action: ActionDNSAdd, Details: "Added A record",
+	}); err != nil {
+		t.Fatalf("write failed: %v", err)
+	}
+
+	if len(repo.entries) != 1 {
+		t.Fatalf("stored %d entries, want 1", len(repo.entries))
+	}
+	if repo.ctxErr != nil {
+		t.Errorf("the store was handed a dead context: %v", repo.ctxErr)
+	}
+}
+
+func TestTheDetachedWriteIsStillBounded(t *testing.T) {
+	// Detaching the cancellation must not hand the store a context that never
+	// ends, or an unavailable database holds the caller for ever.
+	repo := &fakeRepo{}
+	logger := NewLogger(repo, nil)
+
+	if err := logger.Write(context.Background(), Entry{
+		Username: "dnsadmin", Action: ActionDNSAdd,
+	}); err != nil {
+		t.Fatalf("write failed: %v", err)
+	}
+	if repo.deadline.IsZero() {
+		t.Fatal("the store was handed a context with no deadline")
+	}
+	if left := time.Until(repo.deadline); left <= 0 || left > storeTimeout {
+		t.Errorf("deadline in %s, want at most %s", left, storeTimeout)
+	}
 }

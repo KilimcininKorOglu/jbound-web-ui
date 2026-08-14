@@ -936,3 +936,39 @@ func TestAFleetOperationThatRunsOutOfTimeStillReportsPerServer(t *testing.T) {
 		}
 	}
 }
+
+func TestAChangeThatLandedIsAuditedEvenIfTheRequestIsCancelled(t *testing.T) {
+	// htmx cancels a request whenever the same element fires a second one, and
+	// a resolver the panel has already changed still has to appear in the log
+	// the operator reads.
+	env := newFleetEnv(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	env.target(1).onWrite(cancel)
+
+	body := groupForm(url.Values{
+		"fqdn": {"cancelled.example.local"}, "type": {"A"}, "value": {"10.0.0.91"},
+	}).Encode()
+
+	request := httptest.NewRequest(http.MethodPost, "/dns/records",
+		strings.NewReader(body)).WithContext(ctx)
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.Header.Set(auth.CSRFHeader, env.csrfTokenOf(t, env.cookie))
+
+	env.do(t, request, env.cookie)
+
+	if !strings.Contains(env.target(1).file(), "10.0.0.91") {
+		t.Fatal("the record never reached the server, the test proves nothing")
+	}
+
+	var rows int
+	if err := env.db.QueryRow(
+		"SELECT COUNT(*) FROM audit_logs WHERE action = 'dns_add' AND details LIKE '%cancelled.example.local%'",
+	).Scan(&rows); err != nil {
+		t.Fatalf("cannot read the audit table: %v", err)
+	}
+	if rows == 0 {
+		t.Error("the change landed on a server with no audit row behind it")
+	}
+}

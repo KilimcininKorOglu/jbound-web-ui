@@ -270,6 +270,11 @@ type stubTransport struct {
 	// deadlineSeen says whether the last operation arrived with a deadline,
 	// which is how a route that has to carry one is checked.
 	deadlineSeen bool
+
+	// afterWrite runs once the file has been replaced. It stands in for
+	// everything that can happen to the request after the panel has already
+	// changed a production resolver.
+	afterWrite func()
 }
 
 func (s *stubTransport) ReadHostEntries(ctx context.Context) ([]byte, string, error) {
@@ -301,6 +306,10 @@ func (s *stubTransport) WriteHostEntries(ctx context.Context, data []byte, expec
 		return transport.ErrConflict
 	}
 	s.content = append([]byte(nil), data...)
+
+	if s.afterWrite != nil {
+		s.afterWrite()
+	}
 	return nil
 }
 
@@ -329,6 +338,13 @@ func (s *stubTransport) hadDeadline() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.deadlineSeen
+}
+
+// onWrite runs the given function right after the file is replaced.
+func (s *stubTransport) onWrite(after func()) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.afterWrite = after
 }
 
 // slowDown makes every operation on this server take the given time.

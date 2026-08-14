@@ -143,11 +143,25 @@ func (l *Logger) WriteMirrored(ctx context.Context, entry Entry) error {
 	return l.write(ctx, entry, l.forwarder != nil)
 }
 
+// storeTimeout bounds an audit insert once it is detached from the request.
+//
+// The row goes into a local SQLite database, so a write that has not landed in
+// this long means the database is unavailable rather than busy, and holding the
+// caller longer would not change the outcome.
+const storeTimeout = 10 * time.Second
+
 func (l *Logger) write(ctx context.Context, entry Entry, mirror bool) error {
 	if entry.Action == "" {
 		return fmt.Errorf("audit entry has no action")
 	}
 	entry.Defaults()
+
+	// The entry describes something that already happened, so it outlives the
+	// request that caused it. A browser that cancels, which htmx does whenever
+	// it fires a second request from the same element, would otherwise leave a
+	// changed resolver with no row in the log the operator reads.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), storeTimeout)
+	defer cancel()
 
 	err := l.repo.Write(ctx, entry, l.now().UTC())
 	if err != nil {

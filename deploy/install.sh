@@ -28,6 +28,7 @@ ENV_FILE="$CONF_DIR/jbound.env"
 RSYSLOG_CONF=/etc/rsyslog.d/60-jbound.conf
 SUDOERS_FILE=/etc/sudoers.d/jbound
 UNIT_FILE=/etc/systemd/system/jbound.service
+DOC_DIR=/usr/local/share/doc/jbound/licenses
 
 PANEL_BINARY=dist/jbound
 HELPER_BINARY=authhelper/jbound-authhelper
@@ -98,6 +99,16 @@ echo "installed $PREFIX/bin/jbound"
 install -m 4750 -o root -g "$SERVICE_GROUP" "$HELPER_BINARY" \
     "$PREFIX/libexec/jbound-authhelper"
 echo "installed $PREFIX/libexec/jbound-authhelper"
+
+# --- Third-party licences ----------------------------------------------------
+# The binary serves its stylesheets, scripts, icons and fonts from inside
+# itself, so it redistributes them. Every one of those licences asks for its
+# notice to travel with the copies.
+install -d -m 0755 "$DOC_DIR"
+for licence in "$SOURCE_DIR/licenses/"*; do
+    install -m 0644 -o root -g root "$licence" "$DOC_DIR/$(basename "$licence")"
+done
+echo "installed $DOC_DIR"
 
 # --- PAM service -------------------------------------------------------------
 install -m 0644 -o root -g root "$SOURCE_DIR/pam.d-jbound" \

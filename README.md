@@ -57,8 +57,8 @@ sudo make install
 `deploy/install.sh` does the work and can be re-run at any time. It creates the
 `jbound` system account, the state directory, both binaries, the PAM
 service file, the environment file, the rsyslog file the panel owns, two sudoers
-rules and the systemd unit. It never overwrites the environment file, and it
-reads back the two modes the whole design rests on:
+rules, the third-party licences and the systemd unit. It never overwrites the
+environment file, and it reads back the two modes the whole design rests on:
 
 | Path | Mode | Why |
 | --- | --- | --- |
@@ -399,5 +399,14 @@ internal/settings    the settings registry and their storage
 internal/i18n        the language catalogues
 internal/web         handlers, templates and static assets
 deploy               install script, systemd unit, PAM file, target setup
+deploy/licenses      the licences of the assets the binary serves
 docker               the development stack
 ```
+
+## Licence of the assets it serves
+
+The panel embeds its stylesheets, scripts, icons and fonts, so it redistributes
+them. `deploy/licenses/` carries the licence of each one and `install.sh` places
+the directory under `/usr/local/share/doc/jbound/licenses`. Everything there is
+MIT, 0BSD or the SIL Open Font License, and all three ask only that the notice
+travels with the copies.

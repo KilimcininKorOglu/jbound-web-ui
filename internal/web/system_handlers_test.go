@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"unbound-web/internal/fleet"
-	"unbound-web/internal/i18n"
-	"unbound-web/internal/server"
-	"unbound-web/internal/transport"
+	"jbound/internal/fleet"
+	"jbound/internal/i18n"
+	"jbound/internal/server"
+	"jbound/internal/transport"
 )
 
 // systemPage returns the rendered system page.

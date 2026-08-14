@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"unbound-web/internal/settings"
+	"jbound/internal/settings"
 )
 
 // variablePattern reads one custom property out of a palette block.

@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"unbound-web/internal/audit"
-	"unbound-web/internal/dnsfile"
-	"unbound-web/internal/paging"
-	"unbound-web/internal/server"
-	"unbound-web/internal/settings"
+	"jbound/internal/audit"
+	"jbound/internal/dnsfile"
+	"jbound/internal/paging"
+	"jbound/internal/server"
+	"jbound/internal/settings"
 )
 
 // fakeLister answers with a fixed cache, so the service can be driven without

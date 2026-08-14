@@ -7,11 +7,11 @@ import (
 	"os"
 	"time"
 
-	"unbound-web/internal/build"
-	"unbound-web/internal/fleet"
-	"unbound-web/internal/i18n"
-	"unbound-web/internal/server"
-	"unbound-web/internal/transport"
+	"jbound/internal/build"
+	"jbound/internal/fleet"
+	"jbound/internal/i18n"
+	"jbound/internal/server"
+	"jbound/internal/transport"
 )
 
 // The states a server can be in on the system page.

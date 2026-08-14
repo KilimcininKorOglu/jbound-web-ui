@@ -5,13 +5,13 @@ import (
 	"slices"
 	"time"
 
-	"unbound-web/internal/settings"
+	"jbound/internal/settings"
 )
 
 // Preference cookies. They hold a display choice and nothing else, so they
 // carry no session fact and no identifier.
 const (
-	ThemeCookieName = "unbound_web_theme"
+	ThemeCookieName = "jbound_theme"
 )
 
 // preferenceMaxAge keeps a choice for a year. A display preference that

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"unbound-web/internal/audit"
+	"jbound/internal/audit"
 )
 
 // AuditLogs stores audit entries.

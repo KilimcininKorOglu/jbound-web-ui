@@ -39,7 +39,7 @@ dev-env: ## Create .env.dev from the example when it is missing
 dev-keys: ## Generate the development SSH key pair when it is missing
 	@mkdir -p $(KEY_DIR)
 	@if [ ! -f $(DEV_KEY) ]; then \
-		ssh-keygen -t ed25519 -N '' -C 'unbound-web dev key' -f $(DEV_KEY); \
+		ssh-keygen -t ed25519 -N '' -C 'jbound dev key' -f $(DEV_KEY); \
 		echo "generated $(DEV_KEY)"; \
 	else \
 		echo "$(DEV_KEY) already exists"; \
@@ -110,7 +110,7 @@ dev-itest: ## Run the integration tests inside the panel container
 	# One package at a time. Several of these write the same file on the same
 	# development target, and Go runs packages in parallel by default, which
 	# turns two honest tests into one flake.
-	$(COMPOSE) exec -T -u unbound-web app go test -p 1 -tags=integration ./... $(GO_TEST_FLAGS)
+	$(COMPOSE) exec -T -u jbound app go test -p 1 -tags=integration ./... $(GO_TEST_FLAGS)
 
 # ---------------------------------------------------------------------------
 # Build and quality
@@ -118,7 +118,7 @@ dev-itest: ## Run the integration tests inside the panel container
 
 .PHONY: build
 build: ## Build the static panel binary
-	CGO_ENABLED=0 go build -trimpath -o dist/unbound-web ./cmd/unbound-web
+	CGO_ENABLED=0 go build -trimpath -o dist/jbound ./cmd/jbound
 
 .PHONY: build-helper
 build-helper: ## Build the setuid PAM helper

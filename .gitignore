@@ -9,7 +9,7 @@ dist/
 tmp/
 *.test
 coverage.out
-authhelper/unbound-web-authhelper
+authhelper/jbound-authhelper
 
 # Local databases
 *.db

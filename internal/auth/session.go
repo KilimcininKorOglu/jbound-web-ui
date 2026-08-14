@@ -15,7 +15,7 @@ import (
 
 // SessionCookieName carries the session identifier. The cookie holds nothing
 // else, so every session fact stays on the server.
-const SessionCookieName = "unbound_web_session"
+const SessionCookieName = "jbound_session"
 
 // rotateInterval controls how often a live session gets a new identifier. Five
 // minutes bounds how long a stolen identifier stays useful.

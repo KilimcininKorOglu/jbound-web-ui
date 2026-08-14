@@ -1,4 +1,4 @@
-# Development image for the unbound-web panel.
+# Development image for the JBound panel.
 #
 # The panel runs unprivileged. Only the setuid helper touches PAM. No Unbound
 # runs here, because the panel manages remote targets over SSH.
@@ -29,11 +29,11 @@ RUN apt-get update \
 
 # Service account. The panel process and the air supervisor both run as this
 # user. The helper is executable only by this group.
-RUN groupadd --system unbound-web \
-    && useradd --system --gid unbound-web --create-home \
-        --home-dir /home/unbound-web --shell /usr/sbin/nologin unbound-web
+RUN groupadd --system jbound \
+    && useradd --system --gid jbound --create-home \
+        --home-dir /home/jbound --shell /usr/sbin/nologin jbound
 
-COPY deploy/pam.d-unbound-web /etc/pam.d/unbound-web
+COPY deploy/pam.d-jbound /etc/pam.d/jbound
 COPY docker/rsyslog-app.conf /etc/rsyslog.conf
 RUN mkdir -p /var/spool/rsyslog /etc/rsyslog.d /usr/local/libexec
 
@@ -44,11 +44,11 @@ RUN chmod 0755 /usr/local/bin/rsyslog-restart
 
 # Mirrors the production sudoers rules for the panel account.
 RUN printf '%s\n' \
-        'unbound-web ALL=(ALL) NOPASSWD: /usr/local/bin/rsyslog-restart' \
-        'unbound-web ALL=(ALL) NOPASSWD: /usr/sbin/rsyslogd -N1' \
-        > /etc/sudoers.d/unbound-web \
-    && chmod 0440 /etc/sudoers.d/unbound-web \
-    && visudo -c -f /etc/sudoers.d/unbound-web
+        'jbound ALL=(ALL) NOPASSWD: /usr/local/bin/rsyslog-restart' \
+        'jbound ALL=(ALL) NOPASSWD: /usr/sbin/rsyslogd -N1' \
+        > /etc/sudoers.d/jbound \
+    && chmod 0440 /etc/sudoers.d/jbound \
+    && visudo -c -f /etc/sudoers.d/jbound
 
 # Hot reload for the Go binary. Installed as root, used by the service account.
 #
@@ -65,7 +65,7 @@ ENV GOPATH=/go \
     GOCACHE=/go/cache \
     GOMODCACHE=/go/pkg/mod
 RUN mkdir -p /go/cache /go/pkg/mod \
-    && chown -R unbound-web:unbound-web /go
+    && chown -R jbound:jbound /go
 
 COPY docker/testusers.sh /usr/local/bin/testusers.sh
 COPY docker/entrypoint-app.sh /usr/local/bin/entrypoint-app.sh

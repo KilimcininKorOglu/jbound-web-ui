@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"unbound-web/internal/audit"
+	"jbound/internal/audit"
 )
 
 func entry(action string) audit.Entry {
@@ -63,7 +63,7 @@ func TestAnUnknownActionKeepsTheDefaults(t *testing.T) {
 func TestTheLineCarriesTheHeaderAndEveryField(t *testing.T) {
 	line := Format(entry(audit.ActionDNSAdd), "panel.example.net")
 
-	const wantHeader = "CEF:0|JanBound|JanBoundDNSPanel|1.0|dns_add|DNS Record Added|3|"
+	const wantHeader = "CEF:0|JBound|JBoundDNSPanel|1.0|dns_add|DNS Record Added|3|"
 	if !strings.HasPrefix(line, wantHeader) {
 		t.Fatalf("line = %q", line)
 	}

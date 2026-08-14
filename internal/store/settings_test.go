@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"unbound-web/internal/database"
-	"unbound-web/internal/store"
+	"jbound/internal/database"
+	"jbound/internal/store"
 )
 
 // newSettingsStore opens a migrated database and returns the settings store.

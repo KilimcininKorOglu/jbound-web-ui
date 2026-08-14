@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"unbound-web/internal/audit"
-	"unbound-web/internal/settings"
-	"unbound-web/internal/transport"
+	"jbound/internal/audit"
+	"jbound/internal/settings"
+	"jbound/internal/transport"
 )
 
 // --- Fakes -----------------------------------------------------------------

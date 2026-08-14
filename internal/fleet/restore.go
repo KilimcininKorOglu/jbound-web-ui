@@ -6,9 +6,9 @@ import (
 	"errors"
 	"time"
 
-	"unbound-web/internal/audit"
-	"unbound-web/internal/logging"
-	"unbound-web/internal/server"
+	"jbound/internal/audit"
+	"jbound/internal/logging"
+	"jbound/internal/server"
 )
 
 // ErrNoBackup marks a server the panel holds no previous file for.

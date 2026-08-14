@@ -125,7 +125,7 @@ func TestLoadUsesProductionDefaults(t *testing.T) {
 	if got := cfg.RsyslogRestartCmd.String(); got != "systemctl restart rsyslog" {
 		t.Errorf("RsyslogRestartCmd = %q, want systemctl restart rsyslog", got)
 	}
-	if cfg.DBPath != cfg.DataDir+"/unbound.db" {
+	if cfg.DBPath != cfg.DataDir+"/jbound.db" {
 		t.Errorf("DBPath = %q, want it under DataDir", cfg.DBPath)
 	}
 	if cfg.KeyDir != cfg.DataDir+"/keys" {

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"unbound-web/internal/audit"
+	"jbound/internal/audit"
 )
 
 // testEvents are what Send Test Logs produces.

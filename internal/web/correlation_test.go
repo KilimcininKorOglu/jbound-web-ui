@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"unbound-web/internal/logging"
+	"jbound/internal/logging"
 )
 
 // idPattern reads the identifier out of one structured line.

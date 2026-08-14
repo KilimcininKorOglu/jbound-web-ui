@@ -13,8 +13,8 @@ import (
 	"strconv"
 	"strings"
 
-	"unbound-web/internal/logging"
-	"unbound-web/internal/server"
+	"jbound/internal/logging"
+	"jbound/internal/server"
 )
 
 // Config holds every runtime setting of the panel.
@@ -69,16 +69,16 @@ func Load() (*Config, error) {
 	cfg := &Config{}
 
 	cfg.ListenAddr = env("LISTEN_ADDR", "127.0.0.1:8080")
-	cfg.DataDir = env("DATA_DIR", "/var/lib/unbound-web")
-	cfg.DBPath = env("DB_PATH", filepath.Join(cfg.DataDir, "unbound.db"))
+	cfg.DataDir = env("DATA_DIR", "/var/lib/jbound")
+	cfg.DBPath = env("DB_PATH", filepath.Join(cfg.DataDir, "jbound.db"))
 	cfg.KeyDir = filepath.Join(cfg.DataDir, server.KeySubdir)
 
-	cfg.AuthHelperPath = env("AUTH_HELPER_PATH", "/usr/local/libexec/unbound-web-authhelper")
-	cfg.PAMService = env("PAM_SERVICE", "unbound-web")
+	cfg.AuthHelperPath = env("AUTH_HELPER_PATH", "/usr/local/libexec/jbound-authhelper")
+	cfg.PAMService = env("PAM_SERVICE", "jbound")
 	cfg.AdminGroup = env("ADMIN_GROUP", "sudo")
 	cfg.AllowedGroup = env("ALLOWED_GROUP", "")
-	cfg.RsyslogConfPath = env("RSYSLOG_CONF_PATH", "/etc/rsyslog.d/60-unbound-dns-panel.conf")
-	cfg.SyslogLogPath = env("SYSLOG_LOG_PATH", "/var/log/unbound-dns-panel.log")
+	cfg.RsyslogConfPath = env("RSYSLOG_CONF_PATH", "/etc/rsyslog.d/60-jbound.conf")
+	cfg.SyslogLogPath = env("SYSLOG_LOG_PATH", "/var/log/jbound.log")
 	cfg.DigPath = env("DIG_PATH", "dig")
 
 	var err error

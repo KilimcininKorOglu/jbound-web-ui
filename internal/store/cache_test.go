@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"unbound-web/internal/dnsfile"
-	"unbound-web/internal/fleet"
-	"unbound-web/internal/server"
-	"unbound-web/internal/store"
+	"jbound/internal/dnsfile"
+	"jbound/internal/fleet"
+	"jbound/internal/server"
+	"jbound/internal/store"
 )
 
 // cacheFixture holds a database with two servers and a group over both.

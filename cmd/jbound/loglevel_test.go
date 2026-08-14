@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"unbound-web/internal/logging"
+	"jbound/internal/logging"
 )
 
 func TestASignalRaisesTheLogLevelAndLowersItAgain(t *testing.T) {

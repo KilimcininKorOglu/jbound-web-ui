@@ -3,7 +3,7 @@ package fleet
 import (
 	"testing"
 
-	"unbound-web/internal/i18n"
+	"jbound/internal/i18n"
 )
 
 // englishCatalog is the source language of the panel, which is what these

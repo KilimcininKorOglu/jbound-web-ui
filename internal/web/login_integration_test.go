@@ -26,18 +26,18 @@ import (
 	"testing"
 	"time"
 
-	"unbound-web/internal/audit"
-	"unbound-web/internal/auth"
-	"unbound-web/internal/config"
-	"unbound-web/internal/database"
-	"unbound-web/internal/dnsquery"
-	"unbound-web/internal/fleet"
-	"unbound-web/internal/preflight"
-	"unbound-web/internal/server"
-	"unbound-web/internal/settings"
-	"unbound-web/internal/siem"
-	"unbound-web/internal/store"
-	"unbound-web/internal/transport"
+	"jbound/internal/audit"
+	"jbound/internal/auth"
+	"jbound/internal/config"
+	"jbound/internal/database"
+	"jbound/internal/dnsquery"
+	"jbound/internal/fleet"
+	"jbound/internal/preflight"
+	"jbound/internal/server"
+	"jbound/internal/settings"
+	"jbound/internal/siem"
+	"jbound/internal/store"
+	"jbound/internal/transport"
 )
 
 // roleField reads the role out of the login response.
@@ -402,7 +402,7 @@ func findPanelProcess(t *testing.T) string {
 		// cmdline is NUL separated. The first field is the binary path, which
 		// air rebuilds under tmp/ inside the bind mounted source.
 		arg0, _, _ := strings.Cut(string(cmdline), "\x00")
-		if strings.HasSuffix(arg0, "/tmp/unbound-web") {
+		if strings.HasSuffix(arg0, "/tmp/jbound") {
 			return entry.Name()
 		}
 	}
@@ -415,7 +415,7 @@ func TestGatePanelDoesNotRunAsRoot(t *testing.T) {
 	// The panel holds an SSH key to every managed server. Running it as root
 	// would mean one HTTP flaw hands over the whole fleet.
 	if os.Geteuid() == 0 {
-		t.Fatal("the tests run as root, run them as the unbound-web account")
+		t.Fatal("the tests run as root, run them as the jbound account")
 	}
 	if err := preflight.NotRoot(); err != nil {
 		t.Fatalf("the root check failed: %v", err)

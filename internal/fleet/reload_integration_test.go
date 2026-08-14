@@ -15,9 +15,9 @@ import (
 	"strings"
 	"testing"
 
-	"unbound-web/internal/dnsfile"
-	"unbound-web/internal/fleet"
-	"unbound-web/internal/server"
+	"jbound/internal/dnsfile"
+	"jbound/internal/fleet"
+	"jbound/internal/server"
 )
 
 // gateRecord is what the test writes and cleans up again.

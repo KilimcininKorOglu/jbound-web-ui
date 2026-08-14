@@ -1,6 +1,6 @@
 package web
 
-import "unbound-web/internal/auth"
+import "jbound/internal/auth"
 
 // MenuItem is one navigation entry.
 type MenuItem struct {

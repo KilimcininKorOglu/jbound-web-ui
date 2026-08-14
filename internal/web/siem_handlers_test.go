@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"unbound-web/internal/audit"
-	appsettings "unbound-web/internal/settings"
+	"jbound/internal/audit"
+	appsettings "jbound/internal/settings"
 )
 
 // siemPanel returns the rendered SIEM card.

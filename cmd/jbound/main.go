@@ -1,4 +1,4 @@
-// Command unbound-web runs the multi server Unbound management panel.
+// Command jbound runs the multi server Unbound management panel.
 package main
 
 import (
@@ -12,20 +12,20 @@ import (
 	"syscall"
 	"time"
 
-	"unbound-web/internal/audit"
-	"unbound-web/internal/auth"
-	"unbound-web/internal/config"
-	"unbound-web/internal/database"
-	"unbound-web/internal/dnsquery"
-	"unbound-web/internal/fleet"
-	"unbound-web/internal/logging"
-	"unbound-web/internal/preflight"
-	"unbound-web/internal/server"
-	"unbound-web/internal/settings"
-	"unbound-web/internal/siem"
-	"unbound-web/internal/store"
-	"unbound-web/internal/transport"
-	"unbound-web/internal/web"
+	"jbound/internal/audit"
+	"jbound/internal/auth"
+	"jbound/internal/config"
+	"jbound/internal/database"
+	"jbound/internal/dnsquery"
+	"jbound/internal/fleet"
+	"jbound/internal/logging"
+	"jbound/internal/preflight"
+	"jbound/internal/server"
+	"jbound/internal/settings"
+	"jbound/internal/siem"
+	"jbound/internal/store"
+	"jbound/internal/transport"
+	"jbound/internal/web"
 )
 
 const (
@@ -45,10 +45,10 @@ const (
 )
 
 // usage is printed for an argument the command does not know.
-const usage = `unbound-web manages several Unbound resolvers over SSH.
+const usage = `jbound manages several Unbound resolvers over SSH.
 
-  unbound-web                 run the panel
-  unbound-web backup <dir>    write a consistent copy of the data directory
+  jbound                 run the panel
+  jbound backup <dir>    write a consistent copy of the data directory
 `
 
 func main() {

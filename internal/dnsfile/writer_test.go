@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"unbound-web/internal/dnsfile"
+	"jbound/internal/dnsfile"
 )
 
 // mxRecord is one mail exchanger with the preference it was given.

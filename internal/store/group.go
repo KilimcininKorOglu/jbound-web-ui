@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	"unbound-web/internal/server"
+	"jbound/internal/server"
 )
 
 // Groups stores the server groups and their membership.

@@ -21,15 +21,15 @@ import (
 	"strings"
 	"testing"
 
-	"unbound-web/internal/auth"
-	"unbound-web/internal/dnsfile"
-	"unbound-web/internal/fleet"
-	"unbound-web/internal/server"
+	"jbound/internal/auth"
+	"jbound/internal/dnsfile"
+	"jbound/internal/fleet"
+	"jbound/internal/server"
 )
 
 const (
 	// devKeyPath is the key the development stack installs on every target.
-	devKeyPath = "/var/lib/unbound-web/keys/dev_ed25519"
+	devKeyPath = "/var/lib/jbound/keys/dev_ed25519"
 
 	// devStatusCmd is what answers in a container with no systemd.
 	devStatusCmd = "/usr/sbin/service unbound status"

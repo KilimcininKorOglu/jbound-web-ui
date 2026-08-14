@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"unbound-web/internal/audit"
+	"jbound/internal/audit"
 )
 
 // manager returns a manager over a temporary configuration file.
@@ -86,7 +86,7 @@ func TestTheSavedFileCarriesTheRulesBetweenTheMarkers(t *testing.T) {
 		t.Fatalf("cannot read the file back: %v", err)
 	}
 	for _, want := range []string{
-		"JanBoundPanelFormat", "SIEM Forwarding", rule, "& stop",
+		"JBoundPanelFormat", "SIEM Forwarding", rule, "& stop",
 	} {
 		if !strings.Contains(string(content), want) {
 			t.Errorf("the file does not carry %q:\n%s", want, content)

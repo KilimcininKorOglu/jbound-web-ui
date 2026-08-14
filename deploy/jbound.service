@@ -1,16 +1,16 @@
 [Unit]
-Description=Unbound DNS management panel
-Documentation=file:/usr/local/share/doc/unbound-web/README.md
+Description=JBound Unbound DNS management panel
+Documentation=file:/usr/local/share/doc/jbound/README.md
 After=network-online.target rsyslog.service
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=unbound-web
-Group=unbound-web
+User=jbound
+Group=jbound
 
-EnvironmentFile=/etc/unbound-web/unbound-web.env
-ExecStart=/usr/local/bin/unbound-web
+EnvironmentFile=/etc/jbound/jbound.env
+ExecStart=/usr/local/bin/jbound
 
 Restart=on-failure
 RestartSec=5
@@ -43,8 +43,8 @@ RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 
 # The database, the SSH keys and the one rsyslog file the panel owns. Nothing
 # else on the system is writable.
-ReadWritePaths=/var/lib/unbound-web
-ReadWritePaths=/etc/rsyslog.d/60-unbound-dns-panel.conf
+ReadWritePaths=/var/lib/jbound
+ReadWritePaths=/etc/rsyslog.d/60-jbound.conf
 
 # The panel writes its own log through syslog and its audit trail into the
 # database, so stdout carries the startup diagnostics alone.

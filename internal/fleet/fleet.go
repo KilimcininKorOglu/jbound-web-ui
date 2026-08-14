@@ -8,8 +8,8 @@ package fleet
 import (
 	"time"
 
-	"unbound-web/internal/dnsfile"
-	"unbound-web/internal/paging"
+	"jbound/internal/dnsfile"
+	"jbound/internal/paging"
 )
 
 // State is what the panel knows about one server's file.

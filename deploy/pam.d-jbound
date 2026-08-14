@@ -1,5 +1,5 @@
-# PAM service definition for the unbound-web panel.
-# Install to /etc/pam.d/unbound-web. The PAM_SERVICE config value must match
+# PAM service definition for the JBound panel.
+# Install to /etc/pam.d/jbound. The PAM_SERVICE config value must match
 # this file name.
 #
 # Debian and Ubuntu use common-auth and common-account.

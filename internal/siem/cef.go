@@ -11,15 +11,15 @@ import (
 	"log/syslog"
 	"strings"
 
-	"unbound-web/internal/audit"
+	"jbound/internal/audit"
 )
 
 // The CEF header identifies the product to the receiver. The version is the
 // CEF format version and never the panel version.
 const (
 	cefVersion = "CEF:0"
-	vendor     = "JanBound"
-	product    = "JanBoundDNSPanel"
+	vendor     = "JBound"
+	product    = "JBoundDNSPanel"
 	release    = "1.0"
 )
 

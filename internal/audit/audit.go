@@ -9,7 +9,8 @@ import (
 	"context"
 	"fmt"
 	"time"
-	"unbound-web/internal/logging"
+
+	"jbound/internal/logging"
 )
 
 // Actions written by the panel. They are constants so a typo cannot create a

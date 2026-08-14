@@ -1,7 +1,7 @@
 # Build and install the setuid PAM helper.
 #
 # This is the only privileged component of the panel, so it is compiled with
-# the hardening flags on and installed 4750 root:unbound-web.
+# the hardening flags on and installed 4750 root:jbound.
 
 CC      ?= cc
 CFLAGS  ?= -O2 -std=c11 -D_GNU_SOURCE \
@@ -11,11 +11,11 @@ CFLAGS  ?= -O2 -std=c11 -D_GNU_SOURCE \
 LDFLAGS ?= -Wl,-z,relro,-z,now -pie
 LDLIBS  ?= -lpam
 
-BINARY     := unbound-web-authhelper
+BINARY     := jbound-authhelper
 PREFIX     ?= /usr/local
 LIBEXECDIR ?= $(PREFIX)/libexec
 OWNER      ?= root
-GROUP      ?= unbound-web
+GROUP      ?= jbound
 
 .PHONY: all
 all: $(BINARY)

@@ -9,10 +9,10 @@ import (
 	"sync"
 	"time"
 
-	"unbound-web/internal/dnsfile"
-	"unbound-web/internal/logging"
-	"unbound-web/internal/server"
-	"unbound-web/internal/transport"
+	"jbound/internal/dnsfile"
+	"jbound/internal/logging"
+	"jbound/internal/server"
+	"jbound/internal/transport"
 )
 
 // RecordStore holds the cached records of every server.

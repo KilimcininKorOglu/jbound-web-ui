@@ -54,6 +54,11 @@ type Settings struct {
 
 	LogFile  string
 	Facility string
+
+	// Tag is the syslog ident the panel writes under. It comes from the
+	// constant the forwarder uses rather than from a second spelling, because
+	// the page tells the operator what to select on.
+	Tag string
 }
 
 // Manager owns the panel's own rsyslog configuration.
@@ -102,6 +107,7 @@ func (m *Manager) Settings(ctx context.Context) (Settings, error) {
 		Status:   "unknown",
 		LogFile:  m.logPath,
 		Facility: "local6",
+		Tag:      Tag,
 	}
 
 	content, err := os.ReadFile(m.confPath)
@@ -280,18 +286,18 @@ func render(rules, logPath string) []byte {
 	}
 
 	var out bytes.Buffer
-	fmt.Fprintf(&out, `# JanBound DNS Panel - Syslog Configuration
+	fmt.Fprintf(&out, `# JBound - Syslog Configuration
 # Logs from the DNS management panel (facility local6)
 #
 # This file is written by the panel. Edit it through the SIEM page.
 
 # Template: SIEM-compatible format with ISO8601 timestamp
-template(name="JanBoundPanelFormat" type="string"
+template(name="JBoundPanelFormat" type="string"
     string="%%timegenerated:::date-rfc3339%% %%HOSTNAME%% %%syslogtag%%%%msg%%\n"
 )
 
 # Write to dedicated log file
-local6.*    %s;JanBoundPanelFormat
+local6.*    %s;JBoundPanelFormat
 
 # ─── SIEM Forwarding ────────────────────────────────────────────────────
 %s

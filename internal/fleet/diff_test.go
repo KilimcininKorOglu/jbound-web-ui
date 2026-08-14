@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"unbound-web/internal/audit"
-	"unbound-web/internal/dnsfile"
+	"jbound/internal/audit"
+	"jbound/internal/dnsfile"
 )
 
 func record(fqdn, kind, value string) dnsfile.Record {

@@ -5,9 +5,9 @@ import (
 	"slices"
 	"time"
 
-	"unbound-web/internal/audit"
-	"unbound-web/internal/dnsfile"
-	"unbound-web/internal/server"
+	"jbound/internal/audit"
+	"jbound/internal/dnsfile"
+	"jbound/internal/server"
 )
 
 // RecordLister reads the cached records.

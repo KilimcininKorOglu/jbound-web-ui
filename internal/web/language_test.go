@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"unbound-web/internal/i18n"
-	"unbound-web/internal/settings"
+	"jbound/internal/i18n"
+	"jbound/internal/settings"
 )
 
 // turkish returns the Turkish text of one key, which is what a page in that

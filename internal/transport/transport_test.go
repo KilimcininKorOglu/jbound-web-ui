@@ -16,7 +16,7 @@ func validConfig() Config {
 		Host:            "dns1.example",
 		Port:            22,
 		User:            "dnsops",
-		KeyPath:         "/var/lib/unbound-web/keys/1.key",
+		KeyPath:         "/var/lib/jbound/keys/1.key",
 		HostEntriesPath: "/etc/unbound/host_entries.conf",
 		ReloadCmd:       "sudo /usr/sbin/service unbound reload",
 		StatusCmd:       "systemctl is-active unbound",

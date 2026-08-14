@@ -13,10 +13,10 @@ import (
 	"strings"
 	"time"
 
-	"unbound-web/internal/auth"
-	"unbound-web/internal/i18n"
-	"unbound-web/internal/logging"
-	"unbound-web/internal/settings"
+	"jbound/internal/auth"
+	"jbound/internal/i18n"
+	"jbound/internal/logging"
+	"jbound/internal/settings"
 )
 
 // Toast severities. They map onto the SweetAlert2 icon names.

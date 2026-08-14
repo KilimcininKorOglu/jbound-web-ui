@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"net/http"
 
-	"unbound-web/internal/audit"
-	"unbound-web/internal/auth"
-	"unbound-web/internal/logging"
+	"jbound/internal/audit"
+	"jbound/internal/auth"
+	"jbound/internal/logging"
 )
 
 // Messages shown on the login page, as catalogue keys.

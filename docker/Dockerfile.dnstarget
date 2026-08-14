@@ -35,7 +35,7 @@ RUN mkdir -p /run/sshd \
         'PermitRootLogin no' \
         'PubkeyAuthentication yes' \
         'UsePAM yes' \
-        > /etc/ssh/sshd_config.d/unbound-web.conf
+        > /etc/ssh/sshd_config.d/jbound.conf
 
 # Containers have no systemd, so "service unbound reload" needs a sysv script
 # to fall back to. This keeps the panel reload command identical to production.

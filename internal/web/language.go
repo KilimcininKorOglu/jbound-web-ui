@@ -6,13 +6,13 @@ import (
 	"net/http"
 	"strings"
 
-	"unbound-web/internal/i18n"
-	"unbound-web/internal/settings"
+	"jbound/internal/i18n"
+	"jbound/internal/settings"
 )
 
 // LanguageCookieName carries the chosen language. It holds a display choice
 // and nothing else, so nothing about the reader is stored on the server.
-const LanguageCookieName = "unbound_web_lang"
+const LanguageCookieName = "jbound_lang"
 
 // clientStringPrefix marks the texts the scripts raise. They travel to the
 // browser in one attribute, so the whole catalogue does not have to.

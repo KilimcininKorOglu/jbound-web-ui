@@ -487,7 +487,7 @@ func TestATextSettingIsBoundedAndPrintable(t *testing.T) {
 	}
 
 	cases := map[string]bool{
-		"JanBound DNS Panel":    true,
+		"JBound":                true,
 		"Şirket DNS Paneli":     true,
 		"":                      false,
 		"   ":                   false,

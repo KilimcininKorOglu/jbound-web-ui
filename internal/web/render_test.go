@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"unbound-web/internal/i18n"
+	"jbound/internal/i18n"
 )
 
 func TestEveryPageParsesWithItsLayout(t *testing.T) {

@@ -213,7 +213,7 @@ func (t *SSHTransport) keepalive(timeout time.Duration) error {
 	client := t.client
 	done := make(chan error, 1)
 	go func() {
-		_, _, err := client.SendRequest("keepalive@unbound-web", true, nil)
+		_, _, err := client.SendRequest("keepalive@jbound", true, nil)
 		done <- err
 	}()
 

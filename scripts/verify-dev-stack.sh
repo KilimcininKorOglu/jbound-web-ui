@@ -17,10 +17,10 @@ echo "Faz 0 acceptance checks"
 echo
 
 # --- 1. Service account inside the panel container ---------------------------
-if "${COMPOSE[@]}" exec -T app id unbound-web >/dev/null 2>&1; then
-    pass "panel container has the unbound-web service account"
+if "${COMPOSE[@]}" exec -T app id jbound >/dev/null 2>&1; then
+    pass "panel container has the jbound service account"
 else
-    fail "panel container is missing the unbound-web service account"
+    fail "panel container is missing the jbound service account"
 fi
 
 # --- 2. Panel process must not run as root -----------------------------------
@@ -28,7 +28,7 @@ APP_UID=$("${COMPOSE[@]}" exec -T app id -u 2>/dev/null | tr -d '\r')
 if [ "$APP_UID" = "0" ]; then
     # The entrypoint itself runs as root, the panel does not. Report it as
     # informational until the binary exists.
-    pass "entrypoint runs as root, the panel drops to unbound-web at start"
+    pass "entrypoint runs as root, the panel drops to jbound at start"
 else
     pass "container shell runs as uid $APP_UID"
 fi
@@ -48,7 +48,7 @@ done
 # --- 4. SSH from the panel to every target -----------------------------------
 for name in dns1 dns2 dns3; do
     if "${COMPOSE[@]}" exec -T app ssh \
-        -i /var/lib/unbound-web/keys/dev_ed25519 \
+        -i /var/lib/jbound/keys/dev_ed25519 \
         -o StrictHostKeyChecking=no \
         -o UserKnownHostsFile=/dev/null \
         -o ConnectTimeout=5 \

@@ -5,9 +5,9 @@ import (
 	"slices"
 	"strings"
 
-	"unbound-web/internal/audit"
-	"unbound-web/internal/i18n"
-	"unbound-web/internal/server"
+	"jbound/internal/audit"
+	"jbound/internal/i18n"
+	"jbound/internal/server"
 )
 
 // logsPageData feeds the audit log page and its table fragment.

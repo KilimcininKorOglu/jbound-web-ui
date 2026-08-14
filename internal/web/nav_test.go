@@ -4,7 +4,7 @@ import (
 	"slices"
 	"testing"
 
-	"unbound-web/internal/auth"
+	"jbound/internal/auth"
 )
 
 func adminSession() auth.Session { return auth.Session{Role: auth.RoleAdmin} }

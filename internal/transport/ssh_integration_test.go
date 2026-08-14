@@ -21,13 +21,13 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"unbound-web/internal/settings"
+	"jbound/internal/settings"
 )
 
 const (
 	testTarget  = "dns1"
 	testUser    = "dnsops"
-	testKeyPath = "/var/lib/unbound-web/keys/dev_ed25519"
+	testKeyPath = "/var/lib/jbound/keys/dev_ed25519"
 )
 
 func devConfig(t *testing.T) Config {

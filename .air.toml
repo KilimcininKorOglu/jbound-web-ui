@@ -6,8 +6,8 @@ root = "."
 tmp_dir = "tmp"
 
 [build]
-  cmd = "go build -o ./tmp/unbound-web ./cmd/unbound-web"
-  bin = "./tmp/unbound-web"
+  cmd = "go build -o ./tmp/jbound ./cmd/jbound"
+  bin = "./tmp/jbound"
   include_ext = ["go", "html", "css", "js", "sql", "json"]
   exclude_dir = ["tmp", "dist", "docker", "deploy", "scripts", "helper-projects", ".git"]
   exclude_regex = ["_test\\.go"]

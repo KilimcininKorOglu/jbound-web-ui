@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"unbound-web/internal/audit"
-	"unbound-web/internal/server"
-	"unbound-web/internal/store"
+	"jbound/internal/audit"
+	"jbound/internal/server"
+	"jbound/internal/store"
 )
 
 // auditFixture holds a log with rows from two servers and none from a third

@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"unbound-web/internal/database"
-	"unbound-web/internal/server"
-	"unbound-web/internal/store"
+	"jbound/internal/database"
+	"jbound/internal/server"
+	"jbound/internal/store"
 )
 
 type fixture struct {

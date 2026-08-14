@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"unbound-web/internal/logging"
+	"jbound/internal/logging"
 )
 
 // Roles recognised by the panel.

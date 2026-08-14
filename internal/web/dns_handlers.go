@@ -8,12 +8,12 @@ import (
 	"strconv"
 	"strings"
 
-	"unbound-web/internal/audit"
-	"unbound-web/internal/dnsfile"
-	"unbound-web/internal/fleet"
-	"unbound-web/internal/i18n"
-	"unbound-web/internal/server"
-	"unbound-web/internal/store"
+	"jbound/internal/audit"
+	"jbound/internal/dnsfile"
+	"jbound/internal/fleet"
+	"jbound/internal/i18n"
+	"jbound/internal/server"
+	"jbound/internal/store"
 )
 
 // dnsPageData feeds the records page and its table fragment.

@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"unbound-web/internal/auth"
-	"unbound-web/internal/logging"
-	"unbound-web/internal/settings"
+	"jbound/internal/auth"
+	"jbound/internal/logging"
+	"jbound/internal/settings"
 )
 
 // contextKey keeps the session out of the string keyed context namespace, so

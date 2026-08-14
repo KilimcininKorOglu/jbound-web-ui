@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"unbound-web/internal/settings"
+	"jbound/internal/settings"
 )
 
 func TestTheWriteTimeoutOutlastsTheLongestFleetOperation(t *testing.T) {

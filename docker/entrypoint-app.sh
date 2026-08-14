@@ -8,10 +8,10 @@
 set -euo pipefail
 
 SRC_DIR=${SRC_DIR:-/src}
-DATA_DIR=${DATA_DIR:-/var/lib/unbound-web}
-AUTH_HELPER_PATH=${AUTH_HELPER_PATH:-/usr/local/libexec/unbound-web-authhelper}
-RSYSLOG_CONF_PATH=${RSYSLOG_CONF_PATH:-/etc/rsyslog.d/60-unbound-dns-panel.conf}
-SYSLOG_LOG_PATH=${SYSLOG_LOG_PATH:-/var/log/unbound-dns-panel.log}
+DATA_DIR=${DATA_DIR:-/var/lib/jbound}
+AUTH_HELPER_PATH=${AUTH_HELPER_PATH:-/usr/local/libexec/jbound-authhelper}
+RSYSLOG_CONF_PATH=${RSYSLOG_CONF_PATH:-/etc/rsyslog.d/60-jbound.conf}
+SYSLOG_LOG_PATH=${SYSLOG_LOG_PATH:-/var/log/jbound.log}
 KEY_DIR=${KEY_DIR:-/keys}
 
 log() { printf '[entrypoint-app] %s\n' "$*"; }
@@ -37,13 +37,13 @@ fi
 
 # --- Data directory ----------------------------------------------------------
 mkdir -p "$DATA_DIR" "$DATA_DIR/keys"
-chown -R unbound-web:unbound-web "$DATA_DIR"
+chown -R jbound:jbound "$DATA_DIR"
 chmod 0700 "$DATA_DIR" "$DATA_DIR/keys"
 
 # The dev SSH key pair is generated on the host and mounted read only. Copy it
 # where the panel expects per-server keys, owned by the service account.
 if [ -r "$KEY_DIR/dev_ed25519" ]; then
-    install -m 0600 -o unbound-web -g unbound-web \
+    install -m 0600 -o jbound -g jbound \
         "$KEY_DIR/dev_ed25519" "$DATA_DIR/keys/dev_ed25519"
     log "dev SSH key installed for the panel"
 else
@@ -56,7 +56,7 @@ fi
 # The panel rewrites this file, so it exists up front with group write for the
 # service account. This mirrors the production install step.
 touch "$RSYSLOG_CONF_PATH"
-chown root:unbound-web "$RSYSLOG_CONF_PATH"
+chown root:jbound "$RSYSLOG_CONF_PATH"
 chmod 0664 "$RSYSLOG_CONF_PATH"
 
 touch "$SYSLOG_LOG_PATH"
@@ -68,7 +68,7 @@ log "rsyslogd started"
 # --- Known hosts -------------------------------------------------------------
 # Host key pinning lives in the database. This file only keeps the ssh client
 # quiet when a developer opens a shell inside the container.
-install -d -m 0700 -o unbound-web -g unbound-web /home/unbound-web/.ssh
+install -d -m 0700 -o jbound -g jbound /home/jbound/.ssh
 
 # --- Panel -------------------------------------------------------------------
 cd "$SRC_DIR"
@@ -93,7 +93,7 @@ unset DEV_PASSWORD_ROOT DEV_PASSWORD_DNSADMIN DEV_PASSWORD_DNSUSER \
 # belong to it, and it leaves a panel that already holds servers alone.
 if [ -d "$SRC_DIR/docker/devseed" ]; then
     log "seeding the development panel"
-    runuser -u unbound-web -- go run ./docker/devseed
+    runuser -u jbound -- go run ./docker/devseed
 fi
 
 # runuser rather than setpriv. setpriv performs the exec itself, which lets it
@@ -101,4 +101,4 @@ fi
 # a poor tool for reasoning about the 4750 helper, and the same confusion would
 # apply to anything else it launches.
 log "starting the panel through air"
-exec runuser -u unbound-web -- air -c .air.toml
+exec runuser -u jbound -- air -c .air.toml

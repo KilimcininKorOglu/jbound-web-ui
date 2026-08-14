@@ -11,13 +11,13 @@ import (
 	"testing"
 	"time"
 
-	"unbound-web/internal/dnsfile"
-	"unbound-web/internal/fleet"
-	"unbound-web/internal/i18n"
-	"unbound-web/internal/server"
-	"unbound-web/internal/siem"
-	"unbound-web/internal/store"
-	"unbound-web/internal/transport"
+	"jbound/internal/dnsfile"
+	"jbound/internal/fleet"
+	"jbound/internal/i18n"
+	"jbound/internal/server"
+	"jbound/internal/siem"
+	"jbound/internal/store"
+	"jbound/internal/transport"
 )
 
 func TestTheHealthEndpointNeedsNoSession(t *testing.T) {

@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"strings"
 
-	"unbound-web/internal/audit"
-	"unbound-web/internal/i18n"
-	appsettings "unbound-web/internal/settings"
-	"unbound-web/internal/siem"
+	"jbound/internal/audit"
+	"jbound/internal/i18n"
+	appsettings "jbound/internal/settings"
+	"jbound/internal/siem"
 )
 
 // defaultLogLines is what the viewer shows without being asked.

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"unbound-web/internal/audit"
-	"unbound-web/internal/transport"
+	"jbound/internal/audit"
+	"jbound/internal/transport"
 )
 
 func TestReloadReachesEveryMemberOfTheGroup(t *testing.T) {

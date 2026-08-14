@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"unbound-web/internal/settings"
+	"jbound/internal/settings"
 )
 
 // captureLog sends the structured stream to a buffer for the length of one

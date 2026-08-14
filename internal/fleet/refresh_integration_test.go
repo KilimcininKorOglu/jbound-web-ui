@@ -17,21 +17,21 @@ import (
 	"testing"
 	"time"
 
-	"unbound-web/internal/audit"
-	"unbound-web/internal/database"
-	"unbound-web/internal/dnsquery"
-	"unbound-web/internal/fleet"
-	"unbound-web/internal/paging"
-	"unbound-web/internal/server"
-	"unbound-web/internal/settings"
-	"unbound-web/internal/store"
-	"unbound-web/internal/transport"
+	"jbound/internal/audit"
+	"jbound/internal/database"
+	"jbound/internal/dnsquery"
+	"jbound/internal/fleet"
+	"jbound/internal/paging"
+	"jbound/internal/server"
+	"jbound/internal/settings"
+	"jbound/internal/store"
+	"jbound/internal/transport"
 )
 
 const (
 	testTarget  = "dns1"
 	testUser    = "dnsops"
-	testKeyPath = "/var/lib/unbound-web/keys/dev_ed25519"
+	testKeyPath = "/var/lib/jbound/keys/dev_ed25519"
 
 	// unreachable is from the RFC 5737 documentation block, so a connection
 	// there times out rather than landing somewhere real.

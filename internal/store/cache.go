@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"unbound-web/internal/dnsfile"
-	"unbound-web/internal/fleet"
+	"jbound/internal/dnsfile"
+	"jbound/internal/fleet"
 )
 
 // Records stores the cached view of every server's host entries file.

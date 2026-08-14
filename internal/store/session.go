@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"time"
 
-	"unbound-web/internal/auth"
-	"unbound-web/internal/logging"
+	"jbound/internal/auth"
+	"jbound/internal/logging"
 )
 
 // ErrNotFound is returned when a lookup finds no row.

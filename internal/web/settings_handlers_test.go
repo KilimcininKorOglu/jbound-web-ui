@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"unbound-web/internal/fleet"
-	"unbound-web/internal/i18n"
-	"unbound-web/internal/settings"
+	"jbound/internal/fleet"
+	"jbound/internal/i18n"
+	"jbound/internal/settings"
 )
 
 // settingsForm returns the current values as a form body, so a test can change

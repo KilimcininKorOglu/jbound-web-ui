@@ -1,4 +1,4 @@
-# Development stack for the unbound-web panel.
+# Development stack for the JBound panel.
 #
 # One panel plus three throwaway Unbound targets plus a SIEM sink. The panel
 # reaches the targets over SSH exactly as it would in production.
@@ -7,14 +7,14 @@
 #
 # Start with: make dev-up
 
-name: unbound-web
+name: jbound
 
 services:
   app:
     build:
       context: .
       dockerfile: docker/Dockerfile.app
-    container_name: unbound-web-app
+    container_name: jbound-app
     env_file:
       - .env.dev
     environment:
@@ -24,13 +24,13 @@ services:
       # Bind mounted source so air rebuilds on edit.
       - .:/src
       - ./docker/keys:/keys:ro
-      - unbound-web-data:/var/lib/unbound-web
-      - unbound-web-gocache:/go/cache
-      - unbound-web-gomod:/go/pkg/mod
+      - jbound-data:/var/lib/jbound
+      - jbound-gocache:/go/cache
+      - jbound-gomod:/go/pkg/mod
     ports:
       - "127.0.0.1:8330:8080"
     networks:
-      - unbound-web-net
+      - jbound-net
     depends_on:
       - dns1
       - dns2
@@ -41,7 +41,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.dnstarget
-    container_name: unbound-web-dns1
+    container_name: jbound-dns1
     environment:
       SSH_USER: dnsops
       SEED_FILE: /seed/dns1.conf
@@ -58,13 +58,13 @@ services:
       - "127.0.0.1:8331:53/udp"
       - "127.0.0.1:8334:22"
     networks:
-      - unbound-web-net
+      - jbound-net
 
   dns2:
     build:
       context: .
       dockerfile: docker/Dockerfile.dnstarget
-    container_name: unbound-web-dns2
+    container_name: jbound-dns2
     environment:
       SSH_USER: dnsops
       SEED_FILE: /seed/dns2.conf
@@ -78,13 +78,13 @@ services:
       - "127.0.0.1:8332:53/udp"
       - "127.0.0.1:8335:22"
     networks:
-      - unbound-web-net
+      - jbound-net
 
   dns3:
     build:
       context: .
       dockerfile: docker/Dockerfile.dnstarget
-    container_name: unbound-web-dns3
+    container_name: jbound-dns3
     environment:
       SSH_USER: dnsops
       SEED_FILE: /seed/dns3.conf
@@ -99,23 +99,23 @@ services:
       - "127.0.0.1:8333:53/udp"
       - "127.0.0.1:8336:22"
     networks:
-      - unbound-web-net
+      - jbound-net
 
   siem-sink:
     build:
       context: .
       dockerfile: docker/Dockerfile.siemsink
-    container_name: unbound-web-siem-sink
+    container_name: jbound-siem-sink
     ports:
       - "127.0.0.1:8337:514"
     networks:
-      - unbound-web-net
+      - jbound-net
 
 networks:
-  unbound-web-net:
-    name: unbound-web-net
+  jbound-net:
+    name: jbound-net
 
 volumes:
-  unbound-web-data:
-  unbound-web-gocache:
-  unbound-web-gomod:
+  jbound-data:
+  jbound-gocache:
+  jbound-gomod:

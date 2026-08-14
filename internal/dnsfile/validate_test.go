@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"unbound-web/internal/dnsfile"
+	"jbound/internal/dnsfile"
 )
 
 func TestValidateFQDNAcceptsWhatTheFileHolds(t *testing.T) {

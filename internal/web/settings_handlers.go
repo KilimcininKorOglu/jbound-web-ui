@@ -8,10 +8,10 @@ import (
 	"strconv"
 	"strings"
 
-	"unbound-web/internal/audit"
-	"unbound-web/internal/i18n"
-	"unbound-web/internal/logging"
-	"unbound-web/internal/settings"
+	"jbound/internal/audit"
+	"jbound/internal/i18n"
+	"jbound/internal/logging"
+	"jbound/internal/settings"
 )
 
 // settingsGroup is one card of the settings page.

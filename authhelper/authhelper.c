@@ -1,7 +1,7 @@
 /*
- * unbound-web-authhelper: the only privileged part of the panel.
+ * jbound-authhelper: the only privileged part of the panel.
  *
- * Installed setuid root, mode 4750, owner root:unbound-web, so only the panel
+ * Installed setuid root, mode 4750, owner root:jbound, so only the panel
  * service account can run it. It authenticates one local account through PAM
  * and reports the facts the panel applies its policy to.
  *
@@ -113,7 +113,7 @@ int main(int argc, char **argv) {
     environ = NULL;
     umask(077);
 
-    if (argc != 2) fail(EXIT_USAGE, "usage: unbound-web-authhelper <username>");
+    if (argc != 2) fail(EXIT_USAGE, "usage: jbound-authhelper <username>");
     const char *username = argv[1];
     check_username(username);
 
@@ -123,7 +123,7 @@ int main(int argc, char **argv) {
     struct pam_conv conv = {converse, NULL};
     pam_handle_t *pamh = NULL;
 
-    int rc = pam_start("unbound-web", username, &conv, &pamh);
+    int rc = pam_start("jbound", username, &conv, &pamh);
     if (rc != PAM_SUCCESS) fail(EXIT_USAGE, "pam_start failed");
 
     rc = pam_authenticate(pamh, 0);

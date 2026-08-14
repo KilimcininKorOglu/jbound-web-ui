@@ -7,7 +7,7 @@ import (
 	"sync"
 	"testing"
 
-	"unbound-web/internal/audit"
+	"jbound/internal/audit"
 )
 
 // fakeConn stands in for the syslog connection.
@@ -75,7 +75,7 @@ func TestTheEntryReachesSyslogAtItsOwnSeverity(t *testing.T) {
 	if len(lines) != 1 {
 		t.Fatalf("got %d lines, want 1", len(lines))
 	}
-	if !strings.HasPrefix(lines[0], "warning CEF:0|JanBound|") {
+	if !strings.HasPrefix(lines[0], "warning CEF:0|JBound|") {
 		t.Errorf("line = %q", lines[0])
 	}
 }
@@ -148,7 +148,7 @@ func TestTheFacilityAndTagAreTheOnesTheRulesSelect(t *testing.T) {
 	if Facility != syslog.LOG_LOCAL6 {
 		t.Errorf("facility = %d", Facility)
 	}
-	if Tag != "unbound-dns-panel" {
+	if Tag != "jbound" {
 		t.Errorf("tag = %q", Tag)
 	}
 }

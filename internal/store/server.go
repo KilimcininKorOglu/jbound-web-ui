@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"unbound-web/internal/server"
+	"jbound/internal/server"
 )
 
 // Servers stores the managed DNS servers.

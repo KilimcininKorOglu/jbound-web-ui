@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"unbound-web/internal/transport"
+	"jbound/internal/transport"
 )
 
 // Defaults for a new server. They match a Debian install and every one of

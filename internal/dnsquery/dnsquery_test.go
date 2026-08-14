@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"unbound-web/internal/dnsfile"
-	"unbound-web/internal/settings"
+	"jbound/internal/dnsfile"
+	"jbound/internal/settings"
 )
 
 // recorder captures what the querier would have run.

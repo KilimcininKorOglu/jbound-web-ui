@@ -138,9 +138,9 @@ func TestTransportConfigResolvesTheKeyAgainstTheDataDirectory(t *testing.T) {
 	record := validServer()
 	record.ID = 7
 
-	cfg := record.TransportConfig("/var/lib/unbound-web", time.Second, 2*time.Second)
+	cfg := record.TransportConfig("/var/lib/jbound", time.Second, 2*time.Second)
 
-	if cfg.KeyPath != "/var/lib/unbound-web/keys/dns1.key" {
+	if cfg.KeyPath != "/var/lib/jbound/keys/dns1.key" {
 		t.Errorf("key path = %q", cfg.KeyPath)
 	}
 	if cfg.ID != 7 || cfg.Name != "dns1" || cfg.Port != DefaultSSHPort {

@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"unbound-web/internal/auth"
-	"unbound-web/internal/dnsfile"
-	"unbound-web/internal/fleet"
-	"unbound-web/internal/server"
-	"unbound-web/internal/store"
+	"jbound/internal/auth"
+	"jbound/internal/dnsfile"
+	"jbound/internal/fleet"
+	"jbound/internal/server"
+	"jbound/internal/store"
 )
 
 func TestTheKeyPathIsStoredAfterTheRowExists(t *testing.T) {

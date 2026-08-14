@@ -7,14 +7,14 @@ import (
 	"strconv"
 	"strings"
 
-	"unbound-web/internal/auth"
-	"unbound-web/internal/fleet"
-	"unbound-web/internal/i18n"
-	"unbound-web/internal/logging"
-	"unbound-web/internal/server"
-	"unbound-web/internal/settings"
-	"unbound-web/internal/store"
-	"unbound-web/internal/transport"
+	"jbound/internal/auth"
+	"jbound/internal/fleet"
+	"jbound/internal/i18n"
+	"jbound/internal/logging"
+	"jbound/internal/server"
+	"jbound/internal/settings"
+	"jbound/internal/store"
+	"jbound/internal/transport"
 )
 
 // serversPageData feeds the servers page and its table fragment.

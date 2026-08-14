@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"unbound-web/internal/audit"
-	"unbound-web/internal/auth"
-	"unbound-web/internal/logging"
+	"jbound/internal/audit"
+	"jbound/internal/auth"
+	"jbound/internal/logging"
 )
 
 // sessionsPageData feeds the sessions page and its table fragment.

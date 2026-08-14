@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"unbound-web/internal/settings"
+	"jbound/internal/settings"
 )
 
 // The limits the registry defaults to, restated so the limiter can be tested

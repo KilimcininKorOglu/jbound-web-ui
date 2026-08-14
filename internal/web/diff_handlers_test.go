@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"unbound-web/internal/settings"
+	"jbound/internal/settings"
 )
 
 // drift makes one server hold something the others do not, which is what the

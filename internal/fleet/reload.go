@@ -4,8 +4,8 @@ import (
 	"context"
 	"strings"
 
-	"unbound-web/internal/audit"
-	"unbound-web/internal/server"
+	"jbound/internal/audit"
+	"jbound/internal/server"
 )
 
 // maxReloadOutput bounds how much of a reload's output reaches the audit row.

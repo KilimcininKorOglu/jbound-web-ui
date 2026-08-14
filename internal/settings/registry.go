@@ -13,7 +13,7 @@ package settings
 import (
 	"time"
 
-	"unbound-web/internal/paging"
+	"jbound/internal/paging"
 )
 
 // Kinds of setting. The kind decides how a value is parsed, how it is
@@ -55,7 +55,7 @@ const (
 	DNSQueryTimeout      = "dns_query_timeout"
 
 	// FleetOperationTimeout bounds one whole fan-out request. Its maximum has
-	// to stay well under the server's WriteTimeout in cmd/unbound-web, because
+	// to stay well under the server's WriteTimeout in cmd/jbound, because
 	// a request that outlives that deadline loses its per-server report.
 	FleetOperationTimeout = "fleet_operation_timeout"
 
@@ -178,7 +178,7 @@ var registry = []Definition{
 
 	{
 		Key: PanelName, Group: GroupInterface, Kind: KindText,
-		Default: "JanBound DNS Panel", MaxLen: 60,
+		Default: "JBound", MaxLen: 60,
 	},
 	{
 		Key: DefaultLanguage, Group: GroupInterface, Kind: KindEnum,

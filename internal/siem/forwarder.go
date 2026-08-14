@@ -5,7 +5,7 @@ import (
 	"log/syslog"
 	"sync"
 
-	"unbound-web/internal/audit"
+	"jbound/internal/audit"
 )
 
 // Facility is where the panel writes. An rsyslog rule selects the panel's
@@ -13,7 +13,7 @@ import (
 const Facility = syslog.LOG_LOCAL6
 
 // Tag is the syslog ident of every line the panel writes.
-const Tag = "unbound-dns-panel"
+const Tag = "jbound"
 
 // conn is the part of a syslog connection the forwarder uses.
 //

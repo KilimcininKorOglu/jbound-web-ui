@@ -13,16 +13,16 @@ import (
 	"testing"
 	"time"
 
-	"unbound-web/internal/audit"
-	"unbound-web/internal/auth"
-	"unbound-web/internal/config"
-	"unbound-web/internal/database"
-	"unbound-web/internal/fleet"
-	"unbound-web/internal/server"
-	"unbound-web/internal/settings"
-	"unbound-web/internal/siem"
-	"unbound-web/internal/store"
-	"unbound-web/internal/transport"
+	"jbound/internal/audit"
+	"jbound/internal/auth"
+	"jbound/internal/config"
+	"jbound/internal/database"
+	"jbound/internal/fleet"
+	"jbound/internal/server"
+	"jbound/internal/settings"
+	"jbound/internal/siem"
+	"jbound/internal/store"
+	"jbound/internal/transport"
 )
 
 const (

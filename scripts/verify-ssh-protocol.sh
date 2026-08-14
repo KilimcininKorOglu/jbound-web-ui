@@ -19,7 +19,7 @@ fail() { printf '  \033[31mFAIL\033[0m  %s\n' "$1"; FAILURES=$((FAILURES + 1)); 
 
 remote() {
     "${COMPOSE[@]}" exec -T app ssh \
-        -i /var/lib/unbound-web/keys/dev_ed25519 \
+        -i /var/lib/jbound/keys/dev_ed25519 \
         -o StrictHostKeyChecking=no \
         -o UserKnownHostsFile=/dev/null \
         -o BatchMode=yes \

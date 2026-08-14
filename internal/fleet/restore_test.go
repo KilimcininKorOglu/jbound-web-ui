@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"unbound-web/internal/audit"
-	"unbound-web/internal/transport"
+	"jbound/internal/audit"
+	"jbound/internal/transport"
 )
 
 // fakeBackups keeps the stored files in memory, one per server, exactly as the

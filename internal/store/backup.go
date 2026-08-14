@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"unbound-web/internal/fleet"
+	"jbound/internal/fleet"
 )
 
 // Backups holds the host entries file of each server as it was before the

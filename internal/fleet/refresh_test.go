@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"unbound-web/internal/dnsfile"
-	"unbound-web/internal/server"
-	"unbound-web/internal/settings"
-	"unbound-web/internal/transport"
+	"jbound/internal/dnsfile"
+	"jbound/internal/server"
+	"jbound/internal/settings"
+	"jbound/internal/transport"
 )
 
 // --- Fakes -----------------------------------------------------------------

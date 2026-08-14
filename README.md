@@ -1,4 +1,4 @@
-# Unbound DNS Panel
+# JBound
 
 A web panel that manages the local DNS records of several Unbound resolvers at
 once. One record is written to every server of a group in one action, the
@@ -49,26 +49,26 @@ sudo make install
 ```
 
 `deploy/install.sh` does the work and can be re-run at any time. It creates the
-`unbound-web` system account, the state directory, both binaries, the PAM
+`jbound` system account, the state directory, both binaries, the PAM
 service file, the environment file, the rsyslog file the panel owns, two sudoers
 rules and the systemd unit. It never overwrites the environment file, and it
 reads back the two modes the whole design rests on:
 
 | Path | Mode | Why |
 | --- | --- | --- |
-| `/usr/local/libexec/unbound-web-authhelper` | `4750 root:unbound-web` | setuid root so PAM can read the shadow database, group-only so no other account can use it as a password oracle |
-| `/var/lib/unbound-web` | `0700 unbound-web` | the SSH private keys live under it |
+| `/usr/local/libexec/jbound-authhelper` | `4750 root:jbound` | setuid root so PAM can read the shadow database, group-only so no other account can use it as a password oracle |
+| `/var/lib/jbound` | `0700 jbound` | the SSH private keys live under it |
 
-Then review `/etc/unbound-web/unbound-web.env` and start the service:
+Then review `/etc/jbound/jbound.env` and start the service:
 
 ```
-sudo systemctl enable --now unbound-web
+sudo systemctl enable --now jbound
 ```
 
 ### Who may sign in
 
 The panel has no user database. It authenticates against the local accounts of
-its own host, through a PAM service file installed as `/etc/pam.d/unbound-web`.
+its own host, through a PAM service file installed as `/etc/pam.d/jbound`.
 
 - `ADMIN_GROUP` (default `sudo`) decides who administers the panel: servers,
   groups, the SIEM configuration and the settings page.
@@ -97,7 +97,7 @@ goes to the log, because the route is open to anybody who can reach the port.
 Run the setup script as root on every resolver:
 
 ```
-sudo ./deploy/setup-target.sh -k "ssh-ed25519 AAAA... unbound-web"
+sudo ./deploy/setup-target.sh -k "ssh-ed25519 AAAA... jbound"
 ```
 
 It creates the `dnsops` account, adds the public key the panel generated,
@@ -145,7 +145,7 @@ and defaults to `info`. A running panel switches to `debug` and back on
 `SIGUSR1`:
 
 ```
-sudo systemctl kill -s USR1 unbound-web
+sudo systemctl kill -s USR1 jbound
 ```
 
 Raising the level this way keeps the SSH connections, the record cache and the
@@ -168,18 +168,18 @@ cookie. Nothing about a reader is stored server side.
 Take the backup with the panel binary, as the service account:
 
 ```
-sudo -u unbound-web unbound-web backup /var/backups/unbound-web/$(date +%F)
+sudo -u jbound jbound backup /var/backups/jbound/$(date +%F)
 ```
 
 The target directory must not exist yet. The command writes:
 
-- `unbound.db`, a consistent snapshot of the server records, the groups, the
+- `jbound.db`, a consistent snapshot of the server records, the groups, the
   host key pins and the audit trail.
 - `keys/`, the SSH private keys.
 
-Do not copy `/var/lib/unbound-web` with `cp` or `tar` while the panel runs. The
-database is open in WAL mode, so its state is spread across `unbound.db` and
-`unbound.db-wal`, and a file level copy can catch the two at different moments.
+Do not copy `/var/lib/jbound` with `cp` or `tar` while the panel runs. The
+database is open in WAL mode, so its state is spread across `jbound.db` and
+`jbound.db-wal`, and a file level copy can catch the two at different moments.
 The result is a database that is either short of committed transactions or
 refused as corrupt, and you find out during the recovery. The command uses
 `VACUUM INTO`, which reads under one transaction and writes a single self
@@ -192,17 +192,17 @@ the host.
 ### Restore
 
 ```
-systemctl stop unbound-web
-rm -rf /var/lib/unbound-web/unbound.db /var/lib/unbound-web/unbound.db-wal \
-       /var/lib/unbound-web/unbound.db-shm /var/lib/unbound-web/keys
-cp -a <backup>/unbound.db <backup>/keys /var/lib/unbound-web/
-chown -R unbound-web:unbound-web /var/lib/unbound-web
-chmod 700 /var/lib/unbound-web /var/lib/unbound-web/keys
-chmod 600 /var/lib/unbound-web/unbound.db /var/lib/unbound-web/keys/*
-systemctl start unbound-web
+systemctl stop jbound
+rm -rf /var/lib/jbound/jbound.db /var/lib/jbound/jbound.db-wal \
+       /var/lib/jbound/jbound.db-shm /var/lib/jbound/keys
+cp -a <backup>/jbound.db <backup>/keys /var/lib/jbound/
+chown -R jbound:jbound /var/lib/jbound
+chmod 700 /var/lib/jbound /var/lib/jbound/keys
+chmod 600 /var/lib/jbound/jbound.db /var/lib/jbound/keys/*
+systemctl start jbound
 ```
 
-`/etc/unbound-web/unbound-web.env` is not part of the backup. It is installed
+`/etc/jbound/jbound.env` is not part of the backup. It is installed
 once and never rewritten, so keep it with your configuration management.
 
 ### What this gets you
@@ -222,11 +222,11 @@ difference.
 ### The copy an upgrade leaves behind
 
 When a new binary has a migration to apply, it copies the database first and
-writes it next to the original as `unbound.db.before-<migration>.sql`. A
+writes it next to the original as `jbound.db.before-<migration>.sql`. A
 migration can be one way: `0002` drops a column the previous binary reads, so
 without that copy there is no going back to the version that was running
 before. Roll back by stopping the service, putting the copy in place of
-`unbound.db` and installing the older binary.
+`jbound.db` and installing the older binary.
 
 The panel refuses to start if it cannot write the copy, because the copy is
 what protects against the step that follows it. Each file is written once; a
@@ -239,13 +239,13 @@ The installer sets up no schedule, because where the backups go and how long
 they are kept is your policy. A pair of units is enough:
 
 ```
-# /etc/systemd/system/unbound-web-backup.service
+# /etc/systemd/system/jbound-backup.service
 [Service]
 Type=oneshot
-User=unbound-web
-ExecStart=/bin/sh -c 'exec /usr/local/bin/unbound-web backup /var/backups/unbound-web/$(date +%%F-%%H%%M)'
+User=jbound
+ExecStart=/bin/sh -c 'exec /usr/local/bin/jbound backup /var/backups/jbound/$(date +%%F-%%H%%M)'
 
-# /etc/systemd/system/unbound-web-backup.timer
+# /etc/systemd/system/jbound-backup.timer
 [Timer]
 OnCalendar=daily
 Persistent=true
@@ -314,7 +314,7 @@ lands against source that did not change.
 ## Layout
 
 ```
-cmd/unbound-web      the service
+cmd/jbound           the service
 authhelper           the setuid PAM helper, the only privileged component
 internal/auth        sessions, CSRF, rate limiting, PAM
 internal/server      server and group records, SSH keys

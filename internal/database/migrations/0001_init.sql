@@ -1,4 +1,4 @@
--- Initial schema for the unbound-web panel.
+-- Initial schema for the JBound panel.
 --
 -- There is no users table. Authentication goes through PAM against the local
 -- accounts of the panel host, so passwords never reach this database.

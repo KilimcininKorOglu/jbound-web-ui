@@ -55,7 +55,7 @@ fi
 # so anything appended after it never runs. Real world pollution has the same
 # shape: it only reaches stdout when it sits before that guard.
 SSH_HOME=$(getent passwd "$SSH_USER" | cut -d: -f6)
-POLLUTION_LINE='echo "unbound-web shell pollution fixture"'
+POLLUTION_LINE='echo "jbound shell pollution fixture"'
 BASHRC="$SSH_HOME/.bashrc"
 
 touch "$BASHRC"

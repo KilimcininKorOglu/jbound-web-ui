@@ -3,7 +3,7 @@ package audit
 import (
 	"time"
 
-	"unbound-web/internal/paging"
+	"jbound/internal/paging"
 )
 
 // DefaultPerPage is what a request that names no page size gets. The source

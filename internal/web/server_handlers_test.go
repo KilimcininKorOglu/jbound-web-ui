@@ -10,12 +10,12 @@ import (
 	"testing"
 	"time"
 
-	"unbound-web/internal/auth"
-	"unbound-web/internal/i18n"
-	"unbound-web/internal/server"
-	"unbound-web/internal/settings"
-	"unbound-web/internal/store"
-	"unbound-web/internal/transport"
+	"jbound/internal/auth"
+	"jbound/internal/i18n"
+	"jbound/internal/server"
+	"jbound/internal/settings"
+	"jbound/internal/store"
+	"jbound/internal/transport"
 )
 
 // adminForm submits a form as the signed in admin, with the CSRF token the

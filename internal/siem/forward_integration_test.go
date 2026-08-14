@@ -24,9 +24,9 @@ import (
 	"testing"
 	"time"
 
-	"unbound-web/internal/audit"
-	"unbound-web/internal/config"
-	"unbound-web/internal/siem"
+	"jbound/internal/audit"
+	"jbound/internal/config"
+	"jbound/internal/siem"
 )
 
 // forwardWindow is how long the receiver waits for the line.
@@ -113,10 +113,10 @@ func TestGateAForwardedEventLeavesTheHost(t *testing.T) {
 	for {
 		select {
 		case line := <-lines:
-			if !strings.Contains(line, "CEF:0|JanBound|JanBoundDNSPanel") {
+			if !strings.Contains(line, "CEF:0|JBound|JBoundDNSPanel") {
 				t.Errorf("the receiver got a line that is not CEF: %q", line)
 			}
-			if !strings.Contains(line, "unbound-dns-panel") {
+			if !strings.Contains(line, "jbound") {
 				t.Errorf("the line carries no panel tag: %q", line)
 			}
 			if !strings.Contains(line, "suser=dnsadmin") {

@@ -5,10 +5,10 @@ import (
 	"net/http"
 	"strings"
 
-	"unbound-web/internal/fleet"
-	"unbound-web/internal/i18n"
-	"unbound-web/internal/server"
-	"unbound-web/internal/settings"
+	"jbound/internal/fleet"
+	"jbound/internal/i18n"
+	"jbound/internal/server"
+	"jbound/internal/settings"
 )
 
 // diffPageData feeds the drift page and its table fragment.

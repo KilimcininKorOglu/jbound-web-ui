@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"unbound-web/internal/database"
+	"jbound/internal/database"
 )
 
 // seedDataDir builds a data directory the way the panel leaves one behind.
@@ -19,7 +19,7 @@ func seedDataDir(t *testing.T) string {
 		t.Fatalf("cannot create the key directory: %v", err)
 	}
 
-	db, err := database.Open(context.Background(), filepath.Join(dataDir, "unbound.db"))
+	db, err := database.Open(context.Background(), filepath.Join(dataDir, "jbound.db"))
 	if err != nil {
 		t.Fatalf("cannot create the database: %v", err)
 	}
@@ -53,7 +53,7 @@ func TestBackupWritesTheDatabaseAndTheKeys(t *testing.T) {
 		t.Fatalf("runBackup returned an error: %v", err)
 	}
 
-	db, err := database.OpenExisting(context.Background(), filepath.Join(target, "unbound.db"))
+	db, err := database.OpenExisting(context.Background(), filepath.Join(target, "jbound.db"))
 	if err != nil {
 		t.Fatalf("the backup database cannot be opened: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestBackupDoesNotChangeTheSourceDatabase(t *testing.T) {
 	// The command reads. A panel of another version may be running against
 	// this file, and a migration applied from here would be a surprise.
 	dataDir := seedDataDir(t)
-	source := filepath.Join(dataDir, "unbound.db")
+	source := filepath.Join(dataDir, "jbound.db")
 
 	before, err := os.Stat(source)
 	if err != nil {

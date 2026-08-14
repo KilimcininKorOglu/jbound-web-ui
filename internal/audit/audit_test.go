@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"unbound-web/internal/paging"
+	"jbound/internal/paging"
 )
 
 // fakeRepo records what the logger stored.

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Prepares an Unbound server so the unbound-web panel can manage it over SSH.
+# Prepares an Unbound server so the JBound panel can manage it over SSH.
 #
 # Run this as root on every managed DNS server.
 #
@@ -21,7 +21,7 @@ set -eu
 SSH_USER=dnsops
 HOST_ENTRIES_PATH=/etc/unbound/host_entries.conf
 AUTHORIZED_KEY=
-SUDOERS_FILE=/etc/sudoers.d/unbound-web-target
+SUDOERS_FILE=/etc/sudoers.d/jbound-target
 
 while getopts 'u:f:k:h' opt; do
     case "$opt" in
@@ -111,7 +111,7 @@ TMP_SUDOERS=$(mktemp)
 trap 'rm -f "$TMP_SUDOERS"' EXIT
 
 cat > "$TMP_SUDOERS" <<EOF
-# Managed by unbound-web setup-target.sh. Do not edit by hand.
+# Managed by jbound setup-target.sh. Do not edit by hand.
 # Re-run the script after changing the host entries path in the panel.
 $SSH_USER ALL=(ALL) NOPASSWD: $TEE_PATH $TMP_PATH
 $SSH_USER ALL=(ALL) NOPASSWD: $MV_PATH $TMP_PATH $HOST_ENTRIES_PATH

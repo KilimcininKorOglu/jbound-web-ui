@@ -22,12 +22,12 @@ import (
 	"path/filepath"
 	"time"
 
-	"unbound-web/internal/audit"
-	"unbound-web/internal/database"
-	"unbound-web/internal/server"
-	"unbound-web/internal/settings"
-	"unbound-web/internal/store"
-	"unbound-web/internal/transport"
+	"jbound/internal/audit"
+	"jbound/internal/database"
+	"jbound/internal/server"
+	"jbound/internal/settings"
+	"jbound/internal/store"
+	"jbound/internal/transport"
 )
 
 // targets are the three Unbound containers of the stack. The host is the
@@ -56,8 +56,8 @@ func main() {
 func run() error {
 	ctx := context.Background()
 
-	dataDir := envOr("DATA_DIR", "/var/lib/unbound-web")
-	dbPath := envOr("DB_PATH", filepath.Join(dataDir, "unbound.db"))
+	dataDir := envOr("DATA_DIR", "/var/lib/jbound")
+	dbPath := envOr("DB_PATH", filepath.Join(dataDir, "jbound.db"))
 
 	db, err := database.Open(ctx, dbPath)
 	if err != nil {

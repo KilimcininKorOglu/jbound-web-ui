@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"unbound-web/internal/store"
+	"jbound/internal/store"
 )
 
 func TestAdmitCountsOnlyTheAddressInsideTheWindow(t *testing.T) {

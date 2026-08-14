@@ -10,15 +10,15 @@ import (
 	"strings"
 	"time"
 
-	"unbound-web/internal/audit"
-	"unbound-web/internal/auth"
-	"unbound-web/internal/config"
-	"unbound-web/internal/fleet"
-	"unbound-web/internal/i18n"
-	"unbound-web/internal/logging"
-	"unbound-web/internal/server"
-	"unbound-web/internal/settings"
-	"unbound-web/internal/siem"
+	"jbound/internal/audit"
+	"jbound/internal/auth"
+	"jbound/internal/config"
+	"jbound/internal/fleet"
+	"jbound/internal/i18n"
+	"jbound/internal/logging"
+	"jbound/internal/server"
+	"jbound/internal/settings"
+	"jbound/internal/siem"
 )
 
 //go:embed templates

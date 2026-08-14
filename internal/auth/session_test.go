@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"unbound-web/internal/settings"
+	"jbound/internal/settings"
 )
 
 // fakeSessionRepo keeps sessions in memory so the timing rules can be tested

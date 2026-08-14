@@ -21,7 +21,7 @@ import (
 func NotRoot() error {
 	if os.Geteuid() == 0 {
 		return fmt.Errorf(
-			"the panel must not run as root, start it as the unbound-web service account")
+			"the panel must not run as root, start it as the jbound service account")
 	}
 	return nil
 }
@@ -63,7 +63,7 @@ func AuthHelper(path string) error {
 	}
 	if info.Mode()&fs.ModeSetuid == 0 {
 		return fmt.Errorf(
-			"auth helper %s is missing the setuid bit, install it as 4750 root:unbound-web",
+			"auth helper %s is missing the setuid bit, install it as 4750 root:jbound",
 			path)
 	}
 	if info.Mode().Perm()&0o111 == 0 {

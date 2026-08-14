@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"unbound-web/internal/dnsfile"
+	"jbound/internal/dnsfile"
 )
 
 // golden is a host entries file holding every shape the parser has to survive.

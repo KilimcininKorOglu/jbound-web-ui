@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"unbound-web/internal/fleet"
-	"unbound-web/internal/store"
+	"jbound/internal/fleet"
+	"jbound/internal/store"
 )
 
 func TestTheStoredFileIsReadBackAsItWasWritten(t *testing.T) {

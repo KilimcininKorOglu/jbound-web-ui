@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"slices"
 
-	"unbound-web/internal/audit"
-	"unbound-web/internal/dnsfile"
-	"unbound-web/internal/logging"
-	"unbound-web/internal/server"
+	"jbound/internal/audit"
+	"jbound/internal/dnsfile"
+	"jbound/internal/logging"
+	"jbound/internal/server"
 )
 
 // What one server holds for one record.

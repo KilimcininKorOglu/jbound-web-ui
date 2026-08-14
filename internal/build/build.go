@@ -5,7 +5,7 @@ package build
 //
 // It is set at link time:
 //
-//	go build -ldflags "-X unbound-web/internal/build.Version=1.2.0"
+//	go build -ldflags "-X jbound/internal/build.Version=1.2.0"
 //
 // A build without that flag reports dev, which is what a working tree is.
 var Version = "dev"

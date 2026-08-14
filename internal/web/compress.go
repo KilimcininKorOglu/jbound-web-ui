@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"unbound-web/internal/logging"
+	"jbound/internal/logging"
 )
 
 // minCompressSize is the body below which compression is not attempted.

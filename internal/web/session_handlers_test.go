@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"unbound-web/internal/audit"
+	"jbound/internal/audit"
 )
 
 func TestTheSessionsPageIsAdminOnly(t *testing.T) {

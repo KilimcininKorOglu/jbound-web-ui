@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"unbound-web/internal/auth"
-	"unbound-web/internal/database"
-	"unbound-web/internal/store"
+	"jbound/internal/auth"
+	"jbound/internal/database"
+	"jbound/internal/store"
 )
 
 func newSessionStore(t *testing.T) *store.Sessions {

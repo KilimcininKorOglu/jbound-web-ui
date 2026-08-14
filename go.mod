@@ -1,4 +1,4 @@
-module unbound-web
+module jbound
 
 go 1.26
 

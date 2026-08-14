@@ -7,11 +7,11 @@ import (
 	"sync"
 	"time"
 
-	"unbound-web/internal/audit"
-	"unbound-web/internal/dnsfile"
-	"unbound-web/internal/logging"
-	"unbound-web/internal/server"
-	"unbound-web/internal/transport"
+	"jbound/internal/audit"
+	"jbound/internal/dnsfile"
+	"jbound/internal/logging"
+	"jbound/internal/server"
+	"jbound/internal/transport"
 )
 
 // Operation kinds. A record change is one of exactly three things.

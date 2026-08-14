@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"unbound-web/internal/audit"
-	"unbound-web/internal/logging"
-	"unbound-web/internal/transport"
+	"jbound/internal/audit"
+	"jbound/internal/logging"
+	"jbound/internal/transport"
 )
 
 // Repository stores the server records.

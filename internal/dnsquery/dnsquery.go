@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"unbound-web/internal/dnsfile"
+	"jbound/internal/dnsfile"
 )
 
 // ErrTool marks a dig the panel host does not have or cannot run.

@@ -117,7 +117,7 @@ func newKeyPair(id int64) (*pem.Block, ssh.PublicKey, error) {
 		return nil, nil, fmt.Errorf("cannot generate a key pair: %w", err)
 	}
 
-	block, err := ssh.MarshalPrivateKey(private, "unbound-web server "+strconv.FormatInt(id, 10))
+	block, err := ssh.MarshalPrivateKey(private, "jbound server "+strconv.FormatInt(id, 10))
 	if err != nil {
 		return nil, nil, fmt.Errorf("cannot encode the private key: %w", err)
 	}

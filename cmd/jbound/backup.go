@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"unbound-web/internal/config"
-	"unbound-web/internal/database"
-	"unbound-web/internal/preflight"
-	"unbound-web/internal/server"
+	"jbound/internal/config"
+	"jbound/internal/database"
+	"jbound/internal/preflight"
+	"jbound/internal/server"
 )
 
 // runBackup writes a self contained copy of the panel state.
@@ -46,7 +46,7 @@ func runBackup(target string) error {
 		return fmt.Errorf("cannot create %s: %w", target, err)
 	}
 
-	if err := db.SnapshotTo(context.Background(), filepath.Join(target, "unbound.db")); err != nil {
+	if err := db.SnapshotTo(context.Background(), filepath.Join(target, "jbound.db")); err != nil {
 		return err
 	}
 

@@ -4,9 +4,9 @@ import (
 	"context"
 	"strings"
 
-	"unbound-web/internal/audit"
-	"unbound-web/internal/dnsfile"
-	"unbound-web/internal/server"
+	"jbound/internal/audit"
+	"jbound/internal/dnsfile"
+	"jbound/internal/server"
 )
 
 // NameQuerier asks one resolver what it answers for a name.

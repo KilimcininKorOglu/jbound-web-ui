@@ -45,9 +45,19 @@ type Pool struct {
 }
 
 type poolEntry struct {
-	transport *SSHTransport
+	transport Transport
 	config    Config
 	lastUsed  time.Time
+}
+
+// keepaliver is a transport with a connection worth keeping open.
+//
+// The SSH transport holds one for the life of the entry, so an idle flow a
+// firewall drops has to be found before the next command blocks on it. The
+// agent transport holds none of its own: net/http opens and retires
+// connections underneath it, so there is nothing here to ping.
+type keepaliver interface {
+	keepalive(timeout time.Duration) error
 }
 
 // NewPool builds the pool and starts its maintenance loop.
@@ -90,7 +100,7 @@ func (p *Pool) Get(cfg Config) (Transport, error) {
 		delete(p.entries, cfg.ID)
 	}
 
-	transport, err := NewSSH(cfg)
+	transport, err := buildTransport(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -100,6 +110,17 @@ func (p *Pool) Get(cfg Config) (Transport, error) {
 		lastUsed:  time.Now(),
 	}
 	return transport, nil
+}
+
+// buildTransport builds the implementation the record names.
+//
+// An empty kind reads as SSH. Every record written before the agent existed
+// has one, and none of them should have to be rewritten for this.
+func buildTransport(cfg Config) (Transport, error) {
+	if cfg.Kind == KindAgent {
+		return NewAgent(cfg)
+	}
+	return NewSSH(cfg)
 }
 
 // Remove closes and forgets one server, which is what a deleted or disabled
@@ -152,7 +173,7 @@ func (p *Pool) sweep() {
 	p.mu.Lock()
 	type ping struct {
 		id     int64
-		client *SSHTransport
+		client keepaliver
 	}
 	var alive []ping
 
@@ -162,7 +183,10 @@ func (p *Pool) sweep() {
 			delete(p.entries, id)
 			continue
 		}
-		alive = append(alive, ping{id: id, client: entry.transport})
+		// Only a transport that holds a connection of its own is pinged.
+		if client, ok := entry.transport.(keepaliver); ok {
+			alive = append(alive, ping{id: id, client: client})
+		}
 	}
 	p.mu.Unlock()
 
@@ -182,12 +206,20 @@ func (p *Pool) sweep() {
 }
 
 // sameEndpoint reports whether two records point at the same connection.
+//
+// A record that changed any of these no longer goes where it says it does, so
+// the pooled connection is dropped rather than reused. The transport kind is
+// among them: switching a server from SSH to an agent has to open a new
+// connection, not keep talking to sshd.
 func sameEndpoint(a, b Config) bool {
-	return a.Host == b.Host &&
+	return a.Kind == b.Kind &&
+		a.Host == b.Host &&
 		a.Port == b.Port &&
 		a.User == b.User &&
 		a.KeyPath == b.KeyPath &&
-		a.HostKey == b.HostKey
+		a.HostKey == b.HostKey &&
+		a.AgentPort == b.AgentPort &&
+		a.TokenPath == b.TokenPath
 }
 
 // keepalive sends one request down an open connection.

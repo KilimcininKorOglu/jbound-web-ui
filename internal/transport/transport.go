@@ -213,6 +213,11 @@ type Config struct {
 	ID   int64
 	Name string
 
+	// Kind selects the implementation: KindSSH or KindAgent. An empty value
+	// reads as SSH, because every record written before the agent existed has
+	// one and none of them should have to be rewritten.
+	Kind string
+
 	Host string
 	Port int
 	User string
@@ -221,9 +226,19 @@ type Config struct {
 	// enters the database, so a database leak does not hand over the fleet.
 	KeyPath string
 
-	// HostKey is the approved key in authorized_keys form. Empty means no
-	// operator has approved a fingerprint yet.
+	// HostKey is what the far end has to prove it is. On the SSH path it is a
+	// key in authorized_keys form; on the agent path it is the SHA-256
+	// fingerprint of the TLS certificate, rendered the same way so the
+	// operator reads one format. Empty means no operator has approved
+	// anything yet, and the connection stops rather than trusting on sight.
 	HostKey string
+
+	// AgentPort is where the agent listens, and TokenPath is the file on the
+	// panel host that holds its bearer token. The token lives on disk beside
+	// the SSH keys rather than in the database, for the reason KeyPath does:
+	// a database leak must not hand over the fleet.
+	AgentPort int
+	TokenPath string
 
 	RecordsPath string
 	ReloadCmd   string
@@ -255,11 +270,59 @@ type Config struct {
 // admin, which makes this the second line of defence rather than the first.
 const shellMetacharacters = ";&|`$<>()\n\r\t\"'\\*?[]{}!~"
 
+// Transport kinds.
+const (
+	KindSSH   = "ssh"
+	KindAgent = "agent"
+)
+
 // Validate reports every problem in one pass.
 //
 // A server that is misconfigured in three ways should cost the operator one
 // round of corrections, not three.
 func (c Config) Validate() error {
+	if c.Kind == KindAgent {
+		return c.validateAgent()
+	}
+	return c.validateSSH()
+}
+
+// validateAgent checks what an agent connection needs.
+//
+// It asks for far less than the SSH path, and that is the point rather than an
+// oversight. No command text travels to an agent, so there is nothing to check
+// for shell metacharacters. No path travels either: the agent reports which
+// file it manages, so the panel has no records path to validate here.
+func (c Config) validateAgent() error {
+	var problems []string
+
+	if strings.TrimSpace(c.Host) == "" {
+		problems = append(problems, "host is empty")
+	}
+	if strings.TrimSpace(c.TokenPath) == "" {
+		problems = append(problems, "token path is empty")
+	} else if !strings.HasPrefix(c.TokenPath, "/") {
+		problems = append(problems, "token path is not absolute: "+c.TokenPath)
+	}
+	if c.AgentPort < 1 || c.AgentPort > 65535 {
+		problems = append(problems, fmt.Sprintf("agent port %d is out of range", c.AgentPort))
+	}
+
+	// The host reaches a URL, so anything that could rewrite one is refused
+	// here rather than left to the URL parser to interpret.
+	if i := strings.IndexAny(c.Host, "/?#@\\ \t\n\r"); i >= 0 {
+		problems = append(problems,
+			fmt.Sprintf("host contains the character %q", c.Host[i]))
+	}
+
+	if len(problems) > 0 {
+		return fmt.Errorf("invalid server configuration: %s", strings.Join(problems, "; "))
+	}
+	return nil
+}
+
+// validateSSH checks what an SSH connection needs.
+func (c Config) validateSSH() error {
 	var problems []string
 
 	require := func(name, value string) {

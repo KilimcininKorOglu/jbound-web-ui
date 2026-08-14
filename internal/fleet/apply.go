@@ -178,13 +178,6 @@ type Writer struct {
 	timeouts func() server.Timeouts
 
 	concurrent func() int
-
-	// locks serialise the read, change and write of one server. The optimistic
-	// digest already refuses a lost update, but two panel users editing the
-	// same server would otherwise turn one of the two into a conflict error
-	// instead of a change that lands.
-	mu    sync.Mutex
-	locks map[int64]*sync.Mutex
 }
 
 // GroupSource resolves a group into its members.
@@ -210,7 +203,6 @@ func NewWriter(servers ServerSource, groups GroupSource, pool Connector,
 		dataDir:    dataDir,
 		timeouts:   timeouts,
 		concurrent: concurrent,
-		locks:      map[int64]*sync.Mutex{},
 	}
 }
 
@@ -349,7 +341,7 @@ func (w *Writer) applyOne(ctx context.Context, actor server.Actor,
 	// The file changed, so what the panel shows for this server is now stale.
 	// A refresh that fails does not undo the write, and saying the change
 	// failed would be worse than showing it late.
-	if _, refreshErr := w.refresh.One(ctx, record.ID); refreshErr != nil {
+	if _, refreshErr := w.refresh.oneHeld(ctx, record.ID); refreshErr != nil {
 		slog.Error("cannot refresh the cache after a write",
 			"server", record.Name, "error", refreshErr)
 		result.Message = op.message() + ", but the cache could not be refreshed"
@@ -426,15 +418,14 @@ func (w *Writer) writeAudit(ctx context.Context, actor server.Actor,
 	})
 }
 
-// lockFor returns the mutex of one server, creating it on first use.
+// lockFor returns the mutex of one server.
+//
+// The optimistic digest already refuses a lost update, but two panel users
+// editing the same server would otherwise turn one of the two into a conflict
+// error instead of a change that lands.
+//
+// The map itself belongs to the refresher, so a background pass takes the same
+// mutex a write does rather than a second one that guards nothing.
 func (w *Writer) lockFor(serverID int64) *sync.Mutex {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	lock, ok := w.locks[serverID]
-	if !ok {
-		lock = &sync.Mutex{}
-		w.locks[serverID] = lock
-	}
-	return lock
+	return w.refresh.lockFor(serverID)
 }

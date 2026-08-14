@@ -53,6 +53,13 @@ type Refresher struct {
 	concurrent func() int
 
 	now func() time.Time
+
+	// locks serialise the read, change and write cycle of one server. They live
+	// here rather than on the writer because a refresh is the other half of
+	// that cycle: a pass that read the file before a write must not store its
+	// snapshot after it, or the cache would describe a file that is gone.
+	mu    sync.Mutex
+	locks map[int64]*sync.Mutex
 }
 
 // NewRefresher builds the refresher.
@@ -72,7 +79,21 @@ func NewRefresher(servers ServerSource, records RecordStore, states StateStore,
 		timeouts:   timeouts,
 		concurrent: concurrent,
 		now:        time.Now,
+		locks:      map[int64]*sync.Mutex{},
 	}
+}
+
+// lockFor returns the mutex of one server, creating it on first use.
+func (r *Refresher) lockFor(serverID int64) *sync.Mutex {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	lock, ok := r.locks[serverID]
+	if !ok {
+		lock = &sync.Mutex{}
+		r.locks[serverID] = lock
+	}
+	return lock
 }
 
 // Result is the outcome of refreshing one server.
@@ -98,6 +119,18 @@ func (r Result) OK() bool { return r.Err == nil }
 
 // One refreshes a single server.
 func (r *Refresher) One(ctx context.Context, serverID int64) (Result, error) {
+	lock := r.lockFor(serverID)
+	lock.Lock()
+	defer lock.Unlock()
+
+	return r.oneHeld(ctx, serverID)
+}
+
+// oneHeld refreshes a server whose lock the caller already holds.
+//
+// Every path that changes a file takes the lock, writes, and refills the cache
+// inside the same critical section, so it cannot take the lock a second time.
+func (r *Refresher) oneHeld(ctx context.Context, serverID int64) (Result, error) {
 	record, err := r.servers.Get(ctx, serverID)
 	if err != nil {
 		return Result{}, err
@@ -123,6 +156,10 @@ func (r *Refresher) All(ctx context.Context) ([]Result, error) {
 		wait.Go(func() {
 			slots <- struct{}{}
 			defer func() { <-slots }()
+
+			lock := r.lockFor(record.ID)
+			lock.Lock()
+			defer lock.Unlock()
 
 			results[i] = r.refresh(ctx, record)
 		})

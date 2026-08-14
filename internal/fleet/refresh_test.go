@@ -436,6 +436,71 @@ func TestAllHoldsTheConcurrencyLimit(t *testing.T) {
 	}
 }
 
+func TestARefreshWaitsForAWriteToTheSameServer(t *testing.T) {
+	// A pass that read the file before a write must not store its snapshot
+	// after it. The cache would then describe a file the server no longer
+	// holds, and the digest next to it would belong to a version that is gone.
+	h := newWriteHarness(t, 1)
+
+	lock := h.writer.lockFor(1)
+	lock.Lock()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if _, err := h.refresher.One(context.Background(), 1); err != nil {
+			t.Errorf("One returned an error: %v", err)
+		}
+	}()
+
+	select {
+	case <-done:
+		lock.Unlock()
+		t.Fatal("the refresh ran while a write held the lock of the same server")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	lock.Unlock()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the refresh never ran after the lock was released")
+	}
+}
+
+func TestATimedPassWaitsForAWriteToTheSameServer(t *testing.T) {
+	// The timer path is the one that runs unattended, so it is the one that
+	// would quietly write an old snapshot back over a fresh one.
+	h := newWriteHarness(t, 1)
+
+	lock := h.writer.lockFor(1)
+	lock.Lock()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if _, err := h.refresher.All(context.Background()); err != nil {
+			t.Errorf("All returned an error: %v", err)
+		}
+	}()
+
+	select {
+	case <-done:
+		lock.Unlock()
+		t.Fatal("a fleet pass read a server while a write held its lock")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	lock.Unlock()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the fleet pass never finished after the lock was released")
+	}
+}
+
 func TestAResultNamesTheServerItBelongsTo(t *testing.T) {
 	h := newHarness(t, workingTarget(), &fakeTransport{readErr: transport.ErrUnreachable})
 

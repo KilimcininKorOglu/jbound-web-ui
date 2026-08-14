@@ -149,6 +149,7 @@ local-data: "mail.example.net. MX 20 mx1.example.net"
 
 type writeHarness struct {
 	writer    *Writer
+	refresher *Refresher
 	servers   *fakeServers
 	groups    *fakeGroups
 	connector *fakeConnector
@@ -205,6 +206,7 @@ func newWriteHarness(t *testing.T, count int) *writeHarness {
 	pool := &writableConnector{byHost: writable}
 	refresher := NewRefresher(servers, records, states, pool, "/data",
 		settings.Fixed(timeouts), settings.Fixed(2))
+	harness.refresher = refresher
 	harness.writer = NewWriter(servers, groups, pool, refresher,
 		audit.NewLogger(auditRepo, nil), "/data", settings.Fixed(timeouts), settings.Fixed(2))
 

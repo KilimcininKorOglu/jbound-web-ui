@@ -310,3 +310,64 @@ func TestAFailingCommandStillReportsItsExitCode(t *testing.T) {
 		t.Fatal("a failing command reported success")
 	}
 }
+
+func TestAWriteThatStopsPartWayLeavesThePreviousConfiguration(t *testing.T) {
+	// The write truncates the file in place, so a full disk destroys the
+	// configuration before the first byte of the new one lands. This file
+	// routes the panel's own audit trail, and the running daemon holds the old
+	// rules until it is restarted, so the loss would surface hours later.
+	m, conf := manager(t)
+
+	if err := m.Save(context.Background(), "local6.*    @@first.example.net:514"); err != nil {
+		t.Fatalf("the first save failed: %v", err)
+	}
+
+	// The first write of the next save truncates and then fails, the way a
+	// disk that filled up between the two does. The restore that follows is
+	// allowed through.
+	failed := false
+	m.writeFile = func(path string, content []byte) error {
+		if !failed {
+			failed = true
+			if err := writeConfFile(path, content[:len(content)/2]); err != nil {
+				return err
+			}
+			return errors.New("no space left on device")
+		}
+		return writeConfFile(path, content)
+	}
+
+	err := m.Save(context.Background(), "local6.*    @@second.example.net:514")
+	if !errors.Is(err, ErrConfig) {
+		t.Fatalf("got %v, want ErrConfig", err)
+	}
+	if !strings.Contains(err.Error(), "no space left on device") {
+		t.Errorf("the reason was lost: %v", err)
+	}
+
+	content, _ := os.ReadFile(conf)
+	if !strings.Contains(string(content), "first.example.net") {
+		t.Errorf("the previous configuration was not restored:\n%s", content)
+	}
+	if strings.Contains(string(content), "second.example.net") {
+		t.Errorf("the half written configuration was left behind:\n%s", content)
+	}
+}
+
+func TestAFailedRestoreIsReportedNextToTheFailureThatCausedIt(t *testing.T) {
+	// An operator whose configuration is gone has to be told, rather than
+	// reading about a write that failed and assuming nothing changed.
+	m, _ := manager(t)
+
+	m.writeFile = func(string, []byte) error {
+		return errors.New("no space left on device")
+	}
+
+	err := m.Save(context.Background(), "local6.*    @@second.example.net:514")
+	if !errors.Is(err, ErrConfig) {
+		t.Fatalf("got %v, want ErrConfig", err)
+	}
+	if !strings.Contains(err.Error(), "could not be restored") {
+		t.Errorf("the message does not say the file is still broken: %v", err)
+	}
+}

@@ -61,6 +61,12 @@ type Manager struct {
 	// run executes one configured command. It is a field so the manager can be
 	// covered without rsyslog on the machine running the tests.
 	run func(ctx context.Context, argv []string) ([]byte, error)
+
+	// writeFile replaces the configuration file. It is a field for the same
+	// reason run is: the failure this manager rolls back from is a write that
+	// stops part way through, and a disk that fills up mid write is not
+	// something a test can arrange on the machine it runs on.
+	writeFile func(path string, content []byte) error
 }
 
 // NewManager builds the manager.
@@ -72,6 +78,8 @@ func NewManager(confPath, logPath string, validate, restart, status []string) *M
 		restart:  restart,
 		status:   status,
 		run:      runCommand,
+
+		writeFile: writeConfFile,
 	}
 }
 
@@ -160,8 +168,16 @@ func (m *Manager) Save(ctx context.Context, rules string) error {
 		return fmt.Errorf("cannot read %s: %w", m.confPath, err)
 	}
 
+	// The write replaces the file in place, so a failure part way through
+	// leaves it empty or half written. What this file routes is the panel's
+	// own audit trail, and the running daemon holds the old rules until it is
+	// restarted, so the loss surfaces hours later and far from its cause.
 	if err := m.write(render(rules, m.logPath)); err != nil {
-		return err
+		if restoreErr := m.write(previous); restoreErr != nil {
+			return fmt.Errorf("%w: %v (the previous configuration could not be "+
+				"restored either: %v)", ErrConfig, err, restoreErr)
+		}
+		return fmt.Errorf("%w: %v", ErrConfig, err)
 	}
 
 	if output, err := m.run(ctx, m.validate); err != nil {
@@ -178,25 +194,35 @@ func (m *Manager) Save(ctx context.Context, rules string) error {
 	return nil
 }
 
-// write replaces the configuration file in place.
+// write replaces the configuration file.
+//
+// A file that did not exist before is restored as an empty one rather than
+// removed, because the install grants the panel write access to this file and
+// not to the directory it sits in. An empty file routes nothing, which is what
+// its absence did.
+func (m *Manager) write(content []byte) error {
+	return m.writeFile(m.confPath, content)
+}
+
+// writeConfFile replaces the configuration file in place.
 //
 // In place rather than through a rename, because the panel runs unprivileged
 // and the install grants it write access to this one file rather than to
 // /etc/rsyslog.d itself. A rename needs the directory.
-func (m *Manager) write(content []byte) error {
-	file, err := os.OpenFile(m.confPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o640)
+func writeConfFile(path string, content []byte) error {
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o640)
 	if err != nil {
-		return fmt.Errorf("cannot open %s: %w", m.confPath, err)
+		return fmt.Errorf("cannot open %s: %w", path, err)
 	}
 	defer file.Close()
 
 	if _, err := file.Write(content); err != nil {
-		return fmt.Errorf("cannot write %s: %w", m.confPath, err)
+		return fmt.Errorf("cannot write %s: %w", path, err)
 	}
 	// The daemon is about to read this file, and a restart that lands before
 	// the bytes do would load half a configuration.
 	if err := file.Sync(); err != nil {
-		return fmt.Errorf("cannot flush %s: %w", m.confPath, err)
+		return fmt.Errorf("cannot flush %s: %w", path, err)
 	}
 	return nil
 }

@@ -222,9 +222,12 @@ func (t *SSHTransport) run(ctx context.Context, command string,
 		defer cancel()
 	}
 
-	var outBuf, errBuf bytes.Buffer
-	session.Stdout = &outBuf
-	session.Stderr = &errBuf
+	// How much the panel allocates for one command is otherwise chosen by the
+	// managed server, which is the party it trusts least.
+	outBuf := &boundedWriter{limit: maxStdoutBytes}
+	errBuf := &boundedWriter{limit: maxStderrBytes, truncate: true}
+	session.Stdout = outBuf
+	session.Stderr = errBuf
 	if stdin != nil {
 		session.Stdin = stdin
 	}
@@ -243,6 +246,15 @@ func (t *SSHTransport) run(ctx context.Context, command string,
 			fmt.Errorf("%w: %v", ErrUnreachable, ctx.Err())
 	case runErr := <-done:
 		if runErr != nil {
+			// The limit is the panel's own, so it is reported as an output it
+			// will not read rather than as a server it could not reach. The
+			// connection is dropped because the stream was cut mid message.
+			if outBuf.exceeded {
+				t.dropConnection()
+				return outBuf.String(), errBuf.String(), fmt.Errorf(
+					"%w: the server returned more than %d bytes",
+					ErrRemoteOutput, maxStdoutBytes)
+			}
 			if exitErr, ok := errors.AsType[*ssh.ExitError](runErr); ok {
 				return outBuf.String(), errBuf.String(), &CommandError{
 					Command:  command,
@@ -257,6 +269,54 @@ func (t *SSHTransport) run(ctx context.Context, command string,
 	}
 	return outBuf.String(), errBuf.String(), nil
 }
+
+// The output of one remote command is bounded, because the remote side chooses
+// how much it sends and the refresher runs several servers at once.
+const (
+	// maxStdoutBytes allows a base64 encoded host entries file of about six
+	// megabytes, which is far above any resolver and far below what would
+	// trouble the panel host.
+	maxStdoutBytes = 8 << 20
+
+	// maxStderrBytes bounds the diagnostics. Everything past it is dropped
+	// rather than refused: an audit row shows four hundred characters of it,
+	// so a noisy command still succeeds and nothing readable is lost.
+	maxStderrBytes = 64 << 10
+)
+
+// boundedWriter collects what a remote command writes, up to a limit.
+//
+// Past the limit it either refuses, which fails the command, or drops the
+// excess. Refusing is what the read needs: a truncated base64 string still
+// decodes, so a silently shortened file would read as a complete one and the
+// next write would replace the real file with it.
+type boundedWriter struct {
+	buf      bytes.Buffer
+	limit    int
+	truncate bool
+
+	// exceeded reports whether anything was refused or dropped.
+	exceeded bool
+}
+
+func (w *boundedWriter) Write(p []byte) (int, error) {
+	room := w.limit - w.buf.Len()
+	if len(p) <= room {
+		return w.buf.Write(p)
+	}
+
+	w.exceeded = true
+	if !w.truncate {
+		return 0, fmt.Errorf("%w: the server returned more than %d bytes",
+			ErrRemoteOutput, w.limit)
+	}
+	if room > 0 {
+		_, _ = w.buf.Write(p[:room])
+	}
+	return len(p), nil
+}
+
+func (w *boundedWriter) String() string { return w.buf.String() }
 
 // ReadHostEntries fetches the host entries file.
 //

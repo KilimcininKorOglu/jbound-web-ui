@@ -21,8 +21,21 @@
       <tbody>
         {{range .Servers}}
         <tr>
-          <td><strong>{{.Name}}</strong></td>
-          <td class="text-muted">{{.SSHUser}}@{{.Host}}:{{.SSHPort}}</td>
+          <td>
+            <strong>{{.Name}}</strong>
+            {{/* How a server is reached is its most basic fact, and the two
+                 paths behave differently enough that a reader should not have
+                 to open the form to find out which one this is. */}}
+            {{if eq .Transport "agent"}}
+            <span class="badge bg-label-info ms-1" data-field="transport">
+              {{t "servers.transport_agent"}}
+            </span>
+            {{end}}
+          </td>
+          <td class="text-muted" data-field="endpoint">
+            {{if eq .Transport "agent"}}{{.Host}}:{{.AgentPort}}
+            {{else}}{{.SSHUser}}@{{.Host}}:{{.SSHPort}}{{end}}
+          </td>
           <td>
             {{template "server-status" .}}
             {{if .Pending}}
@@ -41,10 +54,16 @@
                     hx-post="/servers/{{.ID}}/test" hx-target="#server-panel" hx-swap="innerHTML">
               {{t "servers.test"}}
             </button>
+            {{/* An agent server has no public key to show. Its token was
+                 displayed once, when it was added, and a page that could
+                 re-display it would be a way to collect the credentials of the
+                 whole fleet. */}}
+            {{if ne .Transport "agent"}}
             <button class="btn btn-sm btn-outline-primary" type="button"
                     hx-get="/servers/{{.ID}}/key" hx-target="#server-panel" hx-swap="innerHTML">
               {{t "servers.key"}}
             </button>
+            {{end}}
             <button class="btn btn-sm btn-outline-primary" type="button"
                     hx-get="/servers/{{.ID}}/edit" hx-target="#server-panel" hx-swap="innerHTML">
               {{t "common.edit"}}

@@ -240,6 +240,25 @@
     }
   });
 
+  /* The transport decides what the rest of the server form is for. A record
+     reached through an agent has no account, no tool paths and no commands:
+     the agent owns all of them, and showing fields that reach nothing would
+     be asking the operator to fill in decisions somebody else already made. */
+  document.addEventListener('change', function (event) {
+    const select = event.target.closest('[data-action="transport"]');
+    if (!select) {
+      return;
+    }
+
+    const form = select.form;
+    if (!form) {
+      return;
+    }
+    form.querySelectorAll('[data-transport]').forEach(function (block) {
+      block.hidden = block.dataset.transport !== select.value;
+    });
+  });
+
   /* The preference belongs to MX alone, so the field appears with it. */
   document.addEventListener('change', function (event) {
     const select = event.target.closest('[data-action="record-type"]');

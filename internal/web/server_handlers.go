@@ -308,6 +308,14 @@ func (a *App) handleServerKey(w http.ResponseWriter, r *http.Request) {
 	}
 	pair, err := a.Servers.PublicKey(r.Context(), id)
 	if err != nil {
+		// A record with no public key to show is a refusal rather than a
+		// fault. An agent server is the one case: its token was shown once,
+		// when it was added, and there is nothing here to display a second
+		// time.
+		if errors.Is(err, server.ErrValidation) {
+			http.Error(w, "this server has no public key", http.StatusNotFound)
+			return
+		}
 		a.internalError(w, r, "cannot read the public key", err)
 		return
 	}
@@ -565,6 +573,7 @@ func serverFromForm(r *http.Request) (server.Server, error) {
 	record := server.Server{
 		Name:        strings.TrimSpace(r.PostFormValue("name")),
 		Host:        strings.TrimSpace(r.PostFormValue("host")),
+		Transport:   strings.TrimSpace(r.PostFormValue("transport")),
 		SSHUser:     strings.TrimSpace(r.PostFormValue("ssh_user")),
 		RecordsPath: strings.TrimSpace(r.PostFormValue("records_path")),
 		ReloadCmd:   strings.TrimSpace(r.PostFormValue("reload_cmd")),
@@ -582,13 +591,25 @@ func serverFromForm(r *http.Request) (server.Server, error) {
 		Enabled: r.PostFormValue("enabled") != "",
 	}
 
-	raw := strings.TrimSpace(r.PostFormValue("ssh_port"))
-	if raw != "" {
+	// Both ports are read whichever transport this is. The form shows one of
+	// the two, and the other keeps whatever the record already carried.
+	for _, field := range []struct {
+		name   string
+		target *int
+		label  string
+	}{
+		{"ssh_port", &record.SSHPort, "SSH port"},
+		{"agent_port", &record.AgentPort, "agent port"},
+	} {
+		raw := strings.TrimSpace(r.PostFormValue(field.name))
+		if raw == "" {
+			continue
+		}
 		port, err := strconv.Atoi(raw)
 		if err != nil {
-			return record, errors.New("the SSH port must be a number")
+			return record, errors.New("the " + field.label + " must be a number")
 		}
-		record.SSHPort = port
+		*field.target = port
 	}
 
 	record.ApplyDefaults()

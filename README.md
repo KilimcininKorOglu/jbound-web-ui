@@ -281,6 +281,10 @@ make coverage     # coverage of every package
 The analysers are pinned and run through `go run`, so a checkout needs nothing
 installed beyond the Go toolchain.
 
+`.github/workflows/check.yml` runs the same checks on every push and pull
+request, and the vulnerability scan again once a week, because an advisory
+lands against source that did not change.
+
 ## Layout
 
 ```

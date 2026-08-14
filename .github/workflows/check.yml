@@ -1,0 +1,71 @@
+# Every gate the Makefile owns, run on every push and every pull request.
+#
+# The privileged surface of this project is a setuid root PAM helper and a set
+# of scripts that run as root on a Debian host, so a change that nobody
+# analysed is a local privilege escalation waiting to be shipped. The
+# vulnerability scan also runs on a timer, because a new advisory lands against
+# source that did not change.
+
+name: check
+
+"on":
+  push:
+  pull_request:
+  schedule:
+    # Weekly, so an advisory published against unchanged source still surfaces.
+    - cron: "17 6 * * 1"
+
+# Read only. Nothing here publishes, comments or writes a tag.
+permissions:
+  contents: read
+
+# A new push to the same branch makes the run in flight pointless.
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    name: Go
+    runs-on: ubuntu-latest
+    steps:
+      # The actions are pinned by commit rather than by tag. A tag is a moving
+      # reference, and moving it is all it takes to run someone else's code
+      # against this checkout.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          # The toolchain follows go.mod, so the pipeline and a developer run
+          # the same compiler.
+          go-version-file: go.mod
+
+      - run: make lint
+      - run: make test
+      - run: make build
+
+  helper:
+    name: Privileged surface
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Install the analysers and the PAM headers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cppcheck shellcheck libpam0g-dev
+
+      - run: make cppcheck
+      - run: make shellcheck
+      - run: make build-helper
+
+  vuln:
+    name: Vulnerabilities
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+
+      - run: make vuln

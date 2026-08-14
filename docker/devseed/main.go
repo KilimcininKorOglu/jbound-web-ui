@@ -35,9 +35,15 @@ import (
 	"jbound/internal/transport"
 )
 
-// targets are the three Unbound containers of the stack. The host is the
-// service name, which is what the compose network resolves.
+// targets are the three Unbound containers the panel reaches over SSH. The
+// host is the service name, which is what the compose network resolves.
 var targets = []string{"dns1", "dns2", "dns3"}
+
+// agentTargets are the three the panel reaches through an agent.
+//
+// Six in total, in one group, so a single record written to that group proves
+// both transports at once rather than proving each on its own.
+var agentTargets = []string{"dns4", "dns5", "dns6"}
 
 // downTarget is a fourth member of the group that never answers.
 //
@@ -126,6 +132,22 @@ func run() error {
 		ids = append(ids, id)
 	}
 
+	// The token the compose file gave every agent container. One value for the
+	// three of them, because the dev stack is not modelling key separation and
+	// three placeholders in .env.dev would be three chances to get it wrong.
+	token := os.Getenv("DEV_AGENT_TOKEN")
+	if token == "" {
+		return fmt.Errorf("DEV_AGENT_TOKEN is not set, the agent targets cannot be seeded")
+	}
+
+	for _, name := range agentTargets {
+		id, err := addAgentTarget(ctx, service, actor, dataDir, name, token)
+		if err != nil {
+			return err
+		}
+		ids = append(ids, id)
+	}
+
 	downID, err := addDownTarget(ctx, service, servers, actor, string(material))
 	if err != nil {
 		return err
@@ -172,6 +194,49 @@ func addTarget(ctx context.Context, service *server.Service, actor server.Actor,
 	}
 	if err := service.TrustHostKey(ctx, actor, record.ID, offer.Fingerprint); err != nil {
 		return 0, fmt.Errorf("cannot approve the host key of %s: %w", name, err)
+	}
+	return record.ID, nil
+}
+
+// addAgentTarget creates one server the panel reaches through an agent.
+//
+// The token is written over the one the service generated. In production the
+// panel generates it and an operator carries it to the target; here the
+// container was given the value first, so the direction is reversed and the
+// panel is told what the target already holds.
+//
+// The certificate is scanned and approved the way a host key is. Both ends are
+// containers of the same stack, started a moment ago, so there is nothing for a
+// person to compare against.
+func addAgentTarget(ctx context.Context, service *server.Service,
+	actor server.Actor, dataDir, name, token string) (int64, error) {
+
+	record, _, err := service.Create(ctx, actor, server.CreateInput{
+		Server: server.Server{
+			Name: name, Host: name, Transport: server.TransportAgent, Enabled: true,
+		},
+	})
+	if err != nil {
+		return 0, fmt.Errorf("cannot create %s: %w", name, err)
+	}
+
+	tokenPath := filepath.Join(dataDir, record.SSHKeyPath)
+	if err := os.WriteFile(tokenPath, []byte(token+"\n"), 0o600); err != nil {
+		return 0, fmt.Errorf("cannot write the token of %s: %w", name, err)
+	}
+
+	offer, err := scan(ctx, service, record.ID, name)
+	if err != nil {
+		return 0, err
+	}
+	if err := service.TrustHostKey(ctx, actor, record.ID, offer.Fingerprint); err != nil {
+		return 0, fmt.Errorf("cannot approve the certificate of %s: %w", name, err)
+	}
+
+	// The panel asks the agent which file it manages, so the record starts out
+	// with whatever that host names rather than with a guess.
+	if _, err := service.TestConnection(ctx, actor, record.ID); err != nil {
+		return 0, fmt.Errorf("cannot test %s: %w", name, err)
 	}
 	return record.ID, nil
 }

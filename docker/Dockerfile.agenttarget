@@ -1,0 +1,48 @@
+# Development target that stands in for a managed Unbound server running the
+# agent.
+#
+# What is not here is the point. No sshd, no sudo, no dnsops account and no
+# sudoers file: the panel sends no command text and names no file, so there is
+# nothing for a login shell to run and nothing for sudo to allow.
+#
+# The agent is built from the same source tree the panel is, so a change to the
+# protocol reaches both sides of the dev stack on the next build.
+
+FROM golang:1.26.6-bookworm AS build
+
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY cmd ./cmd
+COPY internal ./internal
+RUN CGO_ENABLED=0 go build -trimpath -o /out/jbound-agent ./cmd/jbound-agent
+
+FROM debian:bookworm-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y \
+        unbound \
+        openssl \
+        procps \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# The same configuration the ssh targets use, for the same reasons. See
+# docker/unbound.conf.
+COPY docker/unbound.conf /etc/unbound/unbound.conf
+
+# Containers have no systemd, so "service unbound reload" needs a sysv script
+# to fall back to. This keeps the agent's reload ladder identical to the one a
+# production host runs.
+COPY docker/unbound-initscript /etc/init.d/unbound
+
+COPY --from=build /out/jbound-agent /usr/local/bin/jbound-agent
+COPY docker/entrypoint-agent.sh /usr/local/bin/entrypoint-agent.sh
+RUN chmod 0755 /etc/init.d/unbound /usr/local/bin/entrypoint-agent.sh
+
+EXPOSE 53/tcp 53/udp 8443
+
+ENTRYPOINT ["/usr/local/bin/entrypoint-agent.sh"]

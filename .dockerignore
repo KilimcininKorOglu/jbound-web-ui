@@ -20,6 +20,15 @@
 !deploy/
 !docker/
 
+# The agent is compiled into its target image rather than bind mounted, because
+# a managed resolver runs a binary rather than a source tree. Its sources are
+# the repository's own code and carry no secret; the private key, .env.dev and
+# .git stay out by the rule above.
+!go.mod
+!go.sum
+!cmd/
+!internal/
+
 # Inside docker/, everything except the keys. They are mounted read only at run
 # time and have no business in an image layer or a build cache.
 docker/keys/

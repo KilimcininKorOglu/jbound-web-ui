@@ -1,9 +1,11 @@
 # Development stack for the JBound panel.
 #
-# One panel plus three throwaway Unbound targets plus a SIEM sink. The panel
-# reaches the targets over SSH exactly as it would in production.
+# One panel, six throwaway Unbound targets and a SIEM sink. Three targets are
+# reached over SSH and three through the agent, so one record written to the
+# resolvers group proves both transports rather than proving each on its own.
 #
-# Host port block 8330-8339, reserved in ~/.claude/docker-ports.md.
+# Host port blocks 8330-8339 and 8360-8369, reserved in
+# ~/.claude/docker-ports.md.
 #
 # Start with: make dev-up
 
@@ -35,6 +37,9 @@ services:
       - dns1
       - dns2
       - dns3
+      - dns4
+      - dns5
+      - dns6
       - siem-sink
 
   dns1:
@@ -102,6 +107,66 @@ services:
       - "127.0.0.1:8333:53/tcp"
       - "127.0.0.1:8333:53/udp"
       - "127.0.0.1:8336:22"
+    networks:
+      - jbound-net
+
+  # --- Agent targets -------------------------------------------------------
+  # No sshd, no sudo and no account. The panel sends no command text and names
+  # no file, so there is nothing for a login shell to run and nothing for sudo
+  # to allow. That absence is what these three are here to keep honest.
+  dns4:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.agenttarget
+    container_name: jbound-dns4
+    environment:
+      AGENT_TOKEN: "${DEV_AGENT_TOKEN}"
+      SEED_FILE: /seed/dns1.conf
+    volumes:
+      - ./docker/seed:/seed:ro
+    ports:
+      - "127.0.0.1:8360:53/tcp"
+      - "127.0.0.1:8360:53/udp"
+      - "127.0.0.1:8363:8443"
+    networks:
+      - jbound-net
+
+  dns5:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.agenttarget
+    container_name: jbound-dns5
+    environment:
+      AGENT_TOKEN: "${DEV_AGENT_TOKEN}"
+      SEED_FILE: /seed/dns2.conf
+      # No include line in the main configuration on purpose. That failure is
+      # invisible everywhere else, a write lands, the check passes, the reload
+      # succeeds and no record resolves, so a target that reproduces it on
+      # every run is the only way the repair stays proven.
+      MAIN_INCLUDE: "0"
+    volumes:
+      - ./docker/seed:/seed:ro
+    ports:
+      - "127.0.0.1:8361:53/tcp"
+      - "127.0.0.1:8361:53/udp"
+      - "127.0.0.1:8364:8443"
+    networks:
+      - jbound-net
+
+  dns6:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.agenttarget
+    container_name: jbound-dns6
+    environment:
+      AGENT_TOKEN: "${DEV_AGENT_TOKEN}"
+      SEED_FILE: /seed/dns3.conf
+    volumes:
+      - ./docker/seed:/seed:ro
+    ports:
+      - "127.0.0.1:8362:53/tcp"
+      - "127.0.0.1:8362:53/udp"
+      - "127.0.0.1:8365:8443"
     networks:
       - jbound-net
 

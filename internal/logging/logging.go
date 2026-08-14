@@ -9,7 +9,9 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"log/slog"
+	"strings"
 )
 
 // Field is the attribute a request scoped logger carries.
@@ -49,4 +51,34 @@ func NewID() string {
 		return "unknown"
 	}
 	return hex.EncodeToString(buf)
+}
+
+// level is how much the panel logs, and it is changeable while it runs.
+//
+// A handler reads it on every record, so an operator raising the level during
+// an incident keeps the connections, the cache and the requests that were
+// being diagnosed. A restart would take all three away.
+var level slog.LevelVar
+
+// Level is what a handler is built with.
+func Level() *slog.LevelVar { return &level }
+
+// SetLevel changes how much the panel logs from here on.
+func SetLevel(value slog.Level) { level.Set(value) }
+
+// Levels are the names an operator writes.
+var levels = map[string]slog.Level{
+	"debug": slog.LevelDebug,
+	"info":  slog.LevelInfo,
+	"warn":  slog.LevelWarn,
+	"error": slog.LevelError,
+}
+
+// ParseLevel reads one level name.
+func ParseLevel(name string) (slog.Level, error) {
+	value, ok := levels[strings.ToLower(strings.TrimSpace(name))]
+	if !ok {
+		return 0, fmt.Errorf("log level must be one of debug, info, warn, error, got %q", name)
+	}
+	return value, nil
 }

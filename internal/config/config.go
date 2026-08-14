@@ -7,11 +7,13 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
+	"unbound-web/internal/logging"
 	"unbound-web/internal/server"
 )
 
@@ -30,6 +32,11 @@ type Config struct {
 	AuthMaxConcurrent int
 
 	CookieSecure bool
+
+	// LogLevel is how much the panel writes. It is read once at startup, and
+	// SIGUSR1 switches to debug and back while the panel runs, so an incident
+	// needs no restart.
+	LogLevel slog.Level
 
 	DigPath string
 
@@ -83,6 +90,9 @@ func Load() (*Config, error) {
 		fail("%v", err)
 	}
 	if cfg.CookieSecure, err = envBool("COOKIE_SECURE", true); err != nil {
+		fail("%v", err)
+	}
+	if cfg.LogLevel, err = logging.ParseLevel(env("LOG_LEVEL", "info")); err != nil {
 		fail("%v", err)
 	}
 

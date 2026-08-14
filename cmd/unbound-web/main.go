@@ -18,6 +18,7 @@ import (
 	"unbound-web/internal/database"
 	"unbound-web/internal/dnsquery"
 	"unbound-web/internal/fleet"
+	"unbound-web/internal/logging"
 	"unbound-web/internal/preflight"
 	"unbound-web/internal/server"
 	"unbound-web/internal/settings"
@@ -79,9 +80,48 @@ func dispatch(args []string) error {
 	}
 }
 
+// watchLogLevel switches to debug and back on SIGUSR1.
+//
+// An operator raising the level during an incident keeps the SSH pool, the
+// cache and the requests being diagnosed. Restarting to change the level
+// would take away the state that was being looked at.
+func watchLogLevel(ctx context.Context, configured slog.Level) {
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGUSR1)
+	defer signal.Stop(signals)
+
+	toggleLogLevel(ctx, signals, configured)
+}
+
+// toggleLogLevel switches between the configured level and debug, one switch
+// per signal, so the same lever turns the detail back off again.
+func toggleLogLevel(ctx context.Context, signals <-chan os.Signal,
+	configured slog.Level) {
+
+	debugging := false
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-signals:
+			debugging = !debugging
+			level := configured
+			if debugging {
+				level = slog.LevelDebug
+			}
+			logging.SetLevel(level)
+			slog.Info("log level changed", "level", level.String())
+		}
+	}
+}
+
 func run() error {
+	// The handler reads the level on every record, so the configured value
+	// below and the SIGUSR1 switch both take effect without a restart. The
+	// logger is in place before the configuration is read, because a
+	// configuration that cannot be read is the first thing worth logging.
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
+		Level: logging.Level(),
 	}))
 	slog.SetDefault(logger)
 
@@ -89,6 +129,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	logging.SetLevel(cfg.LogLevel)
 
 	if err := preflight.NotRoot(); err != nil {
 		return err
@@ -104,6 +145,8 @@ func run() error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	go watchLogLevel(ctx, cfg.LogLevel)
 
 	db, err := database.Open(ctx, cfg.DBPath)
 	if err != nil {

@@ -130,6 +130,20 @@ switch that turns the mirror on and off. With the switch off the panel keeps
 writing its own trail and stops sending it, which is what an operator wants
 while a receiver is being repaired. The rules stay where they are.
 
+### Log level
+
+`LOG_LEVEL` in the environment file takes `debug`, `info`, `warn` or `error`,
+and defaults to `info`. A running panel switches to `debug` and back on
+`SIGUSR1`:
+
+```
+sudo systemctl kill -s USR1 unbound-web
+```
+
+Raising the level this way keeps the SSH connections, the record cache and the
+requests that are being diagnosed. A restart takes all three away, which is
+usually the state an incident is about.
+
 ## Settings
 
 The **Settings** page stores its values in the database and every change takes

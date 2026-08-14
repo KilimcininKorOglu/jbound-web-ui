@@ -1,6 +1,7 @@
 package config
 
 import (
+	"log/slog"
 	"strings"
 	"testing"
 )
@@ -77,7 +78,7 @@ var settableKeys = []string{
 	"LISTEN_ADDR", "DATA_DIR", "DB_PATH",
 	"AUTH_HELPER_PATH", "PAM_SERVICE", "ADMIN_GROUP", "ALLOWED_GROUP",
 	"MIN_UID", "AUTH_MAX_CONCURRENT",
-	"COOKIE_SECURE", "DIG_PATH",
+	"COOKIE_SECURE", "DIG_PATH", "LOG_LEVEL",
 	"RSYSLOG_RESTART_CMD", "RSYSLOG_STATUS_CMD", "RSYSLOG_VALIDATE_CMD",
 	"RSYSLOG_CONF_PATH", "SYSLOG_LOG_PATH",
 }
@@ -116,6 +117,9 @@ func TestLoadUsesProductionDefaults(t *testing.T) {
 	if !cfg.CookieSecure {
 		t.Error("CookieSecure = false, want true by default")
 	}
+	if cfg.LogLevel != slog.LevelInfo {
+		t.Errorf("LogLevel = %v, want info", cfg.LogLevel)
+	}
 	// The defaults decide production behaviour when nothing is configured, so
 	// they are asserted rather than assumed.
 	if got := cfg.RsyslogRestartCmd.String(); got != "systemctl restart rsyslog" {
@@ -139,6 +143,9 @@ func TestLoadRejectsBadValues(t *testing.T) {
 		{"negative MIN_UID", map[string]string{"MIN_UID": "-1"}, "MIN_UID"},
 		{"zero concurrency", map[string]string{"AUTH_MAX_CONCURRENT": "0"}, "AUTH_MAX_CONCURRENT"},
 		{"bad boolean", map[string]string{"COOKIE_SECURE": "yes please"}, "COOKIE_SECURE"},
+		// A typo here would otherwise leave the panel logging at a level
+		// nobody chose, which is only noticed when the output is needed.
+		{"unknown log level", map[string]string{"LOG_LEVEL": "verbose"}, "log level"},
 		{"injected command", map[string]string{"RSYSLOG_RESTART_CMD": "systemctl restart rsyslog; id"},
 			"RSYSLOG_RESTART_CMD"},
 	}

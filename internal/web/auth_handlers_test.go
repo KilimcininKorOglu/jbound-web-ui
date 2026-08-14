@@ -790,6 +790,7 @@ func TestEveryResponseCarriesTheSecurityHeaders(t *testing.T) {
 		"X-Content-Type-Options": "nosniff",
 		"X-Frame-Options":        "DENY",
 		"Referrer-Policy":        "same-origin",
+		"Cache-Control":          "no-store",
 	}
 	for header, value := range want {
 		if got := recorder.Header().Get(header); got != value {
@@ -798,5 +799,37 @@ func TestEveryResponseCarriesTheSecurityHeaders(t *testing.T) {
 	}
 	if !strings.Contains(recorder.Header().Get("Content-Security-Policy"), "frame-ancestors 'none'") {
 		t.Error("the content security policy allows framing")
+	}
+}
+
+func TestAnAuthenticatedPageIsNeverStored(t *testing.T) {
+	// The pages carry records, audit rows, the server inventory and a CSRF
+	// token. A copy in the disk cache outlives the session that produced it.
+	env := newTestEnv(t)
+	cookie := env.login(t, "dnsadmin")
+
+	for _, path := range []string{"/dns", "/servers", "/logs", "/settings"} {
+		t.Run(path, func(t *testing.T) {
+			recorder := env.do(t, httptest.NewRequest(http.MethodGet, path, nil), cookie)
+
+			if got := recorder.Header().Get("Cache-Control"); got != "no-store" {
+				t.Errorf("Cache-Control = %q, want no-store", got)
+			}
+		})
+	}
+}
+
+func TestAStaticAssetKeepsItsOwnCacheDirective(t *testing.T) {
+	// The assets are neither private nor different between readers, and
+	// refusing to store them would refetch every stylesheet on every page.
+	env := newTestEnv(t)
+
+	recorder := env.do(t, httptest.NewRequest(http.MethodGet, "/static/css/panel.css", nil))
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+	if got := recorder.Header().Get("Cache-Control"); got != "no-cache" {
+		t.Errorf("Cache-Control = %q, want no-cache", got)
 	}
 }

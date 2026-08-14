@@ -89,6 +89,10 @@ func (s *staticAssets) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Revalidate rather than cache blindly. The assets change whenever the
 	// binary does, and the path stays the same, so a stale copy would survive
 	// an upgrade and load the previous version of a script.
+	//
+	// This replaces the no-store the security headers set for every other
+	// route. An asset carries nothing about the reader, and refusing to store
+	// it would mean fetching every stylesheet and font on every page.
 	w.Header().Set("Cache-Control", "no-cache")
 
 	// ServeContent answers a conditional request from the tag above, so a

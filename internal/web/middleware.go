@@ -139,6 +139,14 @@ func securityHeaders(next http.Handler) http.Handler {
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Referrer-Policy", "same-origin")
+		// Nothing the panel produces may be written to a disk cache or handed
+		// back by the history mechanism. Every page carries records, audit
+		// rows, the server inventory or a CSRF token, and a shared workstation
+		// would otherwise give the next person the previous one's pages with
+		// the back button. The asset handler replaces this with its own
+		// directive, because those files are neither private nor changing
+		// between requests.
+		h.Set("Cache-Control", "no-store")
 		// script-src stays strict. No inline script, no eval, which is why the
 		// vendor bundles that wrap every module in eval were replaced.
 		//

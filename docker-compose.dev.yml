@@ -89,6 +89,10 @@ services:
       SSH_USER: dnsops
       SEED_FILE: /seed/dns3.conf
       PUBLIC_KEY_FILE: /keys/dev_ed25519.pub
+      # No remote control on this one, on purpose. The panel's first reload
+      # rung has nothing to talk to here, so every run proves the fall through
+      # to the second rung rather than only proving the happy path.
+      REMOTE_CONTROL: "0"
       # The integration test flips this on only for the shell pollution check.
       SHELL_POLLUTION: "${SHELL_POLLUTION:-0}"
     volumes:

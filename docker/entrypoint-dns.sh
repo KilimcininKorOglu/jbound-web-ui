@@ -12,6 +12,11 @@ SEED_FILE=${SEED_FILE:-}
 PUBLIC_KEY_FILE=${PUBLIC_KEY_FILE:-/keys/dev_ed25519.pub}
 SHELL_POLLUTION=${SHELL_POLLUTION:-0}
 
+# REMOTE_CONTROL=0 takes the control section out of the resolver configuration,
+# so the first rung of the panel's reload has nothing to talk to and the fall
+# through to the second rung is exercised on every run.
+REMOTE_CONTROL=${REMOTE_CONTROL:-1}
+
 log() { printf '[entrypoint-dns] %s\n' "$*"; }
 
 # --- SSH host keys -----------------------------------------------------------
@@ -69,6 +74,15 @@ if [ "$SHELL_POLLUTION" = "1" ]; then
 fi
 chown "$SSH_USER":"$SSH_USER" "$BASHRC"
 
+# --- Remote control fixture --------------------------------------------------
+if [ "$REMOTE_CONTROL" = "1" ]; then
+    unbound-control-setup >/dev/null
+    log "remote control enabled"
+else
+    sed -i '/^remote-control:/,$d' /etc/unbound/unbound.conf
+    log "remote control disabled, the panel falls through to the reload command"
+fi
+
 # --- Unbound sanity check ----------------------------------------------------
 unbound-checkconf /etc/unbound/unbound.conf
 
@@ -77,21 +91,33 @@ unbound-checkconf /etc/unbound/unbound.conf
 SSHD_PID=$!
 log "sshd started (pid $SSHD_PID)"
 
-/usr/sbin/unbound -d -c /etc/unbound/unbound.conf &
-UNBOUND_PID=$!
-log "unbound started (pid $UNBOUND_PID)"
+# Unbound runs under the init script rather than as a child of this shell,
+# because that is what the panel's reload and restart commands drive. A
+# restart replaces the process, and a container that waited on the first pid
+# would take the restart as a dead service and stop.
+service unbound start
+log "unbound started through the init script"
 
 terminate() {
     log "shutting down"
-    kill "$SSHD_PID" "$UNBOUND_PID" 2>/dev/null || true
+    service unbound stop || true
+    kill "$SSHD_PID" 2>/dev/null || true
     wait || true
     exit 0
 }
 trap terminate TERM INT
 
-# Exit as soon as either child stops, so a dead service is never silent.
-wait -n "$SSHD_PID" "$UNBOUND_PID"
-STATUS=$?
-log "a service exited with status $STATUS, stopping the container"
-kill "$SSHD_PID" "$UNBOUND_PID" 2>/dev/null || true
-exit "$STATUS"
+# Supervise both, so a dead service is never silent. Unbound is asked the way
+# the panel asks, which also proves the status command the panel is configured
+# with answers on this image.
+while true; do
+    if ! kill -0 "$SSHD_PID" 2>/dev/null; then
+        log "sshd exited, stopping the container"
+        exit 1
+    fi
+    if ! service unbound status >/dev/null 2>&1; then
+        log "unbound is not running, stopping the container"
+        exit 1
+    fi
+    sleep 2
+done

@@ -18,12 +18,21 @@ set -eu
 PIDFILE=/run/unbound.pid
 CONF=/etc/unbound/unbound.conf
 
+# unbound_pid answers with one pid or nothing.
+#
+# The fallback matches the command line rather than the process name. This
+# script is called unbound, so a name match finds itself and every start then
+# reports a daemon that is already running while nothing is.
+#
+# The first line only. Two processes can exist while a restart is half done,
+# and passing both to kill fails with "Illegal number" rather than signalling
+# either of them.
 unbound_pid() {
     if [ -f "$PIDFILE" ]; then
-        cat "$PIDFILE"
+        head -n1 "$PIDFILE"
         return 0
     fi
-    pgrep -x unbound || true
+    pgrep -f "^/usr/sbin/unbound -c" | head -n1 || true
 }
 
 case "${1:-}" in
@@ -52,16 +61,37 @@ case "${1:-}" in
             exit 0
         fi
         /usr/sbin/unbound -c "$CONF"
+
+        # The daemon forks, so it is running by the time this returns. Waiting
+        # for the pidfile makes that certain, and a start that reports success
+        # while nothing came up would make the panel report the same.
+        i=0
+        while [ $i -lt 50 ]; do
+            [ -n "$(unbound_pid)" ] && { echo "unbound started"; exit 0; }
+            sleep 0.1
+            i=$((i + 1))
+        done
+        echo "unbound did not come up" >&2
+        exit 1
         ;;
     stop)
         pid=$(unbound_pid)
         if [ -n "$pid" ]; then
             kill "$pid"
+
+            # Wait for it to go. A restart that started the next process while
+            # this one was still shutting down would leave two daemons on the
+            # same port, and the second would fail to bind.
+            i=0
+            while [ $i -lt 50 ] && kill -0 "$pid" 2>/dev/null; do
+                sleep 0.1
+                i=$((i + 1))
+            done
         fi
+        rm -f "$PIDFILE"
         ;;
     restart)
         "$0" stop || true
-        sleep 1
         "$0" start
         ;;
     *)

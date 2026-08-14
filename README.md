@@ -12,12 +12,16 @@ writes one include file, and reloads the resolver.
 
 - Reads and writes `host_entries.conf` on every managed server over SSH.
 - Adds, edits and deletes A, AAAA, CNAME, MX and TXT records on a single server
-  or on a whole group.
+  or on a whole group, one record at a time or several in one pass.
 - Compares the servers of a group and repairs a record that is missing or
   different on some of them.
 - Keeps the file each server carried before the last change, and puts it back
   from the servers page when a change turns out to be wrong.
-- Reloads the resolvers, and asks each one what it answers for a name.
+- Checks the configuration of a resolver before a change goes live, and puts the
+  previous file back when the resolver refuses it.
+- Reloads the resolvers without losing their cache where it can, restarts them
+  where it must, and proves each one is running afterwards.
+- Asks each resolver what it answers for a name.
 - Records every action with the user, the address and the result, and can mirror
   the trail to syslog in CEF.
 - Signs users in against the local accounts of the panel host through PAM.
@@ -36,8 +40,10 @@ Panel host:
 Managed DNS server:
 
 - Unbound with an `include:` line for the host entries file.
-- An SSH account, `sudo`, and three exact sudoers rules created by
+- An SSH account, `sudo`, and six exact sudoers rules created by
   `deploy/setup-target.sh`.
+- `unbound-control` for the reload that keeps the cache. A resolver without it
+  still works: the panel falls back to a plain reload, and to a restart.
 
 ## Install
 
@@ -101,16 +107,65 @@ sudo ./deploy/setup-target.sh -k "ssh-ed25519 AAAA... jbound"
 ```
 
 It creates the `dnsops` account, adds the public key the panel generated,
-creates `/etc/unbound/host_entries.conf` with mode `644` and installs three
-exact sudoers rules. The permissions of `/etc/unbound` are left alone: reading
-needs no sudo, and writing goes through the three rules.
+creates `/etc/unbound/host_entries.conf` with mode `644` and installs six exact
+sudoers rules. The permissions of `/etc/unbound` are left alone: reading needs
+no sudo, and everything else goes through the rules.
 
-The script prints the values to enter in the panel, because the paths of `tee`,
-`mv` and `service` differ between distributions and each sudoers rule has to
-match the command the panel runs.
+| Rule | What the panel does with it |
+| --- | --- |
+| `tee` | writes the new file to a fixed temporary path |
+| `mv` | moves it over the host entries file in one step |
+| `unbound-checkconf` | asks the resolver whether it will load the result |
+| `unbound-control reload_keep_cache` | reloads without discarding the cache |
+| `service unbound reload` | reloads when the control socket is not there |
+| `service unbound restart` | restarts when neither reload works |
+
+The paths of these commands differ between distributions and each rule has to
+match the command the panel runs exactly, so the script resolves them with
+`command -v` and prints the values to enter in the panel.
+
+`-c` names the main configuration file, which defaults to
+`/etc/unbound/unbound.conf`. `unbound-checkconf` reads it, so a resolver that
+keeps its configuration elsewhere needs the real path here.
 
 Re-run the script after changing the host entries path in the panel. The rules
 are derived from that path.
+
+**Re-run it on every server you prepared with an earlier version.** The last
+four rules are newer than the first two. Without them **Test** reports the
+configuration check as failed, and a record written to that server is rolled
+back rather than applied.
+
+### What the panel does to a resolver
+
+A change is one write, one check and one reload.
+
+The write goes to a temporary file in the same directory and is moved over the
+host entries file, so the resolver never reads a half written file. The panel
+compares the digest of the temporary file against what it sent before it moves
+anything.
+
+Then `unbound-checkconf` runs. If it refuses the result, the panel writes the
+previous content back and reports the failure with what the checker said. The
+same happens when the rule for it is missing, because a check that cannot run
+proves nothing.
+
+The reload is a ladder of three rungs, and the panel stops at the first one that
+leaves the resolver running:
+
+1. `unbound-control reload_keep_cache`, which keeps the answers already cached.
+2. `service unbound reload`, for a resolver with no control socket.
+3. `service unbound restart`, which empties the cache. The panel then polls the
+   service until it answers, because a restart is not instant.
+
+The result and the audit row name the rung that worked, so a restart is never
+mistaken for a cheap reload. If all three fail the change is left marked as
+unapplied, because nothing reached the resolver.
+
+Adding the first record of a domain also writes a `local-zone` line for the
+parent, since Unbound answers nothing for a name whose zone is not local.
+Deleting the last record of a zone leaves that line alone, because the zone may
+still hold records the panel did not write.
 
 ## Add a server
 
@@ -125,8 +180,26 @@ are derived from that path.
 5. Approve the host key. It is stored with the server record, and a server that
    later offers a different key is refused rather than trusted again.
 
+**Test** walks the whole path rather than only the connection: it signs in,
+reads the file, writes the current content back over itself, runs the
+configuration check and asks for the service status. A missing sudoers rule
+therefore shows up while you are adding the server, not during a change.
+
 A server can be added to a group. A group is what a record action targets when
 it should reach more than one machine.
+
+## Records
+
+**Add record** takes as many rows as you need. Every row is validated first, and
+one bad row refuses the whole batch rather than writing the good half. The rows
+that pass reach each server as a single write followed by a single reload, and
+leave one audit row per server saying how many records went.
+
+A record is written to every server of the target at once, so the record list
+folds the servers together: one line per record, with a badge saying how many of
+the targeted servers hold it. A badge below the target count links to **Record
+Diff**, where the servers are compared side by side and a missing or different
+record can be repaired.
 
 ## Audit trail and SIEM
 

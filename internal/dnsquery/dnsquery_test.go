@@ -52,6 +52,58 @@ func TestTheQueryNamesTheServerAndTheName(t *testing.T) {
 	}
 }
 
+func TestTheConfiguredTimeoutReachesTheClient(t *testing.T) {
+	// dig has a retry budget of its own. Wired to nothing, it gave up after a
+	// fixed two seconds and every longer value the operator saved was inert.
+	cases := []struct {
+		budget time.Duration
+		want   string
+	}{
+		{budget: 30 * time.Second, want: "+timeout=30"},
+		{budget: 2 * time.Minute, want: "+timeout=120"},
+		// dig takes whole seconds, and zero would read as no wait at all.
+		{budget: 900 * time.Millisecond, want: "+timeout=1"},
+	}
+
+	for _, testCase := range cases {
+		rec := &recorder{}
+		querier := New("/usr/bin/dig", settings.Fixed(testCase.budget))
+		querier.run = rec.run
+
+		if _, err := querier.Ask(context.Background(), "dns1", "www.example.net", "A"); err != nil {
+			t.Fatalf("Ask returned an error: %v", err)
+		}
+		if !slices.Contains(rec.args, testCase.want) {
+			t.Errorf("a budget of %s produced %v, want %s",
+				testCase.budget, rec.args, testCase.want)
+		}
+	}
+}
+
+func TestThePanelWaitsLongerThanTheClientDoes(t *testing.T) {
+	// A resolver that never answers has to be reported by dig, which says what
+	// it was waiting for, rather than by a process the deadline killed.
+	rec := &recorder{}
+	querier := New("/usr/bin/dig", settings.Fixed(5*time.Second))
+
+	var deadline time.Time
+	querier.run = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		deadline, _ = ctx.Deadline()
+		return rec.run(ctx, name, args...)
+	}
+
+	if _, err := querier.Ask(context.Background(), "dns1", "www.example.net", "A"); err != nil {
+		t.Fatalf("Ask returned an error: %v", err)
+	}
+	if deadline.IsZero() {
+		t.Fatal("the query ran with no deadline")
+	}
+	if left := time.Until(deadline); left <= 5*time.Second {
+		t.Errorf("the deadline is %s away, which is not past the %s dig waits",
+			left, 5*time.Second)
+	}
+}
+
 func TestAQueryWithoutATypeAsksForWhateverIsThere(t *testing.T) {
 	rec := &recorder{}
 

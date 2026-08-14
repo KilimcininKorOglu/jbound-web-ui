@@ -74,13 +74,22 @@ func (q *Querier) Ask(ctx context.Context, host, domain, recordType string) ([]s
 		}
 	}
 
+	// One budget, read once, so the flag and the deadline below cannot describe
+	// two different limits.
+	budget := q.timeout()
+
 	args := []string{"@" + host, domain}
 	if recordType != "" {
 		args = append(args, recordType)
 	}
-	args = append(args, "+short", "+timeout=2", "+tries=1")
+	// One try. A retry would spend the budget twice over and the operator
+	// asked one resolver one question.
+	args = append(args, "+short",
+		fmt.Sprintf("+timeout=%d", digSeconds(budget)), "+tries=1")
 
-	ctx, cancel := context.WithTimeout(ctx, q.timeout())
+	// The deadline sits past the flag, so a slow resolver is reported by dig,
+	// which says what it was waiting for, rather than by a killed process.
+	ctx, cancel := context.WithTimeout(ctx, budget+queryGrace)
 	defer cancel()
 
 	output, err := q.run(ctx, q.dig, args...)
@@ -88,6 +97,21 @@ func (q *Querier) Ask(ctx context.Context, host, domain, recordType string) ([]s
 		return nil, fmt.Errorf("%w: %v", ErrTool, err)
 	}
 	return lines(output), nil
+}
+
+// queryGrace is how much longer the panel waits than dig does.
+//
+// Without it the context deadline and dig's own timeout land together, and
+// which of the two fires first decides whether the operator reads an answer
+// about the resolver or about a signal.
+const queryGrace = time.Second
+
+// digSeconds renders a duration as the whole seconds dig accepts.
+//
+// dig takes no fraction, and a budget under a second would round to zero,
+// which it reads as no wait at all.
+func digSeconds(budget time.Duration) int {
+	return max(1, int(budget/time.Second))
 }
 
 // lines splits dig's short output into one entry per answer.

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -235,7 +236,7 @@ func TestAFailureIsReportedWithoutNamingTheInternals(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			if got := userMessage(catalog, testCase.err); got != testCase.message {
+			if got := userMessage(context.Background(), catalog, testCase.err); got != testCase.message {
 				t.Errorf("message = %q, want %q", got, testCase.message)
 			}
 			if got := formStatus(testCase.err); got != testCase.status {
@@ -342,7 +343,7 @@ func TestARefusedRecordCarriesItsOwnReason(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			if got := recordMessage(catalog, testCase.err); got != testCase.message {
+			if got := recordMessage(context.Background(), catalog, testCase.err); got != testCase.message {
 				t.Errorf("message = %q, want %q", got, testCase.message)
 			}
 			if got := dnsStatus(testCase.err); got != testCase.status {
@@ -387,7 +388,7 @@ func TestARefusedRuleIsReportedByItsKind(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			if got := siemMessage(catalog, testCase.err); got != testCase.message {
+			if got := siemMessage(context.Background(), catalog, testCase.err); got != testCase.message {
 				t.Errorf("message = %q, want %q", got, testCase.message)
 			}
 			if got := siemStatus(testCase.err); got != testCase.status {

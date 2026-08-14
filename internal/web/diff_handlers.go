@@ -44,7 +44,7 @@ type diffPageData struct {
 func (a *App) handleDiffPage(w http.ResponseWriter, r *http.Request) {
 	data, err := a.diffPageData(r)
 	if err != nil {
-		a.dnsError(w, "cannot compare the servers", err)
+		a.dnsError(w, r, "cannot compare the servers", err)
 		return
 	}
 	a.Render(w, r, http.StatusOK, "diff", PageData{Title: "nav.record_diff", Data: data})
@@ -55,7 +55,7 @@ func (a *App) handleDiffPage(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleDiffTable(w http.ResponseWriter, r *http.Request) {
 	data, err := a.diffPageData(r)
 	if err != nil {
-		a.dnsError(w, "cannot compare the servers", err)
+		a.dnsError(w, r, "cannot compare the servers", err)
 		return
 	}
 	a.RenderPartial(w, r, http.StatusOK, "diff-table", data)
@@ -178,14 +178,14 @@ func (a *App) handleDiffSync(w http.ResponseWriter, r *http.Request) {
 
 	target, err := targetFromValues(r.Form)
 	if err != nil {
-		a.reportProblem(w, r, recordMessage(a.catalog(r), err), http.StatusBadRequest)
+		a.reportProblem(w, r, recordMessage(r.Context(), a.catalog(r), err), http.StatusBadRequest)
 		return
 	}
 
 	sourceID, _ := a.sourceServer(r.Context())
 	report, err := a.Records.Mirror(r.Context(), a.actor(r), target, sourceID)
 	if err != nil {
-		a.reportProblem(w, r, recordMessage(a.catalog(r), err), dnsStatus(err))
+		a.reportProblem(w, r, recordMessage(r.Context(), a.catalog(r), err), dnsStatus(err))
 		return
 	}
 
@@ -213,7 +213,7 @@ func (a *App) handleDiffRepair(w http.ResponseWriter, r *http.Request) {
 
 	target, err := targetFromValues(r.Form)
 	if err != nil {
-		a.reportProblem(w, r, recordMessage(a.catalog(r), err), http.StatusBadRequest)
+		a.reportProblem(w, r, recordMessage(r.Context(), a.catalog(r), err), http.StatusBadRequest)
 		return
 	}
 
@@ -224,7 +224,7 @@ func (a *App) handleDiffRepair(w http.ResponseWriter, r *http.Request) {
 
 	report, err := a.Records.Repair(r.Context(), a.actor(r), target, want)
 	if err != nil {
-		a.reportProblem(w, r, recordMessage(a.catalog(r), err), dnsStatus(err))
+		a.reportProblem(w, r, recordMessage(r.Context(), a.catalog(r), err), dnsStatus(err))
 		return
 	}
 

@@ -2,12 +2,12 @@ package web
 
 import (
 	"fmt"
-	"log/slog"
 	"net/http"
 	"strconv"
 
 	"unbound-web/internal/audit"
 	"unbound-web/internal/auth"
+	"unbound-web/internal/logging"
 )
 
 // sessionsPageData feeds the sessions page and its table fragment.
@@ -35,7 +35,7 @@ type sessionRow struct {
 func (a *App) handleSessionsPage(w http.ResponseWriter, r *http.Request) {
 	data, err := a.sessionsPageData(r)
 	if err != nil {
-		a.internalError(w, "cannot load the sessions", err)
+		a.internalError(w, r, "cannot load the sessions", err)
 		return
 	}
 	a.Render(w, r, http.StatusOK, "sessions", PageData{Title: "nav.sessions", Data: data})
@@ -45,7 +45,7 @@ func (a *App) handleSessionsPage(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleSessionsTable(w http.ResponseWriter, r *http.Request) {
 	data, err := a.sessionsPageData(r)
 	if err != nil {
-		a.internalError(w, "cannot load the sessions", err)
+		a.internalError(w, r, "cannot load the sessions", err)
 		return
 	}
 	a.RenderPartial(w, r, http.StatusOK, "session-table", data)
@@ -72,7 +72,7 @@ func (a *App) handleSessionRevoke(w http.ResponseWriter, r *http.Request) {
 
 	removed, err := a.Sessions.RevokeAccount(r.Context(), uid, session.ID)
 	if err != nil {
-		a.internalError(w, "cannot revoke the sessions of an account", err)
+		a.internalError(w, r, "cannot revoke the sessions of an account", err)
 		return
 	}
 
@@ -87,7 +87,7 @@ func (a *App) handleSessionRevokeAll(w http.ResponseWriter, r *http.Request) {
 
 	removed, err := a.Sessions.RevokeAll(r.Context(), session.ID)
 	if err != nil {
-		a.internalError(w, "cannot revoke the sessions", err)
+		a.internalError(w, r, "cannot revoke the sessions", err)
 		return
 	}
 
@@ -131,6 +131,6 @@ func (a *App) auditRevoke(r *http.Request, details string) {
 		IPAddress: actor.IPAddress,
 	})
 	if err != nil {
-		slog.Error("cannot record a session revocation", "error", err)
+		logging.From(r.Context()).Error("cannot record a session revocation", "error", err)
 	}
 }

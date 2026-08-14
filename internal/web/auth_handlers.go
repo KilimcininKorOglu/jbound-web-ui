@@ -3,11 +3,11 @@ package web
 import (
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 
 	"unbound-web/internal/audit"
 	"unbound-web/internal/auth"
+	"unbound-web/internal/logging"
 )
 
 // Messages shown on the login page.
@@ -50,7 +50,7 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 	ip := auth.ClientIP(r)
 
 	if !sameOrigin(r) {
-		slog.Warn("cross origin login refused", "ip", ip,
+		logging.From(r.Context()).Warn("cross origin login refused", "ip", ip,
 			"origin", r.Header.Get("Origin"))
 		a.loginFailure(w, r, http.StatusForbidden, msgLoginFailed)
 		return
@@ -74,12 +74,12 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// Continuing here would let an attacker defeat the limiter by making
 		// the write fail, so the request stops instead.
-		slog.Error("rate limit check failed", "ip", ip, "error", err)
+		logging.From(r.Context()).Error("rate limit check failed", "ip", ip, "error", err)
 		a.loginFailure(w, r, http.StatusInternalServerError, msgInternalError)
 		return
 	}
 	if !admitted {
-		slog.Warn("login rate limited", "ip", ip, "username", username)
+		logging.From(r.Context()).Warn("login rate limited", "ip", ip, "username", username)
 		a.loginFailure(w, r, http.StatusTooManyRequests, msgRateLimited)
 		return
 	}
@@ -87,7 +87,7 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 	user, err := a.Auth.Login(r.Context(), username, password)
 	if err != nil {
 		if !errors.Is(err, auth.ErrLoginFailed) {
-			slog.Error("login could not be processed", "ip", ip, "error", err)
+			logging.From(r.Context()).Error("login could not be processed", "ip", ip, "error", err)
 			a.loginFailure(w, r, http.StatusInternalServerError, msgInternalError)
 			return
 		}
@@ -100,17 +100,17 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 			Details:   fmt.Sprintf("Failed login attempt for '%s' from %s", username, ip),
 			IPAddress: ip,
 		}); auditErr != nil {
-			slog.Error("failed login was not audited", "error", auditErr)
+			logging.From(r.Context()).Error("failed login was not audited", "error", auditErr)
 		}
 
-		slog.Warn("login_failed", "username", username, "ip", ip)
+		logging.From(r.Context()).Warn("login_failed", "username", username, "ip", ip)
 		a.loginFailure(w, r, http.StatusUnauthorized, msgLoginFailed)
 		return
 	}
 
 	session, err := a.Sessions.Start(r.Context(), w, r, user)
 	if err != nil {
-		slog.Error("cannot start the session", "username", user.Username, "error", err)
+		logging.From(r.Context()).Error("cannot start the session", "username", user.Username, "error", err)
 		a.loginFailure(w, r, http.StatusInternalServerError, msgInternalError)
 		return
 	}
@@ -125,10 +125,10 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 		// The session is already live. Refusing the login now would lock every
 		// user out of a working panel over a log write, so the failure is
 		// reported and the login stands.
-		slog.Error("login was not audited", "username", user.Username, "error", err)
+		logging.From(r.Context()).Error("login was not audited", "username", user.Username, "error", err)
 	}
 
-	slog.Info("login", "username", user.Username, "role", user.Role, "ip", ip)
+	logging.From(r.Context()).Info("login", "username", user.Username, "role", user.Role, "ip", ip)
 
 	w.Header().Set("HX-Redirect", "/dns")
 	a.RenderPartial(w, r, http.StatusOK, "loggedin", loggedInData{
@@ -156,7 +156,7 @@ func (a *App) handleLogout(w http.ResponseWriter, r *http.Request) {
 	ip := auth.ClientIP(r)
 
 	if err := a.Sessions.Destroy(r.Context(), w, session.ID); err != nil {
-		slog.Error("cannot destroy the session", "username", session.Username, "error", err)
+		logging.From(r.Context()).Error("cannot destroy the session", "username", session.Username, "error", err)
 	}
 
 	if err := a.Audit.Write(r.Context(), audit.Entry{
@@ -166,7 +166,7 @@ func (a *App) handleLogout(w http.ResponseWriter, r *http.Request) {
 		Details:   fmt.Sprintf("User '%s' logged out from %s", session.Username, ip),
 		IPAddress: ip,
 	}); err != nil {
-		slog.Error("logout was not audited", "username", session.Username, "error", err)
+		logging.From(r.Context()).Error("logout was not audited", "username", session.Username, "error", err)
 	}
 
 	redirect(w, r, "/")

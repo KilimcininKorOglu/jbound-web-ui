@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 	"time"
 
 	"unbound-web/internal/audit"
+	"unbound-web/internal/logging"
 	"unbound-web/internal/transport"
 )
 
@@ -155,10 +155,12 @@ func (s *Service) makeKey(id int64, private string) (KeyPair, error) {
 // key and a key without a record are each worth knowing about.
 func (s *Service) discard(ctx context.Context, id int64, relPath string) {
 	if err := s.keys.Remove(relPath); err != nil {
-		slog.Error("cannot remove the key of a refused server", "server", id, "error", err)
+		logging.From(ctx).Error("cannot remove the key of a refused server",
+			"server", id, "error", err)
 	}
 	if err := s.servers.Delete(ctx, id); err != nil {
-		slog.Error("cannot remove a server that could not be finished", "server", id, "error", err)
+		logging.From(ctx).Error("cannot remove a server that could not be finished",
+			"server", id, "error", err)
 	}
 }
 

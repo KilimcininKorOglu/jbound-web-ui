@@ -15,6 +15,7 @@ import (
 
 	"unbound-web/internal/auth"
 	"unbound-web/internal/i18n"
+	"unbound-web/internal/logging"
 	"unbound-web/internal/settings"
 )
 
@@ -215,8 +216,8 @@ func (a *App) Render(w http.ResponseWriter, r *http.Request, status int,
 
 	tmpl, ok := a.tmpl[language].pages[page]
 	if !ok {
-		slog.Error("unknown page requested", "page", page)
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		logging.From(r.Context()).Error("unknown page requested", "page", page)
+		serverError(w, r)
 		return
 	}
 
@@ -235,11 +236,11 @@ func (a *App) Render(w http.ResponseWriter, r *http.Request, status int,
 
 	var buf bytes.Buffer
 	if err := tmpl.ExecuteTemplate(&buf, "layout", data); err != nil {
-		slog.Error("cannot render the page", "page", page, "error", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		logging.From(r.Context()).Error("cannot render the page", "page", page, "error", err)
+		serverError(w, r)
 		return
 	}
-	writeHTML(w, status, buf.Bytes())
+	writeHTML(w, r, status, buf.Bytes())
 }
 
 // RenderPartial writes one fragment, which is what an htmx swap expects.
@@ -252,18 +253,18 @@ func (a *App) RenderPartial(w http.ResponseWriter, r *http.Request, status int,
 	var buf bytes.Buffer
 
 	if err := a.tmpl[a.language(r)].partials.ExecuteTemplate(&buf, name, data); err != nil {
-		slog.Error("cannot render the partial", "partial", name, "error", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		logging.From(r.Context()).Error("cannot render the partial", "partial", name, "error", err)
+		serverError(w, r)
 		return
 	}
-	writeHTML(w, status, buf.Bytes())
+	writeHTML(w, r, status, buf.Bytes())
 }
 
-func writeHTML(w http.ResponseWriter, status int, body []byte) {
+func writeHTML(w http.ResponseWriter, r *http.Request, status int, body []byte) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	if _, err := w.Write(body); err != nil {
-		slog.Error("cannot write the response", "error", err)
+		logging.From(r.Context()).Error("cannot write the response", "error", err)
 	}
 }
 

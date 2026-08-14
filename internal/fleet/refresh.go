@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"unbound-web/internal/dnsfile"
+	"unbound-web/internal/logging"
 	"unbound-web/internal/server"
 	"unbound-web/internal/transport"
 )
@@ -202,7 +203,7 @@ func (r *Refresher) refresh(ctx context.Context, record server.Server) Result {
 		// On the timer path nobody is waiting for this error, and the state row
 		// keeps saying the server was read, so the panel would serve stale
 		// records with nothing anywhere to explain them.
-		slog.Error("cannot store the records of a server",
+		logging.From(ctx).Error("cannot store the records of a server",
 			"server", record.Name, "error", err)
 		result.Err = err
 		return result
@@ -213,7 +214,7 @@ func (r *Refresher) refresh(ctx context.Context, record server.Server) Result {
 	active, _, statusErr := client.ServiceStatus(ctx)
 	if statusErr != nil {
 		active = false
-		slog.Warn("cannot read the resolver status",
+		logging.From(ctx).Warn("cannot read the resolver status",
 			"server", record.Name, "error", statusErr)
 	}
 
@@ -227,7 +228,7 @@ func (r *Refresher) refresh(ctx context.Context, record server.Server) Result {
 		RecordCount:   len(records),
 	}
 	if err := r.states.SetFetched(ctx, state); err != nil {
-		slog.Error("cannot store the state of a server",
+		logging.From(ctx).Error("cannot store the state of a server",
 			"server", record.Name, "error", err)
 		result.Err = err
 		return result
@@ -253,11 +254,11 @@ func (r *Refresher) markApplied(ctx context.Context, serverID int64, digest stri
 // than an empty page, which is what dropping them would leave behind.
 func (r *Refresher) markUnreachable(ctx context.Context, serverID int64, cause error) {
 	code := transport.FailureCode(cause)
-	slog.Error("cannot read a server",
+	logging.From(ctx).Error("cannot read a server",
 		"server", serverID, "code", code, "error", cause)
 
 	if err := r.states.SetUnreachable(ctx, serverID, code); err != nil {
-		slog.Error("cannot record that a server is unreachable",
+		logging.From(ctx).Error("cannot record that a server is unreachable",
 			"server", serverID, "error", err)
 	}
 }

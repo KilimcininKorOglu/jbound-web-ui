@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -118,7 +119,7 @@ var reloadReport = reportKind{
 func (a *App) handleDNSPage(w http.ResponseWriter, r *http.Request) {
 	data, err := a.dnsPageData(r)
 	if err != nil {
-		a.dnsError(w, "cannot load the records", err)
+		a.dnsError(w, r, "cannot load the records", err)
 		return
 	}
 	a.Render(w, r, http.StatusOK, "dns", PageData{Title: "nav.dns_records", Data: data})
@@ -132,7 +133,7 @@ func (a *App) handleDNSPage(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleDNSRecords(w http.ResponseWriter, r *http.Request) {
 	data, err := a.dnsPageData(r)
 	if err != nil {
-		a.dnsError(w, "cannot load the records", err)
+		a.dnsError(w, r, "cannot load the records", err)
 		return
 	}
 	a.RenderPartial(w, r, http.StatusOK, "record-table-swap", data)
@@ -286,7 +287,7 @@ func pageWindow(page pageBounds) []pageLink {
 
 func (a *App) handleRecordForm(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		a.dnsError(w, "cannot read the form", err)
+		a.dnsError(w, r, "cannot read the form", err)
 		return
 	}
 	query := listingFrom(r.Form)
@@ -308,12 +309,12 @@ func (a *App) handleRecordForm(w http.ResponseWriter, r *http.Request) {
 
 	servers, err := a.Servers.List(r.Context())
 	if err != nil {
-		a.dnsError(w, "cannot load the servers", err)
+		a.dnsError(w, r, "cannot load the servers", err)
 		return
 	}
 	groups, err := a.Servers.ListGroups(r.Context())
 	if err != nil {
-		a.dnsError(w, "cannot load the groups", err)
+		a.dnsError(w, r, "cannot load the groups", err)
 		return
 	}
 	data.Servers = servers
@@ -350,13 +351,13 @@ func (a *App) applyOperation(w http.ResponseWriter, r *http.Request, kind string
 
 	target, err := targetFromValues(r.Form)
 	if err != nil {
-		a.recordProblem(w, r, kind, recordMessage(a.catalog(r), err), http.StatusBadRequest)
+		a.recordProblem(w, r, kind, recordMessage(r.Context(), a.catalog(r), err), http.StatusBadRequest)
 		return
 	}
 
 	report, err := a.Records.Apply(r.Context(), a.actor(r), target, op)
 	if err != nil {
-		a.recordProblem(w, r, kind, recordMessage(a.catalog(r), err), dnsStatus(err))
+		a.recordProblem(w, r, kind, recordMessage(r.Context(), a.catalog(r), err), dnsStatus(err))
 		return
 	}
 
@@ -375,13 +376,13 @@ func (a *App) handleRecordApply(w http.ResponseWriter, r *http.Request) {
 
 	target, err := targetFromValues(r.Form)
 	if err != nil {
-		a.reportProblem(w, r, recordMessage(a.catalog(r), err), http.StatusBadRequest)
+		a.reportProblem(w, r, recordMessage(r.Context(), a.catalog(r), err), http.StatusBadRequest)
 		return
 	}
 
 	report, err := a.Records.Reload(r.Context(), a.actor(r), target)
 	if err != nil {
-		a.reportProblem(w, r, recordMessage(a.catalog(r), err), dnsStatus(err))
+		a.reportProblem(w, r, recordMessage(r.Context(), a.catalog(r), err), dnsStatus(err))
 		return
 	}
 
@@ -447,7 +448,7 @@ type queryFormData struct {
 func (a *App) handleQueryForm(w http.ResponseWriter, r *http.Request) {
 	data, err := a.queryData(r)
 	if err != nil {
-		a.dnsError(w, "cannot load the query form", err)
+		a.dnsError(w, r, "cannot load the query form", err)
 		return
 	}
 	a.RenderPartial(w, r, http.StatusOK, "record-query", data)
@@ -460,7 +461,7 @@ func (a *App) handleQueryForm(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleQuery(w http.ResponseWriter, r *http.Request) {
 	data, err := a.queryData(r)
 	if err != nil {
-		a.dnsError(w, "cannot load the query form", err)
+		a.dnsError(w, r, "cannot load the query form", err)
 		return
 	}
 	data.Domain = strings.TrimSpace(r.Form.Get("domain"))
@@ -474,7 +475,7 @@ func (a *App) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 	report, err := a.Records.Query(r.Context(), a.actor(r), target, data.Domain, data.Type)
 	if err != nil {
-		data.Problem = recordMessage(a.catalog(r), err)
+		data.Problem = recordMessage(r.Context(), a.catalog(r), err)
 		a.RenderPartial(w, r, dnsStatus(err), "record-query", data)
 		return
 	}
@@ -515,7 +516,7 @@ func (a *App) queryData(r *http.Request) (queryFormData, error) {
 func (a *App) handleRecordRefresh(w http.ResponseWriter, r *http.Request) {
 	results, err := a.Records.Refresh(r.Context())
 	if err != nil {
-		a.dnsError(w, "cannot refresh the records", err)
+		a.dnsError(w, r, "cannot refresh the records", err)
 		return
 	}
 
@@ -671,12 +672,12 @@ func (a *App) recordProblem(w http.ResponseWriter, r *http.Request,
 	// the database is. The failure is reported as itself instead.
 	servers, err := a.Servers.List(r.Context())
 	if err != nil {
-		a.internalError(w, "cannot load the servers for the record form", err)
+		a.internalError(w, r, "cannot load the servers for the record form", err)
 		return
 	}
 	groups, err := a.Servers.ListGroups(r.Context())
 	if err != nil {
-		a.internalError(w, "cannot load the groups for the record form", err)
+		a.internalError(w, r, "cannot load the groups for the record form", err)
 		return
 	}
 	data.Servers = servers
@@ -689,7 +690,7 @@ func (a *App) recordProblem(w http.ResponseWriter, r *http.Request,
 //
 // A rejected record and a missing target are the operator's to fix, so the
 // reason travels as it is rather than as a generic failure.
-func recordMessage(catalog *i18n.Catalog, err error) string {
+func recordMessage(ctx context.Context, catalog *i18n.Catalog, err error) string {
 	switch {
 	case errors.Is(err, dnsfile.ErrInvalid):
 		return capitalise(strings.TrimPrefix(err.Error(), dnsfile.ErrInvalid.Error()+": ")) + "."
@@ -700,7 +701,7 @@ func recordMessage(catalog *i18n.Catalog, err error) string {
 	case errors.Is(err, fleet.ErrEmptySource):
 		return catalog.T("error.empty_source")
 	default:
-		return userMessage(catalog, err)
+		return userMessage(ctx, catalog, err)
 	}
 }
 
@@ -728,12 +729,14 @@ func dnsStatus(err error) int {
 }
 
 // dnsError answers a failure that has no form to go back to.
-func (a *App) dnsError(w http.ResponseWriter, message string, err error) {
+func (a *App) dnsError(w http.ResponseWriter, r *http.Request,
+	message string, err error) {
+
 	if errors.Is(err, store.ErrNotFound) {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
-	a.internalError(w, message, err)
+	a.internalError(w, r, message, err)
 }
 
 func parseID(raw string) int64 {

@@ -8,9 +8,11 @@ import (
 	"net/http"
 	"net/url"
 	"runtime/debug"
+	"sync"
 	"time"
 
 	"unbound-web/internal/auth"
+	"unbound-web/internal/logging"
 	"unbound-web/internal/settings"
 )
 
@@ -18,12 +20,66 @@ import (
 // no other package can overwrite it by accident.
 type contextKey struct{ name string }
 
-var sessionKey = &contextKey{name: "session"}
+var (
+	sessionKey = &contextKey{name: "session"}
+	stateKey   = &contextKey{name: "request-state"}
+)
 
 // SessionFrom returns the session of the current request.
 func SessionFrom(ctx context.Context) (auth.Session, bool) {
 	session, ok := ctx.Value(sessionKey).(auth.Session)
 	return session, ok
+}
+
+// requestState is what the request log learns while the request runs.
+//
+// The log line is written by the outermost middleware, and the session is
+// attached by requireAuth further in, on a context that outer layer never
+// sees. The state travels by pointer so the answer reaches the line that has
+// to carry it.
+type requestState struct {
+	id string
+
+	mu       sync.Mutex
+	username string
+}
+
+func (s *requestState) setUsername(name string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.username = name
+}
+
+func (s *requestState) Username() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.username
+}
+
+// stateFrom returns the state of the current request, or nil outside one.
+func stateFrom(ctx context.Context) *requestState {
+	state, _ := ctx.Value(stateKey).(*requestState)
+	return state
+}
+
+// RequestID names the request in the log.
+//
+// It is answered for a context with no request as well, so a caller never has
+// to ask whether it is inside one.
+func RequestID(ctx context.Context) string {
+	if state := stateFrom(ctx); state != nil {
+		return state.id
+	}
+	return "unknown"
+}
+
+// serverError answers a failure the operator can look up in the log.
+//
+// The reference is the identifier of this request, which is what turns "it
+// failed" into one line somebody can find.
+func serverError(w http.ResponseWriter, r *http.Request) {
+	http.Error(w, "internal error (reference "+RequestID(r.Context())+")",
+		http.StatusInternalServerError)
 }
 
 // withFleetDeadline bounds a handler that reaches several servers at once.
@@ -62,14 +118,20 @@ func (a *App) requireAuth(next http.Handler) http.Handler {
 			case errors.Is(err, auth.ErrNoSession):
 				redirect(w, r, "/")
 			case errors.Is(err, auth.ErrFingerprintMismatch):
-				slog.Warn("session rejected",
+				logging.From(r.Context()).Warn("session rejected",
 					"reason", "fingerprint mismatch", "ip", auth.ClientIP(r))
 				redirect(w, r, "/")
 			default:
-				slog.Error("cannot load the session", "error", err)
-				http.Error(w, "internal error", http.StatusInternalServerError)
+				logging.From(r.Context()).Error("cannot load the session", "error", err)
+				serverError(w, r)
 			}
 			return
+		}
+
+		// The request line names who made the request, and this is where the
+		// panel first knows.
+		if state := stateFrom(r.Context()); state != nil {
+			state.setUsername(session.Username)
 		}
 
 		ctx := context.WithValue(r.Context(), sessionKey, session)
@@ -82,11 +144,11 @@ func (a *App) requireAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		session, ok := SessionFrom(r.Context())
 		if !ok {
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			serverError(w, r)
 			return
 		}
 		if !session.IsAdmin() {
-			slog.Warn("admin route refused",
+			logging.From(r.Context()).Warn("admin route refused",
 				"username", session.Username, "path", r.URL.Path)
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
@@ -103,7 +165,7 @@ func (a *App) requireCSRF(next http.Handler) http.Handler {
 			return
 		}
 		if !sameOrigin(r) {
-			slog.Warn("cross origin request refused",
+			logging.From(r.Context()).Warn("cross origin request refused",
 				"path", r.URL.Path, "origin", r.Header.Get("Origin"))
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
@@ -111,11 +173,11 @@ func (a *App) requireCSRF(next http.Handler) http.Handler {
 
 		session, ok := SessionFrom(r.Context())
 		if !ok {
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			serverError(w, r)
 			return
 		}
 		if !auth.ValidCSRF(session.CSRFToken, auth.CSRFToken(r)) {
-			slog.Warn("csrf token refused",
+			logging.From(r.Context()).Warn("csrf token refused",
 				"username", session.Username, "path", r.URL.Path)
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
@@ -214,16 +276,35 @@ func requestLog(next http.Handler) http.Handler {
 		started := time.Now()
 		recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 
+		// The identifier is the panel's own. An inbound X-Request-ID is
+		// client supplied, and this panel already refuses to trust client
+		// supplied headers about who a request is.
+		state := &requestState{id: logging.NewID()}
+		ctx := context.WithValue(r.Context(), stateKey, state)
+		ctx = logging.NewContext(ctx, slog.Default().With(logging.Field, state.id))
+		r = r.WithContext(ctx)
+
+		// The header travels with every response, so a failure that produced
+		// no error page can still be looked up.
+		w.Header().Set("X-Request-Id", state.id)
+
 		// Deferred, so the request that crashed is not the one request that
 		// leaves no line behind.
 		defer func() {
-			slog.Info("request",
+			fields := []any{
+				logging.Field, state.id,
 				"method", r.Method,
 				"path", r.URL.Path,
 				"status", recorder.status,
 				"duration_ms", time.Since(started).Milliseconds(),
 				"ip", auth.ClientIP(r),
-			)
+			}
+			// The login page and the assets have no session. An empty field
+			// there would read as a user whose name is missing.
+			if username := state.Username(); username != "" {
+				fields = append(fields, "username", username)
+			}
+			slog.Info("request", fields...)
 		}()
 
 		next.ServeHTTP(recorder, r)
@@ -248,7 +329,7 @@ func recoverPanic(next http.Handler) http.Handler {
 				panic(cause)
 			}
 
-			slog.Error("handler panicked",
+			logging.From(r.Context()).Error("handler panicked",
 				"method", r.Method,
 				"path", r.URL.Path,
 				"panic", fmt.Sprint(cause),
@@ -260,7 +341,7 @@ func recoverPanic(next http.Handler) http.Handler {
 				// produce a superfluous header warning.
 				return
 			}
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			serverError(w, r)
 		}()
 
 		next.ServeHTTP(w, r)

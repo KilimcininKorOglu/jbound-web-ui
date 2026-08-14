@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -34,7 +35,7 @@ type siemPageData struct {
 func (a *App) handleSIEMPage(w http.ResponseWriter, r *http.Request) {
 	data, err := a.siemPageData(r)
 	if err != nil {
-		a.internalError(w, "cannot read the syslog configuration", err)
+		a.internalError(w, r, "cannot read the syslog configuration", err)
 		return
 	}
 	a.Render(w, r, http.StatusOK, "siem", PageData{Title: "nav.siem_config", Data: data})
@@ -45,7 +46,7 @@ func (a *App) handleSIEMPage(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleSIEMPanel(w http.ResponseWriter, r *http.Request) {
 	data, err := a.siemPageData(r)
 	if err != nil {
-		a.internalError(w, "cannot read the syslog configuration", err)
+		a.internalError(w, r, "cannot read the syslog configuration", err)
 		return
 	}
 	a.RenderPartial(w, r, http.StatusOK, "siem-panel", data)
@@ -91,7 +92,7 @@ func (a *App) handleSIEMForwarding(w http.ResponseWriter, r *http.Request) {
 		appsettings.SIEMForwardingEnabled: boolValue(enabled),
 	})
 	if err != nil {
-		a.internalError(w, "cannot store the forwarding switch", err)
+		a.internalError(w, r, "cannot store the forwarding switch", err)
 		return
 	}
 
@@ -117,7 +118,7 @@ func (a *App) handleSIEMSave(w http.ResponseWriter, r *http.Request) {
 	rules := strings.ReplaceAll(strings.TrimSpace(r.PostFormValue("rules")), "\r\n", "\n")
 
 	if err := a.SIEM.Save(r.Context(), rules); err != nil {
-		a.siemProblem(w, r, rules, siemMessage(a.catalog(r), err), siemStatus(err))
+		a.siemProblem(w, r, rules, siemMessage(r.Context(), a.catalog(r), err), siemStatus(err))
 		return
 	}
 
@@ -132,8 +133,8 @@ func (a *App) handleSIEMTest(w http.ResponseWriter, r *http.Request) {
 	message, err := siem.SendTestEvents(r.Context(), a.Forwarder, audit.Entry{
 		UID: actor.UID, Username: actor.Username, IPAddress: actor.IPAddress})
 	if err != nil {
-		SetToast(w, ToastError, userMessage(a.catalog(r), err))
-		a.internalError(w, "cannot send the test events", err)
+		SetToast(w, ToastError, userMessage(r.Context(), a.catalog(r), err))
+		a.internalError(w, r, "cannot send the test events", err)
 		return
 	}
 
@@ -141,7 +142,7 @@ func (a *App) handleSIEMTest(w http.ResponseWriter, r *http.Request) {
 
 	data, err := a.siemPageData(r)
 	if err != nil {
-		a.internalError(w, "cannot read the syslog configuration", err)
+		a.internalError(w, r, "cannot read the syslog configuration", err)
 		return
 	}
 	data.Notice = message
@@ -156,7 +157,7 @@ func (a *App) siemProblem(w http.ResponseWriter, r *http.Request,
 
 	data, err := a.siemPageData(r)
 	if err != nil {
-		a.internalError(w, "cannot read the syslog configuration", err)
+		a.internalError(w, r, "cannot read the syslog configuration", err)
 		return
 	}
 
@@ -191,14 +192,14 @@ func (a *App) auditSIEM(r *http.Request, action, details string, mirrored bool) 
 }
 
 // siemMessage turns a refusal into a sentence the form can show.
-func siemMessage(catalog *i18n.Catalog, err error) string {
+func siemMessage(ctx context.Context, catalog *i18n.Catalog, err error) string {
 	switch {
 	case errors.Is(err, siem.ErrRule):
 		return capitalise(strings.TrimPrefix(err.Error(), siem.ErrRule.Error()+": ")) + "."
 	case errors.Is(err, siem.ErrConfig):
 		return capitalise(err.Error()) + "."
 	default:
-		return userMessage(catalog, err)
+		return userMessage(ctx, catalog, err)
 	}
 }
 

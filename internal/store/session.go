@@ -5,10 +5,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log/slog"
 	"time"
 
 	"unbound-web/internal/auth"
+	"unbound-web/internal/logging"
 )
 
 // ErrNotFound is returned when a lookup finds no row.
@@ -133,7 +133,7 @@ func (s *Sessions) Delete(ctx context.Context, id string) error {
 		// The cleanup loop may have swept it a moment earlier, so this does
 		// not fail the sign out. The identifier stays out of the line: it is
 		// live credential material until the row is gone.
-		slog.Warn("a session delete matched no row")
+		logging.From(ctx).Warn("a session delete matched no row")
 	}
 	return nil
 }

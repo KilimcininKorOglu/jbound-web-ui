@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"sync"
 
 	"unbound-web/internal/audit"
 	"unbound-web/internal/dnsfile"
+	"unbound-web/internal/logging"
 	"unbound-web/internal/server"
 	"unbound-web/internal/transport"
 )
@@ -341,7 +341,7 @@ func (w *Writer) applyOne(ctx context.Context, actor server.Actor,
 	if err := w.write(ctx, record, op); err != nil {
 		// The response table is the only other place this appears, and it
 		// lives exactly as long as the page it was rendered into.
-		slog.Error("cannot write a record to a server",
+		logging.From(ctx).Error("cannot write a record to a server",
 			"server", record.Name, "operation", op.Kind,
 			"fqdn", op.Record.FQDN, "type", op.Record.Type, "error", err)
 
@@ -354,7 +354,7 @@ func (w *Writer) applyOne(ctx context.Context, actor server.Actor,
 	// A refresh that fails does not undo the write, and saying the change
 	// failed would be worse than showing it late.
 	if _, refreshErr := w.refresh.oneHeld(ctx, record.ID); refreshErr != nil {
-		slog.Error("cannot refresh the cache after a write",
+		logging.From(ctx).Error("cannot refresh the cache after a write",
 			"server", record.Name, "error", refreshErr)
 		result.Message = op.message() + ", but the cache could not be refreshed"
 	} else {

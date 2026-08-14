@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"unbound-web/internal/audit"
 	"unbound-web/internal/i18n"
+	"unbound-web/internal/logging"
 	"unbound-web/internal/settings"
 )
 
@@ -122,7 +122,7 @@ func (a *App) handleSettingsSave(w http.ResponseWriter, r *http.Request) {
 			a.settingsProblem(w, r, submitted, refusal, http.StatusUnprocessableEntity)
 			return
 		}
-		a.internalError(w, "cannot store the settings", err)
+		a.internalError(w, r, "cannot store the settings", err)
 		return
 	}
 
@@ -192,7 +192,7 @@ func (a *App) sourceChoices(ctx context.Context, catalog *i18n.Catalog) []settin
 	if err != nil {
 		// The rest of the page is still worth showing. The control falls back
 		// to the empty choice, which changes nothing that is stored.
-		slog.Error("cannot list the servers for the settings page", "error", err)
+		logging.From(ctx).Error("cannot list the servers for the settings page", "error", err)
 		return choices
 	}
 

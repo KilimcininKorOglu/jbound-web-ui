@@ -3,13 +3,13 @@ package web
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"unbound-web/internal/auth"
 	"unbound-web/internal/i18n"
+	"unbound-web/internal/logging"
 	"unbound-web/internal/server"
 	"unbound-web/internal/settings"
 	"unbound-web/internal/store"
@@ -85,7 +85,7 @@ type testResultData struct {
 func (a *App) handleServersPage(w http.ResponseWriter, r *http.Request) {
 	data, err := a.serversPageData(r)
 	if err != nil {
-		a.internalError(w, "cannot load the servers", err)
+		a.internalError(w, r, "cannot load the servers", err)
 		return
 	}
 	a.Render(w, r, http.StatusOK, "servers", PageData{Title: "nav.servers", Data: data})
@@ -105,7 +105,7 @@ func (a *App) closePanel(w http.ResponseWriter) {
 func (a *App) handleServerTable(w http.ResponseWriter, r *http.Request) {
 	data, err := a.serversPageData(r)
 	if err != nil {
-		a.internalError(w, "cannot load the servers", err)
+		a.internalError(w, r, "cannot load the servers", err)
 		return
 	}
 	a.RenderPartial(w, r, http.StatusOK, "server-tables", data)
@@ -187,7 +187,7 @@ func (a *App) handleServerForm(w http.ResponseWriter, r *http.Request) {
 		}
 		record, err := a.Servers.Get(r.Context(), id)
 		if err != nil {
-			a.notFoundOrError(w, "cannot load the server", err)
+			a.notFoundOrError(w, r, "cannot load the server", err)
 			return
 		}
 		data = serverFormData{Server: record}
@@ -209,7 +209,7 @@ func (a *App) handleServerCreate(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		a.RenderPartial(w, r, formStatus(err), "server-form",
-			serverFormData{Server: record, IsNew: true, Problem: userMessage(a.catalog(r), err)})
+			serverFormData{Server: record, IsNew: true, Problem: userMessage(r.Context(), a.catalog(r), err)})
 		return
 	}
 
@@ -238,7 +238,7 @@ func (a *App) handleServerUpdate(w http.ResponseWriter, r *http.Request) {
 
 	if err := a.Servers.Update(r.Context(), a.actor(r), record); err != nil {
 		a.RenderPartial(w, r, formStatus(err), "server-form",
-			serverFormData{Server: record, Problem: userMessage(a.catalog(r), err)})
+			serverFormData{Server: record, Problem: userMessage(r.Context(), a.catalog(r), err)})
 		return
 	}
 	if !record.Enabled {
@@ -256,7 +256,7 @@ func (a *App) handleServerDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := a.Servers.Delete(r.Context(), a.actor(r), id); err != nil {
-		a.notFoundOrError(w, "cannot delete the server", err)
+		a.notFoundOrError(w, r, "cannot delete the server", err)
 		return
 	}
 	a.releaseSourceServer(r.Context(), id)
@@ -278,7 +278,8 @@ func (a *App) releaseSourceServer(ctx context.Context, id int64) {
 		// The server change already happened. The stale identifier is worth
 		// reporting but not worth failing the request over, and the drift page
 		// treats a source it cannot resolve as no source at all.
-		slog.Error("cannot clear the source server setting", "server", id, "error", err)
+		logging.From(ctx).Error("cannot clear the source server setting",
+			"server", id, "error", err)
 	}
 }
 
@@ -290,12 +291,12 @@ func (a *App) handleServerKey(w http.ResponseWriter, r *http.Request) {
 
 	record, err := a.Servers.Get(r.Context(), id)
 	if err != nil {
-		a.notFoundOrError(w, "cannot load the server", err)
+		a.notFoundOrError(w, r, "cannot load the server", err)
 		return
 	}
 	pair, err := a.Servers.PublicKey(r.Context(), id)
 	if err != nil {
-		a.internalError(w, "cannot read the public key", err)
+		a.internalError(w, r, "cannot read the public key", err)
 		return
 	}
 	a.RenderPartial(w, r, http.StatusOK, "server-key", keyPanelData{Server: record, Key: pair})
@@ -314,7 +315,7 @@ func (a *App) handleServerRotateKey(w http.ResponseWriter, r *http.Request) {
 
 	record, pair, err := a.Servers.RotateKey(r.Context(), a.actor(r), id)
 	if err != nil {
-		a.notFoundOrError(w, "cannot rotate the key of a server", err)
+		a.notFoundOrError(w, r, "cannot rotate the key of a server", err)
 		return
 	}
 
@@ -332,13 +333,13 @@ func (a *App) handleServerTest(w http.ResponseWriter, r *http.Request) {
 
 	record, err := a.Servers.Get(r.Context(), id)
 	if err != nil {
-		a.notFoundOrError(w, "cannot load the server", err)
+		a.notFoundOrError(w, r, "cannot load the server", err)
 		return
 	}
 
 	result, err := a.Servers.TestConnection(r.Context(), id)
 	if err != nil {
-		a.internalError(w, "cannot run the connection test", err)
+		a.internalError(w, r, "cannot run the connection test", err)
 		return
 	}
 
@@ -374,7 +375,7 @@ func (a *App) handleServerTrust(w http.ResponseWriter, r *http.Request) {
 
 	if err := a.Servers.TrustHostKey(r.Context(), a.actor(r), id, fingerprint); err != nil {
 		a.RenderPartial(w, r, formStatus(err), "alert",
-			&Alert{Severity: ToastError, Message: userMessage(a.catalog(r), err)})
+			&Alert{Severity: ToastError, Message: userMessage(r.Context(), a.catalog(r), err)})
 		return
 	}
 
@@ -387,7 +388,7 @@ func (a *App) handleServerTrust(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleGroupForm(w http.ResponseWriter, r *http.Request) {
 	servers, err := a.Servers.List(r.Context())
 	if err != nil {
-		a.internalError(w, "cannot load the servers", err)
+		a.internalError(w, r, "cannot load the servers", err)
 		return
 	}
 
@@ -401,7 +402,7 @@ func (a *App) handleGroupForm(w http.ResponseWriter, r *http.Request) {
 		}
 		group, err := a.Servers.GetGroup(r.Context(), id)
 		if err != nil {
-			a.notFoundOrError(w, "cannot load the group", err)
+			a.notFoundOrError(w, r, "cannot load the group", err)
 			return
 		}
 		data.Group = group
@@ -451,7 +452,7 @@ func (a *App) handleGroupDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := a.Servers.DeleteGroup(r.Context(), a.actor(r), id); err != nil {
-		a.notFoundOrError(w, "cannot delete the group", err)
+		a.notFoundOrError(w, r, "cannot delete the group", err)
 		return
 	}
 
@@ -465,7 +466,7 @@ func (a *App) renderGroupProblem(w http.ResponseWriter, r *http.Request,
 
 	servers, err := a.Servers.List(r.Context())
 	if err != nil {
-		a.internalError(w, "cannot load the servers", err)
+		a.internalError(w, r, "cannot load the servers", err)
 		return
 	}
 
@@ -479,7 +480,7 @@ func (a *App) renderGroupProblem(w http.ResponseWriter, r *http.Request,
 		Servers: servers,
 		Chosen:  chosen,
 		IsNew:   isNew,
-		Problem: userMessage(a.catalog(r), cause),
+		Problem: userMessage(r.Context(), a.catalog(r), cause),
 	})
 }
 
@@ -579,7 +580,7 @@ func formStatus(err error) int {
 // The validation text itself stays in the language of the package that raised
 // it. It names a field of a record and travels to the audit trail as well,
 // where a machine reads it.
-func userMessage(catalog *i18n.Catalog, err error) string {
+func userMessage(ctx context.Context, catalog *i18n.Catalog, err error) string {
 	switch {
 	case errors.Is(err, server.ErrValidation):
 		return strings.TrimPrefix(err.Error(), "invalid input: ")
@@ -590,20 +591,28 @@ func userMessage(catalog *i18n.Catalog, err error) string {
 	case errors.Is(err, transport.ErrHostKeyMismatch):
 		return catalog.T("error.host_key_mismatch")
 	default:
-		slog.Error("server operation failed", "error", err)
+		logging.From(ctx).Error("server operation failed", "error", err)
 		return catalog.T("error.generic")
 	}
 }
 
-func (a *App) internalError(w http.ResponseWriter, message string, err error) {
-	slog.Error(message, "error", err)
-	http.Error(w, "internal error", http.StatusInternalServerError)
+// internalError logs a failure and answers with the reference to its line.
+//
+// The request travels with it, so the line the operator finds names the same
+// request the reader was looking at.
+func (a *App) internalError(w http.ResponseWriter, r *http.Request,
+	message string, err error) {
+
+	logging.From(r.Context()).Error(message, "error", err)
+	serverError(w, r)
 }
 
-func (a *App) notFoundOrError(w http.ResponseWriter, message string, err error) {
+func (a *App) notFoundOrError(w http.ResponseWriter, r *http.Request,
+	message string, err error) {
+
 	if errors.Is(err, store.ErrNotFound) {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
-	a.internalError(w, message, err)
+	a.internalError(w, r, message, err)
 }

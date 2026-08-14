@@ -28,7 +28,7 @@ type logsPageData struct {
 func (a *App) handleLogsPage(w http.ResponseWriter, r *http.Request) {
 	data, err := a.logsPageData(r)
 	if err != nil {
-		a.internalError(w, "cannot load the audit log", err)
+		a.internalError(w, r, "cannot load the audit log", err)
 		return
 	}
 	a.Render(w, r, http.StatusOK, "logs", PageData{Title: "nav.audit_logs", Data: data})
@@ -39,7 +39,7 @@ func (a *App) handleLogsPage(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleLogsTable(w http.ResponseWriter, r *http.Request) {
 	data, err := a.logsPageData(r)
 	if err != nil {
-		a.internalError(w, "cannot load the audit log", err)
+		a.internalError(w, r, "cannot load the audit log", err)
 		return
 	}
 	a.RenderPartial(w, r, http.StatusOK, "log-table", data)

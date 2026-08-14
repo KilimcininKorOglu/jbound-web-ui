@@ -96,7 +96,7 @@ type systemRow struct {
 func (a *App) handleSystemPage(w http.ResponseWriter, r *http.Request) {
 	data, err := a.systemPageData(r)
 	if err != nil {
-		a.internalError(w, "cannot read the system information", err)
+		a.internalError(w, r, "cannot read the system information", err)
 		return
 	}
 	a.Render(w, r, http.StatusOK, "system", PageData{Title: "nav.system_info", Data: data})
@@ -106,7 +106,7 @@ func (a *App) handleSystemPage(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleSystemStatus(w http.ResponseWriter, r *http.Request) {
 	status, err := a.systemStatus(r)
 	if err != nil {
-		a.internalError(w, "cannot read the fleet status", err)
+		a.internalError(w, r, "cannot read the fleet status", err)
 		return
 	}
 	a.RenderPartial(w, r, http.StatusOK, "system-status", status)
@@ -243,7 +243,7 @@ func (a *App) panelCard() panelCard {
 func (a *App) syslogCard(r *http.Request) syslogCard {
 	settings, err := a.SIEM.Settings(r.Context())
 	if err != nil {
-		return syslogCard{Status: "unknown", Problem: userMessage(a.catalog(r), err)}
+		return syslogCard{Status: "unknown", Problem: userMessage(r.Context(), a.catalog(r), err)}
 	}
 
 	return syslogCard{

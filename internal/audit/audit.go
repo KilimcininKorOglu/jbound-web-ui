@@ -8,8 +8,8 @@ package audit
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"time"
+	"unbound-web/internal/logging"
 )
 
 // Actions written by the panel. They are constants so a typo cannot create a
@@ -165,7 +165,7 @@ func (l *Logger) write(ctx context.Context, entry Entry, mirror bool) error {
 
 	err := l.repo.Write(ctx, entry, l.now().UTC())
 	if err != nil {
-		slog.Error("cannot write the audit entry",
+		logging.From(ctx).Error("cannot write the audit entry",
 			"action", entry.Action, "username", entry.Username, "error", err)
 	}
 
@@ -173,7 +173,7 @@ func (l *Logger) write(ctx context.Context, entry Entry, mirror bool) error {
 		if forwardErr := l.forwarder.Forward(entry); forwardErr != nil {
 			// The entry is in the database. Failing the action over a syslog
 			// socket would be worse than reporting that the mirror is down.
-			slog.Error("cannot forward the audit entry",
+			logging.From(ctx).Error("cannot forward the audit entry",
 				"action", entry.Action, "error", forwardErr)
 		}
 	}

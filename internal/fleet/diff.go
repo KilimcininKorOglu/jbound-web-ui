@@ -5,11 +5,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"slices"
 
 	"unbound-web/internal/audit"
 	"unbound-web/internal/dnsfile"
+	"unbound-web/internal/logging"
 	"unbound-web/internal/server"
 )
 
@@ -485,7 +485,7 @@ func (w *Writer) mirrorOne(ctx context.Context, actor server.Actor,
 	for _, op := range slices.Concat(removed, added) {
 		updated, err = op.apply(updated)
 		if err != nil {
-			slog.Error("cannot mirror a record",
+			logging.From(ctx).Error("cannot mirror a record",
 				"server", record.Name, "source", source.Name,
 				"operation", op.Kind, "fqdn", op.Record.FQDN, "error", err)
 
@@ -496,7 +496,7 @@ func (w *Writer) mirrorOne(ctx context.Context, actor server.Actor,
 	}
 
 	if err := client.WriteHostEntries(ctx, updated, digest); err != nil {
-		slog.Error("cannot write a mirrored file",
+		logging.From(ctx).Error("cannot write a mirrored file",
 			"server", record.Name, "source", source.Name, "error", err)
 
 		result.Status = StatusFailed
@@ -507,7 +507,7 @@ func (w *Writer) mirrorOne(ctx context.Context, actor server.Actor,
 	result.Status = StatusSuccess
 	result.Message = fmt.Sprintf("%d added, %d removed", len(added), len(removed))
 	if _, refreshErr := w.refresh.oneHeld(ctx, record.ID); refreshErr != nil {
-		slog.Error("cannot refresh the cache after a mirror",
+		logging.From(ctx).Error("cannot refresh the cache after a mirror",
 			"server", record.Name, "error", refreshErr)
 		result.Message += ", but the cache could not be refreshed"
 	}

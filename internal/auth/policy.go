@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
+	"unbound-web/internal/logging"
 )
 
 // Roles recognised by the panel.
@@ -90,12 +90,12 @@ func (s *Service) Login(ctx context.Context, username, password string) (User, e
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrBadPassword):
-			slog.Info("login rejected", "username", username, "reason", "bad password")
+			logging.From(ctx).Info("login rejected", "username", username, "reason", "bad password")
 		case errors.Is(err, ErrAccountRejected):
-			slog.Info("login rejected", "username", username, "reason", "account rejected by PAM")
+			logging.From(ctx).Info("login rejected", "username", username, "reason", "account rejected by PAM")
 		case errors.Is(err, ErrHelper):
 			// A broken helper is an operational fault, not a login attempt.
-			slog.Error("auth helper failed", "username", username, "error", err)
+			logging.From(ctx).Error("auth helper failed", "username", username, "error", err)
 		default:
 			return User{}, err
 		}
@@ -104,7 +104,7 @@ func (s *Service) Login(ctx context.Context, username, password string) (User, e
 
 	user, err := s.policy.Apply(account)
 	if err != nil {
-		slog.Info("login rejected", "username", username, "reason", err.Error())
+		logging.From(ctx).Info("login rejected", "username", username, "reason", err.Error())
 		return User{}, ErrLoginFailed
 	}
 	return user, nil

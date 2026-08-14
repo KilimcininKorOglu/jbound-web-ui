@@ -48,9 +48,3 @@ func (g Group) Validate() error {
 	}
 	return nil
 }
-
-// IsEmpty reports whether the group targets no server.
-//
-// An operation against an empty group is refused rather than reported as a
-// success, because nothing would reach a resolver.
-func (g Group) IsEmpty() bool { return len(g.ServerIDs) == 0 }

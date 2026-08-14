@@ -171,7 +171,4 @@ func TestGroupValidateAcceptsAGroupWithNoMembers(t *testing.T) {
 	if err := group.Validate(); err != nil {
 		t.Fatalf("an empty group was refused: %v", err)
 	}
-	if !group.IsEmpty() {
-		t.Error("IsEmpty reports false for a group with no members")
-	}
 }

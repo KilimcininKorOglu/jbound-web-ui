@@ -226,8 +226,3 @@ func (s *Service) Apply(ctx context.Context, actor server.Actor,
 func (s *Service) Refresh(ctx context.Context) ([]Result, error) {
 	return s.refresh.All(ctx)
 }
-
-// RefreshOne fills the cache of a single server.
-func (s *Service) RefreshOne(ctx context.Context, serverID int64) (Result, error) {
-	return s.refresh.One(ctx, serverID)
-}

@@ -17,8 +17,8 @@ func (e *fleetEnv) drift(t *testing.T, id int64, file string) {
 	t.Helper()
 
 	e.target(id).setFile(file)
-	if _, err := e.records.RefreshOne(context.Background(), id); err != nil {
-		t.Fatalf("cannot refresh server %d: %v", id, err)
+	if _, err := e.records.Refresh(context.Background()); err != nil {
+		t.Fatalf("cannot refresh after changing server %d: %v", id, err)
 	}
 }
 

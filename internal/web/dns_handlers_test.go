@@ -158,7 +158,7 @@ func TestARecordOneServerMissesIsMarked(t *testing.T) {
 	env := newFleetEnv(t)
 
 	env.target(3).setFile("# managed by the panel\n")
-	if _, err := env.records.RefreshOne(context.Background(), 3); err != nil {
+	if _, err := env.records.Refresh(context.Background()); err != nil {
 		t.Fatalf("cannot refresh: %v", err)
 	}
 
@@ -177,7 +177,7 @@ func TestARecordOneServerMissesIsMarked(t *testing.T) {
 func TestTheTableScopesToOneServer(t *testing.T) {
 	env := newFleetEnv(t)
 	env.target(2).setFile("local-data: \"only-on-two.example.local. A 10.0.0.99\"\n")
-	if _, err := env.records.RefreshOne(context.Background(), 2); err != nil {
+	if _, err := env.records.Refresh(context.Background()); err != nil {
 		t.Fatalf("cannot refresh: %v", err)
 	}
 

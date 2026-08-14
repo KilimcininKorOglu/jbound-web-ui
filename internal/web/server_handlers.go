@@ -387,7 +387,7 @@ func (a *App) handleServerTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := a.Servers.TestConnection(r.Context(), id)
+	result, err := a.Servers.TestConnection(r.Context(), a.actor(r), id)
 	if err != nil {
 		a.internalError(w, r, "cannot run the connection test", err)
 		return

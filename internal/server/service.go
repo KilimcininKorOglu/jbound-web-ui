@@ -354,7 +354,14 @@ type TestResult struct {
 }
 
 // TestConnection walks the whole path the panel depends on.
-func (s *Service) TestConnection(ctx context.Context, id int64) (TestResult, error) {
+//
+// It is audited like the actions that change a server, because it does two
+// things a read does not: it opens a session to the configured host with the
+// panel's key, and it writes the outcome back onto the row, which is the
+// evidence the servers page and the system page present as health. An
+// investigator reading a trust decision needs the probe that produced the
+// fingerprint next to it.
+func (s *Service) TestConnection(ctx context.Context, actor Actor, id int64) (TestResult, error) {
 	record, err := s.servers.Get(ctx, id)
 	if err != nil {
 		return TestResult{}, err
@@ -364,6 +371,7 @@ func (s *Service) TestConnection(ctx context.Context, id int64) (TestResult, err
 	client, err := s.pool.Get(record.TransportConfig(
 		s.dataDir, timeouts.Connect, timeouts.Command))
 	if err != nil {
+		s.auditTest(ctx, actor, record, transport.FailureCode(err))
 		return TestResult{Step: transport.StepConnect, Message: err.Error()}, nil
 	}
 
@@ -372,6 +380,7 @@ func (s *Service) TestConnection(ctx context.Context, id int64) (TestResult, err
 		if err := s.servers.SetReachability(ctx, id, s.now().UTC(), ""); err != nil {
 			return TestResult{}, err
 		}
+		s.auditTest(ctx, actor, record, "ok")
 		return TestResult{OK: true}, nil
 	}
 
@@ -402,7 +411,19 @@ func (s *Service) TestConnection(ctx context.Context, id int64) (TestResult, err
 		transport.FailureCode(probeErr)); err != nil {
 		return TestResult{}, err
 	}
+
+	s.auditTest(ctx, actor, record, transport.FailureCode(probeErr))
 	return result, nil
+}
+
+// auditTest records one connection test and how it ended.
+//
+// The outcome is the failure class rather than the text, for the same reason
+// the row stores the class: the text of a probe failure names the remote
+// command, its paths and its stderr, and this entry is mirrored to the SIEM.
+func (s *Service) auditTest(ctx context.Context, actor Actor, record Server, outcome string) {
+	s.writeFor(ctx, actor, audit.ActionServerTest, &record.ID, record.Name,
+		fmt.Sprintf("Tested the connection to %s: %s", record.Name, outcome))
 }
 
 // write records one action.

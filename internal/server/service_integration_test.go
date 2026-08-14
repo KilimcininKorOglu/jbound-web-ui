@@ -105,7 +105,7 @@ func TestANewServerIsRefusedUntilItsHostKeyIsApproved(t *testing.T) {
 	ctx := context.Background()
 	record := h.addTarget(t)
 
-	result, err := h.service.TestConnection(ctx, record.ID)
+	result, err := h.service.TestConnection(ctx, testActor(), record.ID)
 	if err != nil {
 		t.Fatalf("TestConnection returned an error: %v", err)
 	}
@@ -124,7 +124,7 @@ func TestANewServerIsRefusedUntilItsHostKeyIsApproved(t *testing.T) {
 		t.Fatalf("TrustHostKey returned an error: %v", err)
 	}
 
-	result, err = h.service.TestConnection(ctx, record.ID)
+	result, err = h.service.TestConnection(ctx, testActor(), record.ID)
 	if err != nil {
 		t.Fatalf("the second TestConnection returned an error: %v", err)
 	}
@@ -183,7 +183,7 @@ func TestAChangedHostKeyIsRefusedAndAsksForApprovalAgain(t *testing.T) {
 		t.Fatalf("SetHostKey returned an error: %v", err)
 	}
 
-	result, err := h.service.TestConnection(ctx, record.ID)
+	result, err := h.service.TestConnection(ctx, testActor(), record.ID)
 	if err != nil {
 		t.Fatalf("TestConnection returned an error: %v", err)
 	}
@@ -205,7 +205,7 @@ func TestAChangedHostKeyIsRefusedAndAsksForApprovalAgain(t *testing.T) {
 	if err := h.service.TrustHostKey(ctx, testActor(), record.ID, result.HostKey.Fingerprint); err != nil {
 		t.Fatalf("the re-approval returned an error: %v", err)
 	}
-	result, err = h.service.TestConnection(ctx, record.ID)
+	result, err = h.service.TestConnection(ctx, testActor(), record.ID)
 	if err != nil {
 		t.Fatalf("the second TestConnection returned an error: %v", err)
 	}

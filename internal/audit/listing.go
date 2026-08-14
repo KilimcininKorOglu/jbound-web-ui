@@ -72,7 +72,7 @@ func Actions() []string {
 		ActionDNSRestart, ActionDNSQuery,
 		ActionDiffRepair, ActionDiffSync, ActionCacheRefresh, ActionFileRestore,
 		ActionServerCreate, ActionServerUpdate, ActionServerDelete, ActionServerTrust,
-		ActionServerRotateKey,
+		ActionServerRotateKey, ActionServerTest,
 		ActionGroupCreate, ActionGroupUpdate, ActionGroupDelete,
 		ActionSIEMConfig, ActionSIEMTest,
 		ActionSettingsUpdate,

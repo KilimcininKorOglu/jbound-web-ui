@@ -239,6 +239,37 @@ func TestServerListShowsTheNewServer(t *testing.T) {
 	}
 }
 
+func TestPressingTestLeavesAnAuditRow(t *testing.T) {
+	// The route reaches a managed host with the panel's key and writes the
+	// outcome onto the row, so who probed which server has to be answerable.
+	env := newTestEnv(t)
+	cookie := env.login(t, "dnsadmin")
+	env.addServer(t, cookie, "dns1")
+	if err := env.trust(1); err != nil {
+		t.Fatalf("cannot approve the host key: %v", err)
+	}
+
+	if recorder := env.adminForm(t, http.MethodPost, "/servers/1/test", cookie,
+		url.Values{}); recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+
+	var count int
+	var details, username string
+	row := env.db.QueryRow(`
+SELECT COUNT(*), COALESCE(MAX(details), ''), COALESCE(MAX(username), '')
+  FROM audit_logs WHERE action = 'server_test'`)
+	if err := row.Scan(&count, &details, &username); err != nil {
+		t.Fatalf("cannot read the audit table: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("%d rows were written, want 1", count)
+	}
+	if username != "dnsadmin" || !strings.Contains(details, "dns1") {
+		t.Errorf("the row does not name who tested what: %q %q", username, details)
+	}
+}
+
 func TestTheRestoreButtonWaitsUntilThereIsSomethingToRestore(t *testing.T) {
 	env := newTestEnv(t)
 	cookie := env.login(t, "dnsadmin")

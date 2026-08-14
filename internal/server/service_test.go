@@ -547,7 +547,7 @@ func TestTestConnectionReportsSuccess(t *testing.T) {
 		t.Fatalf("Create returned an error: %v", err)
 	}
 
-	result, err := h.service.TestConnection(ctx, record.ID)
+	result, err := h.service.TestConnection(ctx, testActor(), record.ID)
 	if err != nil {
 		t.Fatalf("TestConnection returned an error: %v", err)
 	}
@@ -577,7 +577,7 @@ func TestTestConnectionReportsTheFailedStep(t *testing.T) {
 		t.Fatalf("Create returned an error: %v", err)
 	}
 
-	result, err := h.service.TestConnection(ctx, record.ID)
+	result, err := h.service.TestConnection(ctx, testActor(), record.ID)
 	if err != nil {
 		t.Fatalf("TestConnection returned an error: %v", err)
 	}
@@ -594,6 +594,71 @@ func TestTestConnectionReportsTheFailedStep(t *testing.T) {
 	}
 	if stored.LastSeenAt != nil {
 		t.Error("a failed test was recorded as a successful contact")
+	}
+}
+
+func TestAConnectionTestIsAudited(t *testing.T) {
+	// The probe opens a session to the configured host with the panel's key
+	// and writes the outcome onto the row, which is the evidence the pages
+	// present as health. An investigator reading a trust decision needs the
+	// probe that produced the fingerprint next to it.
+	h := newHarness(t)
+	ctx := context.Background()
+
+	record, _, err := h.service.Create(ctx, testActor(), newServerInput("dns1"))
+	if err != nil {
+		t.Fatalf("Create returned an error: %v", err)
+	}
+	if _, err := h.service.TestConnection(ctx, testActor(), record.ID); err != nil {
+		t.Fatalf("TestConnection returned an error: %v", err)
+	}
+
+	entry := h.auditLog.entries[len(h.auditLog.entries)-1]
+	if entry.Action != audit.ActionServerTest {
+		t.Fatalf("action = %q, want %q", entry.Action, audit.ActionServerTest)
+	}
+	if entry.Username != testActor().Username || entry.IPAddress != testActor().IPAddress {
+		t.Errorf("the entry does not name who tested: %+v", entry)
+	}
+	if entry.ServerName != "dns1" || entry.ServerID == nil || *entry.ServerID != record.ID {
+		t.Errorf("the entry does not name the server: %+v", entry)
+	}
+}
+
+func TestAFailedConnectionTestIsAuditedByItsClass(t *testing.T) {
+	// The class rather than the text, for the same reason the row stores the
+	// class: the text names the remote command, its paths and its stderr, and
+	// this entry is mirrored to the SIEM.
+	h := newHarness(t)
+	ctx := context.Background()
+	h.connector.transport.probeErr = &transport.ProbeError{
+		Step: transport.StepWrite,
+		Err: &transport.CommandError{
+			Command:  "/usr/bin/base64 -w0 /etc/unbound/host_entries.conf",
+			ExitCode: 1,
+			Stderr:   "sudo: a password is required",
+		},
+	}
+
+	record, _, err := h.service.Create(ctx, testActor(), newServerInput("dns1"))
+	if err != nil {
+		t.Fatalf("Create returned an error: %v", err)
+	}
+	if _, err := h.service.TestConnection(ctx, testActor(), record.ID); err != nil {
+		t.Fatalf("TestConnection returned an error: %v", err)
+	}
+
+	entry := h.auditLog.entries[len(h.auditLog.entries)-1]
+	if entry.Action != audit.ActionServerTest {
+		t.Fatalf("action = %q, want %q", entry.Action, audit.ActionServerTest)
+	}
+	if !strings.Contains(entry.Details, transport.CodeCommandFailed) {
+		t.Errorf("the entry does not carry the failure class: %q", entry.Details)
+	}
+	for _, secret := range []string{"base64", "host_entries.conf", "sudo"} {
+		if strings.Contains(entry.Details, secret) {
+			t.Errorf("the entry carries %q: %s", secret, entry.Details)
+		}
 	}
 }
 
@@ -772,7 +837,7 @@ func TestARecordedProbeFailureKeepsItsTextOutOfTheDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create returned an error: %v", err)
 	}
-	if _, err := h.service.TestConnection(ctx, record.ID); err != nil {
+	if _, err := h.service.TestConnection(ctx, testActor(), record.ID); err != nil {
 		t.Fatalf("TestConnection returned an error: %v", err)
 	}
 

@@ -25,6 +25,7 @@ const (
 	ActionServerDelete    = "server_delete"
 	ActionServerTrust     = "server_trust"
 	ActionServerRotateKey = "server_rotate_key"
+	ActionServerTest      = "server_test"
 
 	ActionGroupCreate = "group_create"
 	ActionGroupUpdate = "group_update"

@@ -279,3 +279,93 @@ func TestOneWedgedServerDoesNotStopTheSweep(t *testing.T) {
 		t.Errorf("the sweep took %s, the servers were pinged one after another", elapsed)
 	}
 }
+
+// pooledAt puts one open connection in the pool with the moment it was last
+// used, which is what the sweep decides on.
+func pooledAt(t *testing.T, pool *Pool, id int64, server *floodServer,
+	lastUsed time.Time) *SSHTransport {
+
+	t.Helper()
+
+	client := transportTo(t, server)
+	openConnection(t, client)
+
+	pool.mu.Lock()
+	defer pool.mu.Unlock()
+	pool.entries[id] = &poolEntry{
+		transport: client, config: client.cfg, lastUsed: lastUsed}
+	return client
+}
+
+// connected reports whether the transport still holds an open connection.
+func connected(client *SSHTransport) bool {
+	client.mu.Lock()
+	defer client.mu.Unlock()
+	return client.client != nil
+}
+
+func TestASweepClosesWhatHasGoneIdleAndKeepsTheRest(t *testing.T) {
+	// This is the only reader of ssh_idle_timeout. Without it a regression
+	// would leave the panel holding every SSH connection open for ever, and
+	// changing the setting would silently do nothing.
+	server := startFloodServer(t, 0, 0)
+	pool := NewPool(context.Background(), func() time.Duration { return time.Minute })
+	t.Cleanup(pool.Close)
+
+	idle := pooledAt(t, pool, 1, server, time.Now().Add(-2*time.Minute))
+	fresh := pooledAt(t, pool, 2, server, time.Now())
+
+	pool.sweep()
+
+	pool.mu.Lock()
+	_, idleKept := pool.entries[1]
+	_, freshKept := pool.entries[2]
+	pool.mu.Unlock()
+
+	if idleKept {
+		t.Error("the idle entry is still in the pool")
+	}
+	if connected(idle) {
+		t.Error("the idle connection was dropped from the pool but left open")
+	}
+	if !freshKept {
+		t.Error("the pool forgot a connection that is still in use")
+	}
+	if !connected(fresh) {
+		t.Error("the sweep closed a connection that is still in use")
+	}
+}
+
+func TestTheIdleTimeoutIsReadOnEverySweep(t *testing.T) {
+	// The comment on the field promises that a shorter value set on the
+	// settings page starts closing connections on the next sweep.
+	server := startFloodServer(t, 0, 0)
+
+	timeout := time.Hour
+	pool := NewPool(context.Background(), func() time.Duration { return timeout })
+	t.Cleanup(pool.Close)
+
+	client := pooledAt(t, pool, 1, server, time.Now().Add(-2*time.Minute))
+
+	pool.sweep()
+	pool.mu.Lock()
+	_, kept := pool.entries[1]
+	pool.mu.Unlock()
+	if !kept {
+		t.Fatal("the sweep closed a connection the timeout still covers")
+	}
+
+	// The operator shortens it. Nothing is restarted.
+	timeout = time.Minute
+
+	pool.sweep()
+	pool.mu.Lock()
+	_, keptAgain := pool.entries[1]
+	pool.mu.Unlock()
+	if keptAgain {
+		t.Error("the shorter timeout did not take effect on the next sweep")
+	}
+	if connected(client) {
+		t.Error("the connection was dropped from the pool but left open")
+	}
+}

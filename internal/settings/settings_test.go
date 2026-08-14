@@ -317,6 +317,30 @@ func TestTheAccessorsAnswerForEveryKind(t *testing.T) {
 	}
 }
 
+// The three typed readers recover the same way, so a value that cannot be
+// parsed reads as the default the registry declares rather than as the zero
+// value of its kind. The boolean matters most: the only one the panel holds
+// defaults to on, and a bare false would turn the audit mirror off quietly.
+func TestAValueThatCannotBeParsedReadsAsTheRegistryDefault(t *testing.T) {
+	values, _ := NewValues(nil)
+
+	// Past the validation NewValues runs, which is where a snapshot built by
+	// hand or a key added to the registry without a row would land.
+	values.raw[SIEMForwardingEnabled] = ""
+	values.raw[SessionIdleTimeout] = "not a duration"
+	values.raw[RecordsPerPage] = "many"
+
+	if !values.Bool(SIEMForwardingEnabled) {
+		t.Error("the SIEM mirror reads as off, and the registry declares it on")
+	}
+	if got := values.Duration(SessionIdleTimeout); got != 30*time.Minute {
+		t.Errorf("idle timeout = %s, want 30m", got)
+	}
+	if got := values.Int(RecordsPerPage); got != 25 {
+		t.Errorf("records per page = %d, want 25", got)
+	}
+}
+
 // A key nobody defined has no default to fall back to, so the typed readers
 // answer with the zero value instead of panicking.
 func TestAnUnknownKeyReadsAsZero(t *testing.T) {

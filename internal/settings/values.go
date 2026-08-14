@@ -91,10 +91,14 @@ func (v *Values) Int64(key string) int64 {
 }
 
 // Bool returns a boolean setting.
+//
+// A bare false here would contradict a key whose declared default is true, and
+// it would do it in the quiet direction: the only boolean the panel holds turns
+// the audit mirror on.
 func (v *Values) Bool(key string) bool {
 	value, err := strconv.ParseBool(v.raw[key])
 	if err != nil {
-		return false
+		return mustDefaultBool(key)
 	}
 	return value
 }
@@ -114,6 +118,15 @@ func mustDefaultInt(key string) int {
 		return 0
 	}
 	value, _ := strconv.Atoi(definition.Default)
+	return value
+}
+
+func mustDefaultBool(key string) bool {
+	definition, ok := Lookup(key)
+	if !ok {
+		return false
+	}
+	value, _ := strconv.ParseBool(definition.Default)
 	return value
 }
 

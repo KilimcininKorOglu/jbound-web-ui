@@ -56,6 +56,36 @@ func ValidateIPOrHostname(value string) error {
 	return nil
 }
 
+// validateAddress reports whether a value is an address of the family its type
+// declares.
+//
+// Unbound refuses to load a line whose family contradicts the type, and the
+// whole file arrives through one include, so a single mixed line stops the
+// resolver from reading any of it.
+func validateAddress(recordType, value string) error {
+	addr, err := netip.ParseAddr(value)
+	if err != nil {
+		return fmt.Errorf("%w: an %s record needs an address", ErrInvalid, recordType)
+	}
+	if addr.Zone() != "" {
+		return fmt.Errorf("%w: the address may not carry an interface zone", ErrInvalid)
+	}
+
+	switch recordType {
+	case TypeA:
+		if !addr.Is4() {
+			return fmt.Errorf("%w: an A record needs an IPv4 address", ErrInvalid)
+		}
+	case TypeAAAA:
+		// A v4-mapped address reads as IPv6 here and as four dotted numbers in
+		// the file, which is not what an AAAA record holds.
+		if !addr.Is6() || addr.Is4In6() {
+			return fmt.Errorf("%w: an AAAA record needs an IPv6 address", ErrInvalid)
+		}
+	}
+	return nil
+}
+
 // ValidateRecordType reports whether the panel manages a type.
 func ValidateRecordType(recordType string) error {
 	if !slices.Contains(Types, recordType) {
@@ -70,6 +100,19 @@ func ValidateRecordType(recordType string) error {
 // back differently, so the record would survive the write and then vanish from
 // the view.
 func (r Record) Validate() error {
+	return r.validate(true)
+}
+
+// ValidateForRemoval reports whether a record can be taken out of a file.
+//
+// The address family is not checked here. A line whose family contradicts its
+// type is exactly the line an operator has to remove, and this path writes the
+// value nowhere: it only names which line to drop.
+func (r Record) ValidateForRemoval() error {
+	return r.validate(false)
+}
+
+func (r Record) validate(family bool) error {
 	var problems []string
 
 	if err := ValidateFQDN(r.FQDN); err != nil {
@@ -79,9 +122,13 @@ func (r Record) Validate() error {
 		problems = append(problems, message(err))
 	}
 
-	switch r.Type {
-	case TypeTXT:
+	switch {
+	case r.Type == TypeTXT:
 		if err := validateText(r.Value); err != nil {
+			problems = append(problems, message(err))
+		}
+	case family && (r.Type == TypeA || r.Type == TypeAAAA):
+		if err := validateAddress(r.Type, r.Value); err != nil {
 			problems = append(problems, message(err))
 		}
 	default:

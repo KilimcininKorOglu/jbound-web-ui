@@ -52,10 +52,15 @@ type Operation struct {
 // single server.
 func (o Operation) Validate() error {
 	switch o.Kind {
-	case OpAdd, OpDelete:
+	case OpAdd:
 		return o.Record.Validate()
+	case OpDelete:
+		// A record on the way out is judged more leniently, so a line an
+		// earlier panel wrote with the wrong address family can still be
+		// taken off the server through the panel.
+		return o.Record.ValidateForRemoval()
 	case OpEdit:
-		if err := o.Old.Validate(); err != nil {
+		if err := o.Old.ValidateForRemoval(); err != nil {
 			return fmt.Errorf("the record being replaced is not valid: %w", err)
 		}
 		return o.Record.Validate()

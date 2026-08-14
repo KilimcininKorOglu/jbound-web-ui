@@ -151,6 +151,50 @@ func TestAddRefusesAnInvalidRecord(t *testing.T) {
 	}
 }
 
+func TestAddRefusesAValueOfTheWrongAddressFamily(t *testing.T) {
+	// Unbound cannot load the line, and the file reaches it through one
+	// include, so the whole configuration would stop parsing.
+	_, err := dnsfile.Add(nil, record("host.example.net", "A", "2001:db8::1"))
+	if !errors.Is(err, dnsfile.ErrInvalid) {
+		t.Fatalf("got %v, want ErrInvalid", err)
+	}
+}
+
+func TestDeleteRemovesALineOfTheWrongAddressFamily(t *testing.T) {
+	// An earlier version of the panel could have written this line, and the
+	// panel has to be the way it comes off again.
+	content := []byte(`local-data: "host.example.net. A 2001:db8::1"
+local-data: "other.example.net. A 192.0.2.11"
+`)
+
+	updated, err := dnsfile.Delete(content, record("host.example.net", "A", "2001:db8::1"))
+	if err != nil {
+		t.Fatalf("Delete returned an error: %v", err)
+	}
+
+	if strings.Contains(string(updated), "host.example.net") {
+		t.Error("the record survived")
+	}
+	if !strings.Contains(string(updated), "other.example.net") {
+		t.Error("the delete took a record with it")
+	}
+}
+
+func TestEditReplacesALineOfTheWrongAddressFamily(t *testing.T) {
+	content := []byte(`local-data: "host.example.net. A 2001:db8::1"` + "\n")
+
+	updated, err := dnsfile.Edit(content,
+		record("host.example.net", "A", "2001:db8::1"),
+		record("host.example.net", "A", "192.0.2.10"))
+	if err != nil {
+		t.Fatalf("Edit returned an error: %v", err)
+	}
+
+	if !strings.Contains(string(updated), `"host.example.net. A 192.0.2.10"`) {
+		t.Errorf("the correction was not written: %s", updated)
+	}
+}
+
 func TestEditReplacesTheRecordAndLeavesTheRestAlone(t *testing.T) {
 	content := []byte(`# managed by the panel
 local-data: "www.example.net. A 192.0.2.10"

@@ -130,6 +130,86 @@ func TestValidateRefusesTextThatWouldEndTheRecordEarly(t *testing.T) {
 	}
 }
 
+func TestValidateRequiresTheAddressFamilyTheTypeDeclares(t *testing.T) {
+	// Unbound reads the whole file through one include, so a line whose family
+	// contradicts its type stops the resolver from loading any of it.
+	valid := map[string]dnsfile.Record{
+		"a":    {FQDN: "host.example.net", Type: "A", Value: "192.0.2.10"},
+		"aaaa": {FQDN: "host.example.net", Type: "AAAA", Value: "2001:db8::1"},
+	}
+	for name, record := range valid {
+		t.Run(name, func(t *testing.T) {
+			if err := record.Validate(); err != nil {
+				t.Errorf("%q was refused: %v", record.Value, err)
+			}
+		})
+	}
+
+	invalid := map[string]dnsfile.Record{
+		"a holds an ipv6 address":    {FQDN: "host.example.net", Type: "A", Value: "2001:db8::1"},
+		"a holds a name":             {FQDN: "host.example.net", Type: "A", Value: "www.example.net"},
+		"a holds a mapped address":   {FQDN: "host.example.net", Type: "A", Value: "::ffff:192.0.2.10"},
+		"aaaa holds an ipv4 address": {FQDN: "host.example.net", Type: "AAAA", Value: "192.0.2.10"},
+		"aaaa holds a name":          {FQDN: "host.example.net", Type: "AAAA", Value: "www.example.net"},
+		"aaaa holds a mapped address": {FQDN: "host.example.net", Type: "AAAA",
+			Value: "::ffff:192.0.2.10"},
+		"the address carries a zone": {FQDN: "host.example.net", Type: "AAAA", Value: "fe80::1%eth0"},
+	}
+	for name, record := range invalid {
+		t.Run(name, func(t *testing.T) {
+			if err := record.Validate(); !errors.Is(err, dnsfile.ErrInvalid) {
+				t.Errorf("%q was accepted as %s", record.Value, record.Type)
+			}
+		})
+	}
+}
+
+func TestValidateLeavesTheOtherTypesOnTheNameRule(t *testing.T) {
+	// A CNAME and an MX point at a name, and an address is a name the file
+	// accepts as well. Only A and AAAA carry a family.
+	valid := []dnsfile.Record{
+		{FQDN: "www.example.net", Type: "CNAME", Value: "host.example.net"},
+		{FQDN: "example.net", Type: "MX", Value: "mx1.example.net", Priority: 10},
+	}
+	for _, record := range valid {
+		if err := record.Validate(); err != nil {
+			t.Errorf("%s %q was refused: %v", record.Type, record.Value, err)
+		}
+	}
+}
+
+func TestValidateForRemovalAcceptsALineTheFileAlreadyHolds(t *testing.T) {
+	// A line with the wrong family is the one an operator has to remove, so
+	// refusing it here would leave them no way to do it through the panel.
+	held := []dnsfile.Record{
+		{FQDN: "host.example.net", Type: "A", Value: "2001:db8::1"},
+		{FQDN: "host.example.net", Type: "A", Value: "www.example.net"},
+		{FQDN: "host.example.net", Type: "AAAA", Value: "192.0.2.10"},
+	}
+	for _, record := range held {
+		if err := record.ValidateForRemoval(); err != nil {
+			t.Errorf("%s %q could not be removed: %v", record.Type, record.Value, err)
+		}
+	}
+}
+
+func TestValidateForRemovalStillRefusesALineThatCannotExist(t *testing.T) {
+	invalid := map[string]dnsfile.Record{
+		"broken name": {FQDN: "no spaces", Type: "A", Value: "192.0.2.10"},
+		"unknown type": {FQDN: "host.example.net", Type: "SRV",
+			Value: "0 0 443 host.example.net"},
+		"injected value": {FQDN: "host.example.net", Type: "A",
+			Value: "192.0.2.10\nlocal-data: \"evil.net. A 192.0.2.1\""},
+	}
+	for name, record := range invalid {
+		t.Run(name, func(t *testing.T) {
+			if err := record.ValidateForRemoval(); !errors.Is(err, dnsfile.ErrInvalid) {
+				t.Errorf("%v was accepted", record)
+			}
+		})
+	}
+}
+
 func TestValidateBoundsTheMailPreference(t *testing.T) {
 	for _, priority := range []int{-1, 65536} {
 		record := dnsfile.Record{FQDN: "mail.example.net", Type: "MX",

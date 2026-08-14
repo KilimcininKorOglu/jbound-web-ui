@@ -56,7 +56,7 @@ func Add(content []byte, record Record) ([]byte, error) {
 // a mistake somebody made by hand, and leaving one of the two behind would
 // look like the edit did not work.
 func Edit(content []byte, old, updated Record) ([]byte, error) {
-	if err := old.Validate(); err != nil {
+	if err := old.ValidateForRemoval(); err != nil {
 		return nil, err
 	}
 	if err := updated.Validate(); err != nil {
@@ -85,7 +85,7 @@ func Edit(content []byte, old, updated Record) ([]byte, error) {
 // The comparison is against the trimmed line, so indentation on the target
 // does not hide a record from the panel.
 func Delete(content []byte, record Record) ([]byte, error) {
-	if err := record.Validate(); err != nil {
+	if err := record.ValidateForRemoval(); err != nil {
 		return nil, err
 	}
 

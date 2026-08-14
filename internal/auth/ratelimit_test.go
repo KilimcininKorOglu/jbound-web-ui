@@ -23,67 +23,81 @@ type attempt struct {
 }
 
 type fakeAttemptRepo struct {
-	attempts  []attempt
-	recordErr error
-	countErr  error
+	attempts []attempt
+	err      error
 }
 
-func (f *fakeAttemptRepo) Record(_ context.Context, ip, username string, at time.Time) error {
-	if f.recordErr != nil {
-		return f.recordErr
-	}
-	f.attempts = append(f.attempts, attempt{ip: ip, username: username, at: at})
-	return nil
-}
+// Admit models the store: prune, count, and record only what is admitted. The
+// steps run under no lock here, which is enough because the fake is only ever
+// driven from one goroutine. The transaction is proven against SQLite.
+func (f *fakeAttemptRepo) Admit(_ context.Context, ip, username string,
+	since, at time.Time, maxTries int) (bool, error) {
 
-func (f *fakeAttemptRepo) CountSince(_ context.Context, ip string, since time.Time) (int, error) {
-	if f.countErr != nil {
-		return 0, f.countErr
+	if f.err != nil {
+		return false, f.err
 	}
-	count := 0
-	for _, a := range f.attempts {
-		if a.ip == ip && !a.at.Before(since) {
-			count++
-		}
-	}
-	return count, nil
-}
 
-func (f *fakeAttemptRepo) DeleteBefore(_ context.Context, before time.Time) error {
 	kept := f.attempts[:0]
 	for _, a := range f.attempts {
-		if !a.at.Before(before) {
+		if !a.at.Before(since) {
 			kept = append(kept, a)
 		}
 	}
 	f.attempts = kept
-	return nil
+
+	count := 0
+	for _, a := range f.attempts {
+		if a.ip == ip {
+			count++
+		}
+	}
+	if count >= maxTries {
+		return false, nil
+	}
+
+	f.attempts = append(f.attempts, attempt{ip: ip, username: username, at: at})
+	return true, nil
 }
 
-func TestRateLimiterAllowsTenAttemptsAndRefusesTheEleventh(t *testing.T) {
+func TestRateLimiterAdmitsTenAttemptsAndRefusesTheEleventh(t *testing.T) {
 	repo := &fakeAttemptRepo{}
 	limiter := NewRateLimiter(repo, settings.Fixed(testRateWindow), settings.Fixed(testRateMaxTries))
 	ctx := context.Background()
 
 	for i := 1; i <= testRateMaxTries; i++ {
-		allowed, err := limiter.Allow(ctx, "203.0.113.5")
+		admitted, err := limiter.Admit(ctx, "203.0.113.5", "dnsuser")
 		if err != nil {
 			t.Fatalf("attempt %d failed: %v", i, err)
 		}
-		if !allowed {
+		if !admitted {
 			t.Fatalf("attempt %d was refused, the limit is %d", i, testRateMaxTries)
-		}
-		if err := limiter.Record(ctx, "203.0.113.5", "dnsuser"); err != nil {
-			t.Fatalf("cannot record attempt %d: %v", i, err)
 		}
 	}
 
-	allowed, err := limiter.Allow(ctx, "203.0.113.5")
+	admitted, err := limiter.Admit(ctx, "203.0.113.5", "dnsuser")
 	if err != nil {
-		t.Fatalf("Allow returned an error: %v", err)
+		t.Fatalf("Admit returned an error: %v", err)
 	}
-	if allowed {
+	if admitted {
 		t.Errorf("attempt %d was allowed", testRateMaxTries+1)
+	}
+}
+
+func TestRateLimiterDoesNotRecordARefusedAttempt(t *testing.T) {
+	// A refused attempt that was still recorded would push the window forward
+	// on every retry, and an operator who keeps trying would never get back in.
+	repo := &fakeAttemptRepo{}
+	limiter := NewRateLimiter(repo, settings.Fixed(testRateWindow), settings.Fixed(testRateMaxTries))
+	ctx := context.Background()
+
+	for range testRateMaxTries + 5 {
+		if _, err := limiter.Admit(ctx, "203.0.113.5", "dnsuser"); err != nil {
+			t.Fatalf("Admit returned an error: %v", err)
+		}
+	}
+
+	if len(repo.attempts) != testRateMaxTries {
+		t.Errorf("%d attempts were stored, want %d", len(repo.attempts), testRateMaxTries)
 	}
 }
 
@@ -95,16 +109,16 @@ func TestRateLimiterCountsPerAddress(t *testing.T) {
 	ctx := context.Background()
 
 	for range testRateMaxTries {
-		if err := limiter.Record(ctx, "203.0.113.5", "dnsuser"); err != nil {
-			t.Fatalf("cannot record the attempt: %v", err)
+		if _, err := limiter.Admit(ctx, "203.0.113.5", "dnsuser"); err != nil {
+			t.Fatalf("Admit returned an error: %v", err)
 		}
 	}
 
-	allowed, err := limiter.Allow(ctx, "198.51.100.9")
+	admitted, err := limiter.Admit(ctx, "198.51.100.9", "dnsuser")
 	if err != nil {
-		t.Fatalf("Allow returned an error: %v", err)
+		t.Fatalf("Admit returned an error: %v", err)
 	}
-	if !allowed {
+	if !admitted {
 		t.Error("a different address was refused")
 	}
 }
@@ -118,22 +132,22 @@ func TestRateLimiterForgetsAttemptsOlderThanTheWindow(t *testing.T) {
 	limiter.now = func() time.Time { return base }
 
 	for range testRateMaxTries {
-		if err := limiter.Record(ctx, "203.0.113.5", "dnsuser"); err != nil {
-			t.Fatalf("cannot record the attempt: %v", err)
+		if _, err := limiter.Admit(ctx, "203.0.113.5", "dnsuser"); err != nil {
+			t.Fatalf("Admit returned an error: %v", err)
 		}
 	}
 
 	limiter.now = func() time.Time { return base.Add(testRateWindow + time.Minute) }
 
-	allowed, err := limiter.Allow(ctx, "203.0.113.5")
+	admitted, err := limiter.Admit(ctx, "203.0.113.5", "dnsuser")
 	if err != nil {
-		t.Fatalf("Allow returned an error: %v", err)
+		t.Fatalf("Admit returned an error: %v", err)
 	}
-	if !allowed {
+	if !admitted {
 		t.Error("the address is still blocked after the window passed")
 	}
-	if len(repo.attempts) != 0 {
-		t.Errorf("%d stale attempts survived the prune", len(repo.attempts))
+	if len(repo.attempts) != 1 {
+		t.Errorf("%d attempts survived the prune, want only the new one", len(repo.attempts))
 	}
 }
 
@@ -141,17 +155,15 @@ func TestRateLimiterReportsStorageFailures(t *testing.T) {
 	// A limiter that silently allowed everything when its storage broke would
 	// be worse than no limiter, because nothing would report the fault.
 	failure := errors.New("database is gone")
-	ctx := context.Background()
 
-	limiter := NewRateLimiter(&fakeAttemptRepo{countErr: failure},
+	limiter := NewRateLimiter(&fakeAttemptRepo{err: failure},
 		settings.Fixed(testRateWindow), settings.Fixed(testRateMaxTries))
-	if _, err := limiter.Allow(ctx, "203.0.113.5"); !errors.Is(err, failure) {
-		t.Errorf("Allow returned %v, want the storage failure", err)
+
+	admitted, err := limiter.Admit(context.Background(), "203.0.113.5", "dnsuser")
+	if !errors.Is(err, failure) {
+		t.Errorf("Admit returned %v, want the storage failure", err)
 	}
-
-	limiter = NewRateLimiter(&fakeAttemptRepo{recordErr: failure},
-		settings.Fixed(testRateWindow), settings.Fixed(testRateMaxTries))
-	if err := limiter.Record(ctx, "203.0.113.5", "dnsuser"); !errors.Is(err, failure) {
-		t.Errorf("Record returned %v, want the storage failure", err)
+	if admitted {
+		t.Error("the attempt was admitted although the storage failed")
 	}
 }

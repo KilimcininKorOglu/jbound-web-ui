@@ -68,23 +68,19 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	allowed, err := a.Limiter.Allow(r.Context(), ip)
+	// The attempt is counted and recorded in one step, so requests that arrive
+	// together cannot all pass on the same pre-burst count.
+	admitted, err := a.Limiter.Admit(r.Context(), ip, username)
 	if err != nil {
+		// Continuing here would let an attacker defeat the limiter by making
+		// the write fail, so the request stops instead.
 		slog.Error("rate limit check failed", "ip", ip, "error", err)
 		a.loginFailure(w, r, http.StatusInternalServerError, msgInternalError)
 		return
 	}
-	if !allowed {
+	if !admitted {
 		slog.Warn("login rate limited", "ip", ip, "username", username)
 		a.loginFailure(w, r, http.StatusTooManyRequests, msgRateLimited)
-		return
-	}
-
-	if err := a.Limiter.Record(r.Context(), ip, username); err != nil {
-		// Continuing here would let an attacker defeat the limiter by making
-		// the insert fail, so the request stops instead.
-		slog.Error("cannot record the login attempt", "ip", ip, "error", err)
-		a.loginFailure(w, r, http.StatusInternalServerError, msgInternalError)
 		return
 	}
 

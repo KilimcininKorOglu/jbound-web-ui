@@ -550,6 +550,44 @@ func TestLoginRefusesTheEleventhAttempt(t *testing.T) {
 	}
 }
 
+func TestABurstOfLoginsGetsNoMoreAttemptsThanTheLimit(t *testing.T) {
+	// A limiter that checked the count and wrote the row separately would let
+	// every request of a burst read the same pre-burst number and pass, so the
+	// limit would bound sequential attempts only.
+	env := newTestEnv(t)
+	limit := env.app.Settings.Int(settings.LoginRateMaxAttempts)
+	burst := limit * 3
+
+	var mu sync.Mutex
+	codes := map[int]int{}
+
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+
+	for range burst {
+		wg.Go(func() {
+			<-start
+
+			recorder := env.do(t, postForm("/login", "username=dnsadmin&password=wrong"))
+
+			mu.Lock()
+			codes[recorder.Code]++
+			mu.Unlock()
+		})
+	}
+	close(start)
+	wg.Wait()
+
+	if codes[http.StatusUnauthorized] != limit {
+		t.Errorf("%d attempts reached the password check, want %d (%v)",
+			codes[http.StatusUnauthorized], limit, codes)
+	}
+	if codes[http.StatusTooManyRequests] != burst-limit {
+		t.Errorf("%d attempts were refused, want %d (%v)",
+			codes[http.StatusTooManyRequests], burst-limit, codes)
+	}
+}
+
 func TestProtectedRoutesRedirectWithoutASession(t *testing.T) {
 	env := newTestEnv(t)
 

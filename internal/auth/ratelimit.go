@@ -8,9 +8,10 @@ import (
 
 // AttemptRepository stores login attempts.
 type AttemptRepository interface {
-	Record(ctx context.Context, ip, username string, at time.Time) error
-	CountSince(ctx context.Context, ip string, since time.Time) (int, error)
-	DeleteBefore(ctx context.Context, before time.Time) error
+	// Admit prunes the rows that left the window, counts what is left for one
+	// address and records this attempt, all inside one transaction. It reports
+	// whether the attempt is inside the limit it was given.
+	Admit(ctx context.Context, ip, username string, since, at time.Time, maxTries int) (bool, error)
 }
 
 // RateLimiter throttles login attempts per source address.
@@ -36,31 +37,23 @@ func NewRateLimiter(repo AttemptRepository, window func() time.Duration,
 	return &RateLimiter{repo: repo, window: window, maxTries: maxTries, now: time.Now}
 }
 
-// Allow reports whether another attempt from this address is permitted.
+// Admit reports whether another attempt from this address is permitted, and
+// records it when it is.
 //
-// Rows older than the window are removed first. The cleanup loop does the same
-// on a timer, so this only bounds the count of a single burst.
-func (l *RateLimiter) Allow(ctx context.Context, ip string) (bool, error) {
-	cutoff := l.now().UTC().Add(-l.window())
+// The decision and the record are one call, because they have to be one step.
+// A check that reads the count and writes the row separately lets requests that
+// arrive together all see the same pre-burst count and all pass, so the limit
+// would bound sequential attempts only.
+//
+// The row is written before the password is checked, so an attempt that never
+// gets an answer still counts against the limit. Rows older than the window are
+// pruned on the way, which is the only place that happens.
+func (l *RateLimiter) Admit(ctx context.Context, ip, username string) (bool, error) {
+	now := l.now().UTC()
 
-	if err := l.repo.DeleteBefore(ctx, cutoff); err != nil {
-		return false, fmt.Errorf("cannot prune login attempts: %w", err)
-	}
-
-	count, err := l.repo.CountSince(ctx, ip, cutoff)
+	admitted, err := l.repo.Admit(ctx, ip, username, now.Add(-l.window()), now, l.maxTries())
 	if err != nil {
-		return false, fmt.Errorf("cannot count login attempts: %w", err)
+		return false, fmt.Errorf("cannot check the login rate: %w", err)
 	}
-	return count < l.maxTries(), nil
-}
-
-// Record stores one attempt.
-//
-// It runs before the password is checked, so a failure that never returns an
-// answer still counts against the limit.
-func (l *RateLimiter) Record(ctx context.Context, ip, username string) error {
-	if err := l.repo.Record(ctx, ip, username, l.now().UTC()); err != nil {
-		return fmt.Errorf("cannot record the login attempt: %w", err)
-	}
-	return nil
+	return admitted, nil
 }

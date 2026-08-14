@@ -57,6 +57,16 @@ func (f *fakeRepo) SetKeyPath(_ context.Context, id int64, relPath string) error
 	return nil
 }
 
+func (f *fakeRepo) SetRecordsPath(_ context.Context, id int64, path string) error {
+	record, ok := f.records[id]
+	if !ok {
+		return errors.New("not found")
+	}
+	record.RecordsPath = path
+	f.records[id] = record
+	return nil
+}
+
 func (f *fakeRepo) SetHostKey(_ context.Context, id int64, hostKey string) error {
 	record, ok := f.records[id]
 	if !ok {

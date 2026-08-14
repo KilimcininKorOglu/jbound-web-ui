@@ -12,9 +12,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite" // pure Go driver, keeps the binary free of cgo
+
+	"jbound/internal/logging"
 )
 
 //go:embed migrations/*.sql
@@ -152,10 +155,62 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 		}
 	}
 
+	// A migration that rebuilds a table has to drop the old one, and SQLite
+	// runs an implicit DELETE for that, which fires every ON DELETE CASCADE
+	// pointing at it. The rows of five other tables would go with the servers
+	// table. Deferring the constraint check does not help: what has to stop is
+	// the cascade, not the check.
+	//
+	// The pragma is a no operation inside a transaction, and every migration
+	// runs in one, so it goes here. The check afterwards is what makes this
+	// safe: a migration that left a row pointing at nothing fails the start
+	// rather than being found weeks later.
+	if _, err := db.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
+		return fmt.Errorf("cannot suspend the foreign keys: %w", err)
+	}
+	defer func() {
+		if _, err := db.ExecContext(ctx, "PRAGMA foreign_keys = ON"); err != nil {
+			logging.From(ctx).Error("cannot restore the foreign keys", "error", err)
+		}
+	}()
+
 	for _, name := range pending {
 		if err := db.apply(ctx, name); err != nil {
 			return err
 		}
+	}
+	return db.checkForeignKeys(ctx)
+}
+
+// checkForeignKeys reports a row left pointing at nothing.
+//
+// It runs once, after the migrations that had the constraints suspended. A
+// dangling row is a broken upgrade, and finding out at the start is the
+// difference between restoring the copy taken minutes ago and discovering it
+// when a group operation reaches a server that is not there.
+func (db *DB) checkForeignKeys(ctx context.Context) error {
+	rows, err := db.QueryContext(ctx, "PRAGMA foreign_key_check")
+	if err != nil {
+		return fmt.Errorf("cannot check the foreign keys: %w", err)
+	}
+	defer rows.Close()
+
+	var broken []string
+	for rows.Next() {
+		var table, parent string
+		var rowID sql.NullInt64
+		var constraint int
+		if err := rows.Scan(&table, &rowID, &parent, &constraint); err != nil {
+			return fmt.Errorf("cannot read the foreign key report: %w", err)
+		}
+		broken = append(broken, fmt.Sprintf("%s -> %s", table, parent))
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("cannot read the foreign key report: %w", err)
+	}
+	if len(broken) > 0 {
+		return fmt.Errorf("the upgrade left rows pointing at nothing: %s",
+			strings.Join(broken, ", "))
 	}
 	return nil
 }

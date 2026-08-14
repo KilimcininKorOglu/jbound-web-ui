@@ -408,3 +408,187 @@ func TestTheIncludeMigrationFillsTheServersThatWereAlreadyThere(t *testing.T) {
 		t.Errorf("the command carries arguments: %q", command)
 	}
 }
+
+func TestTheAgentMigrationKeepsEveryRowThatPointsAtAServer(t *testing.T) {
+	// The table is rebuilt, and five others reference it. A rebuild that
+	// dropped the rows pointing at a server would take a group's membership,
+	// its cached records and its stored file with it, and the operator would
+	// find out when a group operation reached nobody.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "panel.db")
+
+	db, err := Open(context.Background(), path)
+	if err != nil {
+		t.Fatalf("Open returned an error: %v", err)
+	}
+	for _, statement := range []string{
+		`INSERT INTO servers (id, name, host, ssh_user, ssh_key_path)
+		 VALUES (7, 'dns1', 'dns1', 'dnsops', 'keys/7.key')`,
+		`INSERT INTO server_groups (id, name) VALUES (3, 'resolvers')`,
+		`INSERT INTO server_group_members (group_id, server_id) VALUES (3, 7)`,
+		`INSERT INTO server_state (server_id, file_sha256) VALUES (7, 'abc')`,
+		`INSERT INTO record_cache (server_id, line, fqdn, type, value, raw)
+		 VALUES (7, 1, 'www.example.net', 'A', '192.0.2.10', 'local-data: ...')`,
+		`INSERT INTO file_backups (server_id, content, sha256)
+		 VALUES (7, 'server:', 'def')`,
+		`INSERT INTO audit_logs (user_id, username, action, server_id, created_at)
+		 VALUES (1001, 'dnsadmin', 'dns_add', 7, '2026-01-01 00:00:00')`,
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatalf("cannot seed (%s): %v", statement, err)
+		}
+	}
+	db.Close()
+
+	// Replay the migration against a database that already holds all of it.
+	db, err = Open(context.Background(), path)
+	if err != nil {
+		t.Fatalf("cannot reopen: %v", err)
+	}
+	if _, err := db.Exec(
+		"DELETE FROM schema_migrations WHERE name = '0009_agent_transport.sql'"); err != nil {
+		t.Fatalf("cannot clear the applied row: %v", err)
+	}
+	if _, err := db.Exec("ALTER TABLE servers DROP COLUMN agent_port"); err != nil {
+		t.Fatalf("cannot undo the column: %v", err)
+	}
+	db.Close()
+
+	upgraded, err := Open(context.Background(), path)
+	if err != nil {
+		t.Fatalf("the upgrade failed: %v", err)
+	}
+	defer upgraded.Close()
+
+	for table, want := range map[string]int{
+		"servers": 1, "server_group_members": 1, "server_state": 1,
+		"record_cache": 1, "file_backups": 1, "audit_logs": 1,
+	} {
+		var count int
+		if err := upgraded.QueryRow(
+			"SELECT COUNT(*) FROM " + table).Scan(&count); err != nil {
+			t.Fatalf("cannot count %s: %v", table, err)
+		}
+		if count != want {
+			t.Errorf("%s holds %d rows after the rebuild, want %d", table, count, want)
+		}
+	}
+
+	// The trigger went with the old table and has to be back, or every later
+	// edit leaves updated_at at whatever it was.
+	var triggers int
+	if err := upgraded.QueryRow(
+		`SELECT COUNT(*) FROM sqlite_master
+		  WHERE type = 'trigger' AND name = 'servers_touch_updated_at'`).Scan(&triggers); err != nil {
+		t.Fatalf("cannot look for the trigger: %v", err)
+	}
+	if triggers != 1 {
+		t.Error("the rebuild left the servers table without its updated_at trigger")
+	}
+}
+
+func TestAnAgentServerCanBeStoredOnlyAfterTheRebuild(t *testing.T) {
+	// The CHECK on the transport column has read ('ssh') since the first
+	// migration. A row naming an agent is the proof it now reads both.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "panel.db")
+
+	db, err := Open(context.Background(), path)
+	if err != nil {
+		t.Fatalf("Open returned an error: %v", err)
+	}
+	defer db.Close()
+
+	if _, err := db.Exec(
+		`INSERT INTO servers (name, host, transport, agent_port, ssh_key_path)
+		 VALUES ('dns4', 'dns4', 'agent', 8443, 'keys/1.token')`); err != nil {
+		t.Fatalf("an agent server was refused: %v", err)
+	}
+
+	// And nothing else. A third value would mean the constraint stopped
+	// constraining.
+	if _, err := db.Exec(
+		`INSERT INTO servers (name, host, transport, ssh_key_path)
+		 VALUES ('dns5', 'dns5', 'carrier-pigeon', 'keys/2.key')`); err == nil {
+		t.Error("the transport column accepted a value the panel cannot speak")
+	}
+
+	// An agent server needs no account, so ssh_user has to take an empty one.
+	var user string
+	if err := db.QueryRow(
+		"SELECT ssh_user FROM servers WHERE name = 'dns4'").Scan(&user); err != nil {
+		t.Fatalf("cannot read the server back: %v", err)
+	}
+	if user != "" {
+		t.Errorf("ssh_user = %q, want it empty on an agent server", user)
+	}
+}
+
+func TestTheRebuildCorrectsTheRecordsPathDefault(t *testing.T) {
+	// The schema said host_entries.conf while the panel used local_records.conf.
+	// The default was unreachable, since every insert passes a path, but a
+	// schema that contradicts the code is a trap for whoever reads it next.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "panel.db")
+
+	db, err := Open(context.Background(), path)
+	if err != nil {
+		t.Fatalf("Open returned an error: %v", err)
+	}
+	defer db.Close()
+
+	if _, err := db.Exec(
+		`INSERT INTO servers (name, host, ssh_user, ssh_key_path)
+		 VALUES ('dns1', 'dns1', 'dnsops', 'keys/1.key')`); err != nil {
+		t.Fatalf("cannot seed a server: %v", err)
+	}
+
+	var stored string
+	if err := db.QueryRow("SELECT records_path FROM servers").Scan(&stored); err != nil {
+		t.Fatalf("cannot read the server back: %v", err)
+	}
+	if stored != "/etc/unbound/local_records.conf" {
+		t.Errorf("the schema default is %q", stored)
+	}
+}
+
+func TestAnUpgradeThatBrokeAReferenceStopsTheStart(t *testing.T) {
+	// The foreign keys are suspended for the migration run, so the check
+	// afterwards is the only thing standing between a bad rebuild and a panel
+	// that runs for weeks on rows pointing at nothing. This proves the check
+	// is wired rather than merely written.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "panel.db")
+
+	db, err := Open(context.Background(), path)
+	if err != nil {
+		t.Fatalf("Open returned an error: %v", err)
+	}
+
+	// A membership row naming a server that is not there. Reaching this state
+	// takes the suspension the migration run uses, which is exactly the state
+	// a broken rebuild would leave.
+	for _, statement := range []string{
+		"PRAGMA foreign_keys = OFF",
+		`INSERT INTO server_groups (id, name) VALUES (1, 'resolvers')`,
+		`INSERT INTO server_group_members (group_id, server_id) VALUES (1, 999)`,
+		"PRAGMA foreign_keys = ON",
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatalf("cannot arrange the dangling row (%s): %v", statement, err)
+		}
+	}
+	db.Close()
+
+	reopened, err := OpenExisting(context.Background(), path)
+	if err != nil {
+		t.Fatalf("cannot reopen: %v", err)
+	}
+	defer reopened.Close()
+
+	if err := reopened.checkForeignKeys(context.Background()); err == nil {
+		t.Fatal("the check passed a row pointing at nothing")
+	} else if !strings.Contains(err.Error(), "server_group_members") {
+		t.Errorf("the failure does not name the table: %v", err)
+	}
+}

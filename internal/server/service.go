@@ -18,6 +18,7 @@ type Repository interface {
 	Update(ctx context.Context, record Server) error
 	SetKeyPath(ctx context.Context, id int64, relPath string) error
 	SetHostKey(ctx context.Context, id int64, hostKey string) error
+	SetRecordsPath(ctx context.Context, id int64, path string) error
 	SetReachability(ctx context.Context, id int64, at time.Time, failure string) error
 	Get(ctx context.Context, id int64) (Server, error)
 	List(ctx context.Context) ([]Server, error)
@@ -123,7 +124,7 @@ func (s *Service) Create(ctx context.Context, actor Actor, input CreateInput) (S
 		return Server{}, KeyPair{}, err
 	}
 
-	pair, err := s.makeKey(stored.ID, input.PrivateKey)
+	pair, err := s.makeSecret(stored, input.PrivateKey)
 	if err != nil {
 		s.discard(ctx, stored.ID, pair.RelPath)
 		return Server{}, KeyPair{}, err
@@ -135,18 +136,43 @@ func (s *Service) Create(ctx context.Context, actor Actor, input CreateInput) (S
 		return Server{}, KeyPair{}, err
 	}
 
-	s.writeFor(ctx, actor, audit.ActionServerCreate, &stored.ID, stored.Name, fmt.Sprintf(
-		"Created server: %s (%s@%s:%d)", stored.Name, stored.SSHUser, stored.Host, stored.SSHPort))
+	s.writeFor(ctx, actor, audit.ActionServerCreate, &stored.ID, stored.Name,
+		createdDetail(stored))
 
 	return stored, pair, nil
 }
 
-// makeKey generates a key or stores the one the operator supplied.
-func (s *Service) makeKey(id int64, private string) (KeyPair, error) {
-	if strings.TrimSpace(private) == "" {
-		return s.keys.Generate(id)
+// createdDetail says what was created in terms of how it will be reached.
+func createdDetail(record Server) string {
+	if record.Transport == TransportAgent {
+		return fmt.Sprintf("Created server: %s (agent at %s:%d)",
+			record.Name, record.Host, record.AgentPort)
 	}
-	return s.keys.Import(id, private)
+	return fmt.Sprintf("Created server: %s (%s@%s:%d)",
+		record.Name, record.SSHUser, record.Host, record.SSHPort)
+}
+
+// makeSecret writes the one secret that reaches this server.
+//
+// On the ssh path that is a private key the panel keeps and a public key the
+// operator installs. On the agent path it is a bearer token, and the direction
+// is the same: the panel keeps a copy on disk and the operator installs the
+// other one on the target.
+func (s *Service) makeSecret(record Server, private string) (KeyPair, error) {
+	if record.Transport == TransportAgent {
+		token, relPath, err := s.keys.GenerateToken(record.ID)
+		if err != nil {
+			return KeyPair{}, err
+		}
+		// The token rides back in the field the public key uses, because the
+		// two are the same thing to the caller: the value shown once, for the
+		// operator to put on the target.
+		return KeyPair{RelPath: relPath, PublicKey: token}, nil
+	}
+	if strings.TrimSpace(private) == "" {
+		return s.keys.Generate(record.ID)
+	}
+	return s.keys.Import(record.ID, private)
 }
 
 // discard undoes a half finished creation.
@@ -269,6 +295,12 @@ func (s *Service) PublicKey(ctx context.Context, id int64) (KeyPair, error) {
 	if err != nil {
 		return KeyPair{}, err
 	}
+	if record.Transport == TransportAgent {
+		// The token is shown once, when the server is created. Re-reading it
+		// from disk here would turn a page anyone with access can open into a
+		// way to collect the credentials of the whole fleet.
+		return KeyPair{}, fmt.Errorf("%w: an agent server has no public key", ErrValidation)
+	}
 
 	public, fingerprint, err := s.keys.PublicKey(record.SSHKeyPath)
 	if err != nil {
@@ -294,8 +326,20 @@ func (s *Service) ScanHostKey(ctx context.Context, id int64) (HostKeyOffer, erro
 	}
 
 	timeouts := s.timeouts()
-	fingerprint, authorized, err := transport.ScanHostKey(
-		record.TransportConfig(s.dataDir, timeouts.Connect, timeouts.Command))
+	cfg := record.TransportConfig(s.dataDir, timeouts.Connect, timeouts.Command)
+
+	if record.Transport == TransportAgent {
+		// An agent proves itself with a TLS certificate rather than a host
+		// key. The operator's act is the same: they see a fingerprint and
+		// decide, so it travels back in the same shape.
+		fingerprint, err := transport.ScanAgentCertificate(ctx, cfg)
+		if err != nil {
+			return HostKeyOffer{}, err
+		}
+		return HostKeyOffer{Fingerprint: fingerprint, AuthorizedKey: fingerprint}, nil
+	}
+
+	fingerprint, authorized, err := transport.ScanHostKey(cfg)
 	if err != nil {
 		return HostKeyOffer{}, err
 	}
@@ -375,6 +419,8 @@ func (s *Service) TestConnection(ctx context.Context, actor Actor, id int64) (Te
 		return TestResult{Step: transport.StepConnect, Message: err.Error()}, nil
 	}
 
+	s.refreshRecordsPath(ctx, client, record)
+
 	probeErr := client.Probe(ctx)
 	if probeErr == nil {
 		if err := s.servers.SetReachability(ctx, id, s.now().UTC(), ""); err != nil {
@@ -414,6 +460,38 @@ func (s *Service) TestConnection(ctx context.Context, actor Actor, id int64) (Te
 
 	s.auditTest(ctx, actor, record, transport.FailureCode(probeErr))
 	return result, nil
+}
+
+// refreshRecordsPath takes the file name an agent reports and stores it.
+//
+// The path is the agent's to decide. Every host may name the file differently,
+// and a panel that sent the name instead would be a way to have every managed
+// server write a file the panel chooses. Asking on every test means a rename
+// on the target reaches the panel the next time somebody looks.
+//
+// A failure here does not fail the test. The probe that follows asks the same
+// agent the same questions and reports what it finds, which is a better answer
+// than stopping before it runs.
+func (s *Service) refreshRecordsPath(ctx context.Context, client transport.Transport,
+	record Server) {
+
+	agent, ok := client.(*transport.AgentTransport)
+	if !ok {
+		return
+	}
+
+	info, err := agent.Info(ctx)
+	if err != nil {
+		return
+	}
+	if info.RecordsPath == "" || info.RecordsPath == record.RecordsPath {
+		return
+	}
+
+	if err := s.servers.SetRecordsPath(ctx, record.ID, info.RecordsPath); err != nil {
+		logging.From(ctx).Error("cannot store the file the agent reported",
+			"server", record.Name, "error", err)
+	}
 }
 
 // auditTest records one connection test and how it ended.

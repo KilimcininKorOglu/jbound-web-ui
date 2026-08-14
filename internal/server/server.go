@@ -46,8 +46,19 @@ const (
 	DefaultSSHPort    = 22
 )
 
-// TransportSSH is the only transport version one speaks.
-const TransportSSH = "ssh"
+// The two ways the panel reaches a server.
+//
+// TransportSSH sends command text through a login shell and is held safe by
+// exact sudoers rules on the target. TransportAgent sends none at all: the
+// panel names a step, and the agent runs whatever its own configuration says
+// that step is.
+const (
+	TransportSSH   = transport.KindSSH
+	TransportAgent = transport.KindAgent
+)
+
+// DefaultAgentPort is where an agent listens unless the operator moves it.
+const DefaultAgentPort = 8443
 
 // Server is one managed DNS server.
 type Server struct {
@@ -59,8 +70,13 @@ type Server struct {
 	SSHUser   string
 
 	// SSHKeyPath is relative to the data directory, so moving the data
-	// directory does not invalidate every record.
+	// directory does not invalidate every record. On an agent server it holds
+	// the token file instead of a private key, for the same reason and with
+	// the same boundary check.
 	SSHKeyPath string
+
+	// AgentPort is where the agent listens. It is ignored on an ssh server.
+	AgentPort int
 
 	// HostKey is the approved key in authorized_keys form. Empty means no
 	// operator has approved a fingerprint yet.
@@ -107,11 +123,25 @@ var hostPattern = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9.:_-]{0,253}[A-Za-z
 
 // ApplyDefaults fills the fields the operator left empty.
 func (s *Server) ApplyDefaults() {
+	// Both ports are filled whichever transport this is, the same way ssh_port
+	// carries 22 on an agent server. One of the two is unused rather than
+	// wrong, and a record where either is zero would be refused by the schema
+	// for a field the operator was never shown.
 	if s.SSHPort == 0 {
 		s.SSHPort = DefaultSSHPort
 	}
+	if s.AgentPort == 0 {
+		s.AgentPort = DefaultAgentPort
+	}
 	if s.Transport == "" {
 		s.Transport = TransportSSH
+	}
+	if s.Transport == TransportAgent {
+		// Nothing else is filled in. Every remaining field names a path or a
+		// command on the target, and on this transport the target owns both.
+		// Filling them would put values in front of the operator that reach
+		// nothing.
+		return
 	}
 
 	for field, value := range map[*string]string{
@@ -166,21 +196,52 @@ func (s Server) inputProblems() []string {
 	if !hostPattern.MatchString(s.Host) {
 		problems = append(problems, "host is not a valid host name or address")
 	}
-	if s.SSHUser == "" {
-		problems = append(problems, "ssh user is empty")
-	}
-	if s.Transport != TransportSSH {
-		problems = append(problems, "transport must be "+TransportSSH)
+	if s.Transport != TransportSSH && s.Transport != TransportAgent {
+		problems = append(problems,
+			"transport must be "+TransportSSH+" or "+TransportAgent)
 	}
 	if filepath.IsAbs(s.SSHKeyPath) || strings.Contains(s.SSHKeyPath, "..") {
 		// The stored path is joined onto the data directory. An absolute path
-		// or a parent reference would read a key from anywhere on the host.
-		problems = append(problems, "ssh key path must stay inside the data directory")
+		// or a parent reference would read a secret from anywhere on the host.
+		problems = append(problems, "key path must stay inside the data directory")
 	}
 
 	// Reuse the transport rules for the remote fields. One definition means
 	// the form and the connection can never disagree about what is allowed.
-	probe := transport.Config{
+	probe := s.probeConfig()
+	if err := probe.Validate(); err != nil {
+		problems = append(problems, strings.TrimPrefix(err.Error(), "invalid server configuration: "))
+	}
+	return append(problems, s.transportProblems()...)
+}
+
+// transportProblems collects what only one of the two transports asks for.
+func (s Server) transportProblems() []string {
+	if s.Transport == TransportAgent {
+		// An agent server needs no account. Nothing logs in.
+		return nil
+	}
+	if s.SSHUser == "" {
+		return []string{"ssh user is empty"}
+	}
+	return nil
+}
+
+// probeConfig builds the configuration the transport rules are checked against.
+//
+// The placeholders stand in for fields the form does not carry, so a record
+// that is otherwise fine is not reported as broken for a value the operator
+// never sees.
+func (s Server) probeConfig() transport.Config {
+	if s.Transport == TransportAgent {
+		return transport.Config{
+			Kind:      TransportAgent,
+			Host:      valueOr(s.Host, "placeholder"),
+			AgentPort: s.AgentPort,
+			TokenPath: "/placeholder",
+		}
+	}
+	return transport.Config{
 		Host:        valueOr(s.Host, "placeholder"),
 		Port:        s.SSHPort,
 		User:        valueOr(s.SSHUser, "placeholder"),
@@ -198,10 +259,6 @@ func (s Server) inputProblems() []string {
 		RestartCmd:        s.RestartCmd,
 		EnsureIncludeCmd:  s.EnsureIncludeCmd,
 	}
-	if err := probe.Validate(); err != nil {
-		problems = append(problems, strings.TrimPrefix(err.Error(), "invalid server configuration: "))
-	}
-	return problems
 }
 
 func joinProblems(problems []string) error {
@@ -223,9 +280,29 @@ func valueOr(value, fallback string) string {
 // dataDir resolves the key path, which is stored relative so the data
 // directory can move.
 func (s Server) TransportConfig(dataDir string, connectTimeout, commandTimeout time.Duration) transport.Config {
+	if s.Transport == TransportAgent {
+		return transport.Config{
+			ID:        s.ID,
+			Name:      s.Name,
+			Kind:      TransportAgent,
+			Host:      s.Host,
+			AgentPort: s.AgentPort,
+			HostKey:   s.HostKey,
+
+			// The same column holds the token file here that holds the private
+			// key on the other transport, and the same boundary check applies
+			// to both.
+			TokenPath: filepath.Join(dataDir, s.SSHKeyPath),
+
+			ConnectTimeout: connectTimeout,
+			CommandTimeout: commandTimeout,
+		}
+	}
+
 	return transport.Config{
 		ID:          s.ID,
 		Name:        s.Name,
+		Kind:        TransportSSH,
 		Host:        s.Host,
 		Port:        s.SSHPort,
 		User:        s.SSHUser,

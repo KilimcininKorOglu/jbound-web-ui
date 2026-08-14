@@ -22,7 +22,7 @@ func NewServers(db *sql.DB) *Servers { return &Servers{db: db} }
 // serverColumns is the read projection. It leaves out nothing, because every
 // field is shown somewhere in the interface.
 const serverColumns = `
-    id, name, host, ssh_port, transport, ssh_user, ssh_key_path, host_key,
+    id, name, host, ssh_port, transport, agent_port, ssh_user, ssh_key_path, host_key,
     records_path, reload_cmd, status_cmd,
     base64_path, tee_path, mv_path, sha256_path,
     check_conf_cmd, reload_fallback_cmd, restart_cmd, ensure_include_cmd,
@@ -32,15 +32,15 @@ const serverColumns = `
 func (s *Servers) Create(ctx context.Context, record server.Server) (server.Server, error) {
 	const query = `
 INSERT INTO servers
-    (name, host, ssh_port, transport, ssh_user, ssh_key_path, host_key,
+    (name, host, ssh_port, transport, agent_port, ssh_user, ssh_key_path, host_key,
      records_path, reload_cmd, status_cmd,
      base64_path, tee_path, mv_path, sha256_path,
      check_conf_cmd, reload_fallback_cmd, restart_cmd, ensure_include_cmd,
      enabled)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	result, err := s.db.ExecContext(ctx, query,
-		record.Name, record.Host, record.SSHPort, record.Transport,
+		record.Name, record.Host, record.SSHPort, record.Transport, record.AgentPort,
 		record.SSHUser, record.SSHKeyPath, record.HostKey,
 		record.RecordsPath, record.ReloadCmd, record.StatusCmd,
 		record.Base64Path, record.TeePath, record.MvPath, record.Sha256Path,
@@ -69,7 +69,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 func (s *Servers) Update(ctx context.Context, record server.Server) error {
 	const query = `
 UPDATE servers
-   SET name = ?, host = ?, ssh_port = ?, ssh_user = ?,
+   SET name = ?, host = ?, ssh_port = ?, agent_port = ?, ssh_user = ?,
        records_path = ?, reload_cmd = ?, status_cmd = ?,
        base64_path = ?, tee_path = ?, mv_path = ?, sha256_path = ?,
        check_conf_cmd = ?, reload_fallback_cmd = ?, restart_cmd = ?,
@@ -78,7 +78,7 @@ UPDATE servers
  WHERE id = ?`
 
 	result, err := s.db.ExecContext(ctx, query,
-		record.Name, record.Host, record.SSHPort, record.SSHUser,
+		record.Name, record.Host, record.SSHPort, record.AgentPort, record.SSHUser,
 		record.RecordsPath, record.ReloadCmd, record.StatusCmd,
 		record.Base64Path, record.TeePath, record.MvPath, record.Sha256Path,
 		record.CheckConfCmd, record.ReloadFallbackCmd, record.RestartCmd,
@@ -103,6 +103,20 @@ func (s *Servers) SetKeyPath(ctx context.Context, id int64, relPath string) erro
 		"UPDATE servers SET ssh_key_path = ? WHERE id = ?", relPath, id)
 	if err != nil {
 		return fmt.Errorf("cannot store the key path: %w", err)
+	}
+	return requireOneRow(result, "server", fmt.Sprint(id))
+}
+
+// SetRecordsPath records the file an agent reported.
+//
+// It is its own statement because the value is a fact read from the target
+// rather than one the operator entered, so it is written on its own rather
+// than through the form path that would overwrite everything else.
+func (s *Servers) SetRecordsPath(ctx context.Context, id int64, path string) error {
+	result, err := s.db.ExecContext(ctx,
+		"UPDATE servers SET records_path = ? WHERE id = ?", path, id)
+	if err != nil {
+		return fmt.Errorf("cannot store the records path: %w", err)
 	}
 	return requireOneRow(result, "server", fmt.Sprint(id))
 }
@@ -217,7 +231,8 @@ func scanServer(row scanner) (server.Server, error) {
 
 	err := row.Scan(
 		&record.ID, &record.Name, &record.Host, &record.SSHPort,
-		&record.Transport, &record.SSHUser, &record.SSHKeyPath, &record.HostKey,
+		&record.Transport, &record.AgentPort,
+		&record.SSHUser, &record.SSHKeyPath, &record.HostKey,
 		&record.RecordsPath, &record.ReloadCmd, &record.StatusCmd,
 		&record.Base64Path, &record.TeePath, &record.MvPath, &record.Sha256Path,
 		&record.CheckConfCmd, &record.ReloadFallbackCmd, &record.RestartCmd,

@@ -3,6 +3,7 @@ package server
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/pem"
 	"fmt"
 	"os"
@@ -263,4 +264,65 @@ func (k *KeyStore) resolve(relPath string) (string, error) {
 // server does not orphan its key.
 func KeyRelPath(id int64) string {
 	return filepath.Join(KeySubdir, strconv.FormatInt(id, 10)+".key")
+}
+
+// TokenRelPath builds the stored path of one agent token.
+//
+// It sits beside the private keys and is named the same way, because it is the
+// same kind of thing: the one secret that reaches a managed server, kept out of
+// the database so a database leak does not hand over the fleet.
+func TokenRelPath(id int64) string {
+	return filepath.Join(KeySubdir, strconv.FormatInt(id, 10)+".token")
+}
+
+// tokenBytes is how much randomness a token carries.
+//
+// Thirty two bytes is what the rest of this project uses for a secret nobody
+// types, and it is far past anything a network attacker can search.
+const tokenBytes = 32
+
+// GenerateToken writes a bearer token for one agent and returns it once.
+//
+// The token is returned here and nowhere else. The caller shows it to the
+// operator, who installs it on the target, and after that the only copy the
+// panel can read is the file. That is deliberate: a token a listing could
+// re-display is a token every reader of that page walks away with.
+func (k *KeyStore) GenerateToken(id int64) (string, string, error) {
+	material := make([]byte, tokenBytes)
+	if _, err := rand.Read(material); err != nil {
+		return "", "", fmt.Errorf("cannot generate an agent token: %w", err)
+	}
+	token := base64.RawURLEncoding.EncodeToString(material)
+
+	relPath := TokenRelPath(id)
+	path, err := k.resolve(relPath)
+	if err != nil {
+		return "", "", err
+	}
+
+	file, err := createKeyFile(path)
+	if err != nil {
+		return "", "", err
+	}
+	if _, err := file.WriteString(token + "\n"); err != nil {
+		file.Close()
+		os.Remove(path)
+		return "", "", fmt.Errorf("cannot write the token file %s: %w", path, err)
+	}
+	if err := file.Close(); err != nil {
+		os.Remove(path)
+		return "", "", fmt.Errorf("cannot finish the token file %s: %w", path, err)
+	}
+	return token, relPath, nil
+}
+
+// TokenPath turns a stored token path into a full one.
+//
+// It goes through the same boundary check the keys do, so a tampered row
+// cannot point the panel at a file outside the key directory.
+func (k *KeyStore) TokenPath(relPath string) (string, error) {
+	if relPath == "" {
+		return "", fmt.Errorf("the server has no agent token")
+	}
+	return k.resolve(relPath)
 }

@@ -542,3 +542,45 @@ func TestADisabledServerIsNotPartOfTheTargetCount(t *testing.T) {
 		t.Errorf("target = %d servers, want the two that are enabled", page.TargetServers)
 	}
 }
+
+func TestADisabledServerDoesNotFillThePlaceOfOneThatLacksTheRecord(t *testing.T) {
+	// A refresh pass reads only the enabled servers, so a disabled one keeps
+	// its cached rows for ever. Counting them let a record two of three
+	// servers hold read as complete, and the records page then showed no
+	// drift marker for drift that was really there.
+	harness := newWriteHarness(t, 3)
+
+	members := harness.groups.members[1]
+	members[len(members)-1].Enabled = false
+	disabled := members[len(members)-1].ID
+
+	lister := &fakeLister{page: Page{Rows: []Row{
+		// Held by one enabled server and by the disabled one.
+		{Holders: []int64{1, disabled}, HolderNames: []string{"dns1", "dns3"}},
+		// Held by both enabled servers.
+		{Holders: []int64{1, 2}, HolderNames: []string{"dns1", "dns2"}},
+	}}}
+	service := harness.service(lister, &stubQuerier{})
+
+	page, err := service.Page(context.Background(), Query{Scope: ScopeGroup, GroupID: 1})
+	if err != nil {
+		t.Fatalf("cannot read the page: %v", err)
+	}
+
+	if page.TargetServers != 2 {
+		t.Fatalf("target = %d servers, want the two that are enabled", page.TargetServers)
+	}
+	if page.Rows[0].Complete(page.TargetServers) {
+		t.Error("a record one enabled server lacks reads as complete")
+	}
+	if got := page.Rows[0].Holders; len(got) != 1 || got[0] != 1 {
+		t.Errorf("holders = %v, want only the enabled server", got)
+	}
+	// The names are what the operator reads, so they follow the same set.
+	if got := page.Rows[0].HolderNames; len(got) != 1 {
+		t.Errorf("holder names = %v, want only the enabled server", got)
+	}
+	if !page.Rows[1].Complete(page.TargetServers) {
+		t.Error("a record every enabled server holds reads as incomplete")
+	}
+}

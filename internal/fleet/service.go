@@ -2,6 +2,7 @@ package fleet
 
 import (
 	"context"
+	"slices"
 	"time"
 
 	"unbound-web/internal/audit"
@@ -80,14 +81,23 @@ func (s *Service) Page(ctx context.Context, query Query) (Page, error) {
 	}
 	// A disabled server is left out of every operation, so counting it would
 	// make a record every working server holds read as incomplete.
+	enabled := make(map[int64]string, len(members))
 	for _, record := range members {
 		if record.Enabled {
+			enabled[record.ID] = record.Name
 			page.TargetServers++
 		}
 	}
 
 	now := s.now()
 	for i := range page.Rows {
+		// The holders and the denominator have to describe the same set of
+		// servers. A disabled server keeps its cached rows for ever, because
+		// a refresh pass only reads the enabled ones, so a record it still
+		// holds would otherwise fill the place of an enabled server that
+		// lacks it and hide the drift behind a complete looking count.
+		keepEnabledHolders(&page.Rows[i], enabled)
+
 		for _, id := range page.Rows[i].Holders {
 			if states[id].Stale(now, s.staleAfter()) {
 				page.Rows[i].Stale = true
@@ -96,6 +106,29 @@ func (s *Service) Page(ctx context.Context, query Query) (Page, error) {
 		}
 	}
 	return page, nil
+}
+
+// keepEnabledHolders drops the holders that are not part of the target.
+//
+// The names are taken from the server records rather than from the cache row,
+// which is the same source the target list is built from, and the two slices
+// are rebuilt together so they cannot drift apart.
+func keepEnabledHolders(row *Row, enabled map[int64]string) {
+	holders := make([]int64, 0, len(row.Holders))
+	names := make([]string, 0, len(row.Holders))
+
+	for _, id := range row.Holders {
+		name, ok := enabled[id]
+		if !ok {
+			continue
+		}
+		holders = append(holders, id)
+		names = append(names, name)
+	}
+	slices.Sort(names)
+
+	row.Holders = holders
+	row.HolderNames = names
 }
 
 // Stale reports which of the given servers hold a cache the panel no longer

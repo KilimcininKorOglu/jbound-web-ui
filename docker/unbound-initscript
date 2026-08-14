@@ -20,6 +20,12 @@ CONF=/etc/unbound/unbound.conf
 
 # unbound_pid answers with one pid or nothing.
 #
+# The pidfile is checked against the process it names rather than believed. A
+# container keeps its filesystem when it is stopped and started again, so the
+# file outlives the daemon: a start that trusted it would report a resolver
+# that is already running while nothing is, status would agree, and every
+# query would time out with nothing anywhere saying why.
+#
 # The fallback matches the command line rather than the process name. This
 # script is called unbound, so a name match finds itself and every start then
 # reports a daemon that is already running while nothing is.
@@ -29,8 +35,12 @@ CONF=/etc/unbound/unbound.conf
 # either of them.
 unbound_pid() {
     if [ -f "$PIDFILE" ]; then
-        head -n1 "$PIDFILE"
-        return 0
+        pid=$(head -n1 "$PIDFILE")
+        if [ -n "$pid" ] && grep -qs '^/usr/sbin/unbound' "/proc/$pid/cmdline"; then
+            echo "$pid"
+            return 0
+        fi
+        rm -f "$PIDFILE"
     fi
     pgrep -f "^/usr/sbin/unbound -c" | head -n1 || true
 }

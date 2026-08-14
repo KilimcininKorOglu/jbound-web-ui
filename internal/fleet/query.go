@@ -3,7 +3,6 @@ package fleet
 import (
 	"context"
 	"strings"
-	"sync"
 
 	"unbound-web/internal/audit"
 	"unbound-web/internal/dnsfile"
@@ -97,20 +96,20 @@ func (s *Service) Query(ctx context.Context, actor server.Actor, target Target,
 		return QueryReport{}, err
 	}
 
+	// Every member forks a resolver query of its own, so the fan-out is bounded
+	// by the same setting the writes use. Any signed in account can start this
+	// against the whole fleet.
+	results := fanOut(ctx, members, s.writer.concurrent,
+		func(ctx context.Context, record server.Server) QueryResult {
+			return s.ask(ctx, record, domain, recordType)
+		})
+
 	report := QueryReport{
 		Domain:    domain,
 		Type:      recordType,
 		GroupName: groupName,
-		Results:   make([]QueryResult, len(members)),
+		Results:   results,
 	}
-
-	var wait sync.WaitGroup
-	for i, record := range members {
-		wait.Go(func() {
-			report.Results[i] = s.ask(ctx, record, domain, recordType)
-		})
-	}
-	wait.Wait()
 
 	// A query changes nothing, so one row names what was asked and where. The
 	// server column carries the machine only when a single one was asked.

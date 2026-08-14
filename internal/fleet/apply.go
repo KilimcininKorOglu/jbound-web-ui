@@ -296,8 +296,20 @@ func (w *Writer) Apply(ctx context.Context, actor server.Actor,
 func (w *Writer) fanOut(ctx context.Context, targets []server.Server,
 	job func(context.Context, server.Server) ServerResult) []ServerResult {
 
-	results := make([]ServerResult, len(targets))
-	slots := make(chan struct{}, max(1, w.concurrent()))
+	return fanOut(ctx, targets, w.concurrent, job)
+}
+
+// fanOut runs one job per server under the configured limit.
+//
+// It is a function rather than a method so every path that talks to several
+// servers at once can reach it. A loop written out by hand is a loop that can
+// be written without the limiter, which is how the DNS query fan-out came to
+// ignore `fleet_max_concurrent` entirely.
+func fanOut[T any](ctx context.Context, targets []server.Server,
+	concurrent func() int, job func(context.Context, server.Server) T) []T {
+
+	results := make([]T, len(targets))
+	slots := make(chan struct{}, max(1, concurrent()))
 
 	var wait sync.WaitGroup
 	for i, record := range targets {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -46,9 +47,30 @@ type stubQuerier struct {
 	answers map[string][]string
 	errs    map[string]error
 	asked   []string
+
+	// delay holds a query open, and inFlight tracks how many overlap, which is
+	// what proves the fan-out is bounded.
+	delay    time.Duration
+	inFlight *atomic.Int32
+	peak     *atomic.Int32
 }
 
 func (s *stubQuerier) Ask(_ context.Context, host, domain, _ string) ([]string, error) {
+	if s.inFlight != nil {
+		current := s.inFlight.Add(1)
+		defer s.inFlight.Add(-1)
+
+		for {
+			peak := s.peak.Load()
+			if current <= peak || s.peak.CompareAndSwap(peak, current) {
+				break
+			}
+		}
+	}
+	if s.delay > 0 {
+		time.Sleep(s.delay)
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -202,6 +224,36 @@ func TestAQueryAsksEveryServerOfTheGroup(t *testing.T) {
 	}
 	if len(queries.questions()) != 3 {
 		t.Errorf("the querier was asked %d times, want 3", len(queries.questions()))
+	}
+}
+
+func TestAQueryHoldsTheConcurrencyLimit(t *testing.T) {
+	// Every member forks a resolver query of its own, and any signed in
+	// account can start one against the whole fleet, so the operator's
+	// ceiling has to apply here as much as it does to a write.
+	var inFlight, peak atomic.Int32
+
+	harness := newWriteHarness(t, 8)
+	queries := &stubQuerier{
+		answers:  map[string][]string{},
+		inFlight: &inFlight, peak: &peak, delay: 20 * time.Millisecond,
+	}
+	service := harness.service(&fakeLister{}, queries)
+
+	report, err := service.Query(context.Background(), testActor(),
+		groupTarget(), "www.example.net", "A")
+	if err != nil {
+		t.Fatalf("the query failed: %v", err)
+	}
+	if len(report.Results) != 8 {
+		t.Fatalf("%d servers answered, want 8", len(report.Results))
+	}
+
+	if peak.Load() > 2 {
+		t.Errorf("%d queries overlapped, want at most 2", peak.Load())
+	}
+	if peak.Load() < 2 {
+		t.Error("the queries ran one after another, so the limit does nothing")
 	}
 }
 

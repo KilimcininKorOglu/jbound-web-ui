@@ -267,8 +267,15 @@ well. No part of it touches the host.
 make dev-up        # build and start the stack
 make dev-verify    # check the acceptance criteria
 make dev-logs      # follow the panel logs
-make dev-down      # stop it and drop the volumes
+make dev-stop      # stop it and keep the data
+make dev-start     # start it again
+make dev-down      # remove it and drop every volume
 ```
+
+`dev-stop` leaves the panel database, the approved host keys and the files
+the targets hold where they are, so the servers you added are still there
+tomorrow. `dev-down` removes them: the next start has an empty panel and the
+targets are seeded again from `docker/seed`.
 
 The panel is served on `http://127.0.0.1:8330`. `make dev-env` creates
 `.env.dev` from the example on the first run and refuses to start until every

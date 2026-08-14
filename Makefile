@@ -50,12 +50,26 @@ dev-keys: ## Generate the development SSH key pair when it is missing
 dev-up: dev-env dev-keys ## Build and start the development stack
 	$(COMPOSE) up -d --build
 
+.PHONY: dev-stop
+dev-stop: ## Stop the development stack and keep its data
+	# The containers stop where they are. The panel database, the approved
+	# host keys and the files the targets hold survive, which is what an
+	# operator expects of the machine they were working on yesterday.
+	$(COMPOSE) stop
+
+.PHONY: dev-start
+dev-start: ## Start the stopped development stack again
+	$(COMPOSE) start
+
 .PHONY: dev-down
-dev-down: ## Stop the development stack and drop its volumes
+dev-down: ## Remove the development stack and every volume it owns
+	# Destructive on purpose: the panel database goes, so the next start has
+	# no servers, no groups and no approved host keys, and the targets are
+	# seeded again from docker/seed. Use dev-stop to keep the work.
 	$(COMPOSE) down -v
 
 .PHONY: dev-restart
-dev-restart: ## Recreate the development stack from scratch
+dev-restart: ## Recreate the development stack from scratch, dropping its data
 	$(MAKE) dev-down
 	$(MAKE) dev-up
 

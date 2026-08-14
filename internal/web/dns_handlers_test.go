@@ -972,3 +972,25 @@ func TestAChangeThatLandedIsAuditedEvenIfTheRequestIsCancelled(t *testing.T) {
 		t.Error("the change landed on a server with no audit row behind it")
 	}
 }
+
+func TestARefusedRecordDoesNotComeBackWithEmptyTargetLists(t *testing.T) {
+	// The form used to render with empty server and group selectors when the
+	// store failed. The next submission is then refused with "no server was
+	// chosen", which blames the operator for a database fault.
+	env := newFleetEnv(t)
+	logged := captureLog(t)
+
+	if _, err := env.db.Exec("ALTER TABLE servers RENAME TO servers_moved"); err != nil {
+		t.Fatalf("cannot take the table away: %v", err)
+	}
+
+	recorder := env.adminForm(t, http.MethodPost, "/dns/records", env.cookie,
+		groupForm(url.Values{"fqdn": {"not a name"}, "type": {"A"}, "value": {"10.0.0.92"}}))
+
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500:\n%s", recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(logged.String(), "cannot load the servers for the record form") {
+		t.Errorf("the failure never reached the log:\n%s", logged.String())
+	}
+}

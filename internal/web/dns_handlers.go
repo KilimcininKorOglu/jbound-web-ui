@@ -666,12 +666,21 @@ func (a *App) recordProblem(w http.ResponseWriter, r *http.Request,
 		data.Old = oldRecordFromValues(r.Form)
 	}
 
-	if servers, err := a.Servers.List(r.Context()); err == nil {
-		data.Servers = servers
+	// A form whose target lists are empty refuses the next submission for a
+	// reason the operator cannot act on, and it says the field is wrong when
+	// the database is. The failure is reported as itself instead.
+	servers, err := a.Servers.List(r.Context())
+	if err != nil {
+		a.internalError(w, "cannot load the servers for the record form", err)
+		return
 	}
-	if groups, err := a.Servers.ListGroups(r.Context()); err == nil {
-		data.Groups = groups
+	groups, err := a.Servers.ListGroups(r.Context())
+	if err != nil {
+		a.internalError(w, "cannot load the groups for the record form", err)
+		return
 	}
+	data.Servers = servers
+	data.Groups = groups
 
 	a.RenderPartial(w, r, status, "record-form", data)
 }

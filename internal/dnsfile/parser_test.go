@@ -205,3 +205,69 @@ func TestAMultiWordMXTargetKeepsEveryFieldToo(t *testing.T) {
 		t.Errorf("got %q / %d", records[0].Value, records[0].Priority)
 	}
 }
+
+func TestAClassBetweenTheNameAndTheTypeIsRead(t *testing.T) {
+	// The panel writes no class, but the script this project grew out of does,
+	// and so does a file somebody kept from an older tool. Reading the class as
+	// the type turns every one of those records into a record of type IN, which
+	// the panel then lists wrongly, matches on nothing and repairs into the
+	// rest of the fleet.
+	const content = `local-data: "host.example.com. IN A 10.0.0.1"
+local-data: "mail.example.com. IN MX 10 mx1.example.com"
+local-data: "txt.example.com. in TXT v=spf1 ~all"
+`
+
+	records := dnsfile.Parse([]byte(content))
+	if len(records) != 3 {
+		t.Fatalf("got %d records, want 3:\n%+v", len(records), records)
+	}
+
+	if records[0].Type != "A" || records[0].Value != "10.0.0.1" {
+		t.Errorf("A record = %+v", records[0])
+	}
+	if records[1].Type != "MX" || records[1].Priority != 10 ||
+		records[1].Value != "mx1.example.com" {
+		t.Errorf("MX record = %+v", records[1])
+	}
+	if records[2].Type != "TXT" || records[2].Value != "v=spf1 ~all" {
+		t.Errorf("TXT record = %+v", records[2])
+	}
+}
+
+func TestANameThatReadsLikeAClassKeepsItsOwnFields(t *testing.T) {
+	// The class is only dropped when a type follows it. A record whose second
+	// field is the type must survive even when the first field is called "in".
+	records := dnsfile.Parse([]byte(`local-data: "in.example.com. A 10.0.0.2"` + "\n"))
+	if len(records) != 1 {
+		t.Fatalf("got %d records, want 1", len(records))
+	}
+	if records[0].FQDN != "in.example.com" || records[0].Type != "A" ||
+		records[0].Value != "10.0.0.2" {
+		t.Errorf("record = %+v", records[0])
+	}
+}
+
+func TestARecordWrittenWithAClassStillMatchesAnEditAndADelete(t *testing.T) {
+	// The whole point of reading the class: a server the script managed must be
+	// editable through the panel. Both paths compare through the parser.
+	const content = `local-data: "host.example.com. IN A 10.0.0.1"` + "\n"
+	record := dnsfile.Parse([]byte(content))[0]
+
+	left, err := dnsfile.Delete([]byte(content), record)
+	if err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if len(dnsfile.Parse(left)) != 0 {
+		t.Errorf("the record survived the delete:\n%s", left)
+	}
+
+	updated := record
+	updated.Value = "10.0.0.9"
+	changed, err := dnsfile.Edit([]byte(content), record, updated)
+	if err != nil {
+		t.Fatalf("edit: %v", err)
+	}
+	if got := dnsfile.Parse(changed); len(got) != 1 || got[0].Value != "10.0.0.9" {
+		t.Errorf("edit produced %+v:\n%s", got, changed)
+	}
+}

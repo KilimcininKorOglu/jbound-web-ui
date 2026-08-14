@@ -7,6 +7,7 @@ package dnsfile
 
 import (
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -37,6 +38,28 @@ var localData = regexp.MustCompile(`^local-data:\s*"([^"]+)"`)
 // fields splits the quoted part on any run of whitespace.
 var fields = regexp.MustCompile(`\s+`)
 
+// classes are the DNS classes a line may name between the owner and the type.
+//
+// The class is optional in zone file syntax and Unbound assumes IN without
+// it, so the panel writes lines without one. A file that another tool wrote
+// regularly carries it, and reading that line as a record of type IN is the
+// difference between listing a server's records and listing nonsense.
+var classes = []string{"IN", "CH", "CS", "HS"}
+
+// dropClass returns the fields with a leading class removed.
+//
+// The class is only taken when a type follows it, so an owner name that
+// happens to be called "in" keeps its own second field.
+func dropClass(parts []string) []string {
+	if len(parts) < 3 {
+		return parts
+	}
+	if !slices.Contains(classes, strings.ToUpper(parts[1])) {
+		return parts
+	}
+	return slices.Delete(slices.Clone(parts), 1, 2)
+}
+
 // Parse reads every record of a host entries file.
 //
 // A line that does not fit is skipped rather than reported. The file is edited
@@ -62,7 +85,7 @@ func Parse(content []byte) []Record {
 			continue
 		}
 
-		parts := fields.Split(strings.TrimSpace(match[1]), -1)
+		parts := dropClass(fields.Split(strings.TrimSpace(match[1]), -1))
 		if len(parts) < 3 {
 			continue
 		}

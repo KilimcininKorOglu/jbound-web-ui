@@ -24,6 +24,7 @@ RECORDS_PATH=/etc/unbound/local_records.conf
 MAIN_CONFIG_PATH=/etc/unbound/unbound.conf
 AUTHORIZED_KEY=
 SUDOERS_FILE=/etc/sudoers.d/jbound-target
+INCLUDE_SCRIPT=/usr/local/sbin/jbound-ensure-include
 
 while getopts 'u:f:c:k:h' opt; do
     case "$opt" in
@@ -104,23 +105,73 @@ else
     echo "no public key given, skipping authorized_keys step"
 fi
 
-# --- Records file ------------------------------------------------------------
-# Mode 644 lets the panel read without sudo. Writing goes through sudo, so the
-# directory permissions stay untouched.
-if [ ! -e "$RECORDS_PATH" ]; then
+# --- Include repair script ----------------------------------------------------
+# The one failure nothing else on the path can see. A main configuration that
+# does not include the records file takes every write, passes unbound-checkconf
+# because nothing in it is wrong, reloads without complaint, and answers not one
+# of the records the operator entered.
+#
+# The script takes no arguments. Both paths are written into it here, so the
+# panel never names a file a managed server then writes. A command that took a
+# path would turn the fleet into somewhere the panel can write anything it
+# names, which is a far larger thing than the one this repairs.
+#
+# The clause header goes in the records file for the same reason the include can
+# go at the end of the main configuration: a file that opens its own server
+# clause loads from anywhere, so nothing has to reason about where the include
+# line sits on this particular host.
+cat > "$INCLUDE_SCRIPT" <<EOF
+#!/bin/sh
+# Managed by jbound setup-target.sh. Do not edit by hand.
+#
+# Makes the resolver read the records file, and says what it had to do.
+# It takes no arguments: both paths are fixed here, at setup time.
+
+set -eu
+
+RECORDS=$RECORDS_PATH
+MAIN=$MAIN_CONFIG_PATH
+
+if [ ! -e "\$RECORDS" ]; then
     mkdir -p "$RECORDS_DIR"
-    : > "$RECORDS_PATH"
-    echo "created $RECORDS_PATH"
+    printf 'server:\n' > "\$RECORDS"
+    chmod 644 "\$RECORDS"
 fi
-chmod 644 "$RECORDS_PATH"
+
+# A file of bare local-data lines is only legal inside a server clause. Its own
+# header makes it loadable wherever the include ends up.
+if ! grep -q '^[[:space:]]*server:[[:space:]]*\$' "\$RECORDS"; then
+    printf 'server:\n' | cat - "\$RECORDS" > "\$RECORDS.header"
+    mv "\$RECORDS.header" "\$RECORDS"
+    chmod 644 "\$RECORDS"
+fi
+
+if grep -q "^[[:space:]]*include:[[:space:]]*\"\?\$RECORDS\"\?[[:space:]]*\$" "\$MAIN"; then
+    echo ok
+    exit 0
+fi
+
+printf 'include: %s\n' "\$RECORDS" >> "\$MAIN"
+echo added
+EOF
+
+chmod 755 "$INCLUDE_SCRIPT"
+chown root:root "$INCLUDE_SCRIPT"
+echo "installed $INCLUDE_SCRIPT"
+
+# Run it once here, so a target is correct the moment it is prepared rather
+# than on the first change the panel makes.
+"$INCLUDE_SCRIPT" >/dev/null
+echo "confirmed $MAIN_CONFIG_PATH includes $RECORDS_PATH"
 
 # --- Sudoers rules -----------------------------------------------------------
-# Six exact rules, no wildcards. The temp path is fixed so the mv rule can be
+# Seven exact rules, no wildcards. The temp path is fixed so the mv rule can be
 # an exact match.
 #
-# The first three write the file. The last three are what a change runs after
+# The first three write the file. The next three are what a change runs after
 # it: the configuration check, the cache preserving reload, and the restart the
-# panel falls back to when a reload leaves the resolver stopped.
+# panel falls back to when a reload leaves the resolver stopped. The last one
+# runs before a change and takes no arguments at all.
 TMP_SUDOERS=$(mktemp)
 trap 'rm -f "$TMP_SUDOERS"' EXIT
 
@@ -133,6 +184,7 @@ $SSH_USER ALL=(ALL) NOPASSWD: $SERVICE_PATH unbound reload
 $SSH_USER ALL=(ALL) NOPASSWD: $CHECKCONF_PATH $MAIN_CONFIG_PATH
 $SSH_USER ALL=(ALL) NOPASSWD: $CONTROL_PATH reload_keep_cache
 $SSH_USER ALL=(ALL) NOPASSWD: $SERVICE_PATH unbound restart
+$SSH_USER ALL=(ALL) NOPASSWD: $INCLUDE_SCRIPT
 EOF
 
 chmod 440 "$TMP_SUDOERS"
@@ -161,6 +213,7 @@ Enter these values in the panel server record:
   reload_fallback_cmd sudo $SERVICE_PATH unbound reload
   restart_cmd         sudo $SERVICE_PATH unbound restart
   check_conf_cmd      sudo $CHECKCONF_PATH $MAIN_CONFIG_PATH
+  ensure_include_cmd  sudo $INCLUDE_SCRIPT
   status_cmd          systemctl is-active unbound
 
 EOF

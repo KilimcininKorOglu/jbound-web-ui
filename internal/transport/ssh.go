@@ -512,6 +512,17 @@ func (t *SSHTransport) CheckConfig(ctx context.Context) (string, error) {
 	return t.step(ctx, t.cfg.CheckConfCmd)
 }
 
+// EnsureInclude asks the target to make the resolver read the records file.
+//
+// The command takes no arguments. Everything it needs, the records file and
+// the main configuration, was written into it when the target was set up. A
+// command that took a path would be a way to have every managed server write
+// a file the panel names, which is a far larger thing than the one this
+// repairs.
+func (t *SSHTransport) EnsureInclude(ctx context.Context) (string, error) {
+	return t.step(ctx, t.cfg.EnsureIncludeCmd)
+}
+
 // step runs one configured command and returns everything it said.
 //
 // The command comes from the server record rather than from the caller, so a

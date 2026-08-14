@@ -24,22 +24,12 @@ log() { printf '[entrypoint-dns] %s\n' "$*"; }
 # panel pins whatever it sees on first connection.
 ssh-keygen -A
 
-# --- Target preparation ------------------------------------------------------
-# The same script that ships to production runs here. That keeps the dev
-# sudoers rules identical to the documented ones.
-if [ -r "$PUBLIC_KEY_FILE" ]; then
-    /usr/local/sbin/setup-target.sh \
-        -u "$SSH_USER" \
-        -f "$RECORDS_PATH" \
-        -k "$(cat "$PUBLIC_KEY_FILE")"
-else
-    log "public key not found at $PUBLIC_KEY_FILE"
-    log "run 'make dev-keys' on the host before starting the stack"
-    exit 1
-fi
-
 # --- Seed records ------------------------------------------------------------
 # Only on first start. Later runs keep whatever the panel wrote.
+#
+# This runs before the target preparation, because that step creates the file
+# when it is missing. Seeding afterwards would find a file that already exists
+# and leave every target empty.
 if [ -n "$SEED_FILE" ] && [ ! -s "$RECORDS_PATH" ]; then
     if [ -r "$SEED_FILE" ]; then
         cp "$SEED_FILE" "$RECORDS_PATH"
@@ -49,6 +39,21 @@ if [ -n "$SEED_FILE" ] && [ ! -s "$RECORDS_PATH" ]; then
         log "seed file not readable: $SEED_FILE"
         exit 1
     fi
+fi
+
+# --- Target preparation ------------------------------------------------------
+# The same script that ships to production runs here. That keeps the dev
+# sudoers rules identical to the documented ones. It also puts the clause
+# header in the seeded file and confirms the main configuration includes it.
+if [ -r "$PUBLIC_KEY_FILE" ]; then
+    /usr/local/sbin/setup-target.sh \
+        -u "$SSH_USER" \
+        -f "$RECORDS_PATH" \
+        -k "$(cat "$PUBLIC_KEY_FILE")"
+else
+    log "public key not found at $PUBLIC_KEY_FILE"
+    log "run 'make dev-keys' on the host before starting the stack"
+    exit 1
 fi
 
 # --- Optional shell pollution fixture ----------------------------------------

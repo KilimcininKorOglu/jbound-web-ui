@@ -26,6 +26,19 @@ type Transport interface {
 	// between.
 	WriteRecords(ctx context.Context, data []byte, expectSHA256 string) error
 
+	// EnsureInclude makes the resolver read the records file, and reports
+	// what it had to do.
+	//
+	// A main configuration without an include line for that file is the one
+	// failure nothing else catches: the write lands, the configuration check
+	// passes, the reload succeeds, and not one record resolves. The target
+	// answers IncludeAdded when it had to repair it.
+	//
+	// The command names no path. The paths are baked into the target at setup
+	// time, because a panel that sent them would be a way to write any file
+	// on every managed server.
+	EnsureInclude(ctx context.Context) (output string, err error)
+
 	// CheckConfig asks the resolver to validate its configuration.
 	//
 	// It runs after a change is in place and before the resolver is asked to
@@ -71,6 +84,11 @@ var (
 	// yet keeps working without it.
 	ErrStepSkipped = errors.New("no command is configured for this step")
 )
+
+// IncludeAdded is what a target says when the main resolver configuration was
+// missing its include line and the target put one back. Anything else means
+// the line was already there.
+const IncludeAdded = "added"
 
 // Failure codes. A stored failure keeps the class and drops the text, because
 // the text names the remote command, its paths and its stderr.
@@ -212,12 +230,14 @@ type Config struct {
 	StatusCmd   string
 
 	// CheckConfCmd validates the resolver configuration. ReloadFallbackCmd and
-	// RestartCmd are the second and third rungs of a reload. Each one may be
-	// empty, which is a target whose sudoers rules do not name that command
-	// yet, and the step is skipped rather than failed.
+	// RestartCmd are the second and third rungs of a reload. EnsureIncludeCmd
+	// repairs a main configuration that does not include the records file.
+	// Each one may be empty, which is a target whose sudoers rules do not name
+	// that command yet, and the step is skipped rather than failed.
 	CheckConfCmd      string
 	ReloadFallbackCmd string
 	RestartCmd        string
+	EnsureIncludeCmd  string
 
 	Base64Path string
 	TeePath    string

@@ -178,6 +178,7 @@ func (f *fakeTransport) Reload(context.Context) (string, error)              { r
 func (f *fakeTransport) ReloadFallback(context.Context) (string, error)      { return "", nil }
 func (f *fakeTransport) Restart(context.Context) (string, error)             { return "", nil }
 func (f *fakeTransport) CheckConfig(context.Context) (string, error)         { return "", nil }
+func (f *fakeTransport) EnsureInclude(context.Context) (string, error)       { return "ok", nil }
 func (f *fakeTransport) ServiceStatus(context.Context) (bool, string, error) { return true, "", nil }
 func (f *fakeTransport) Probe(context.Context) error                         { return f.probeErr }
 func (f *fakeTransport) Close() error                                        { return nil }

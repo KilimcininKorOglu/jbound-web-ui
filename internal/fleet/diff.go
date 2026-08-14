@@ -290,6 +290,8 @@ func (w *Writer) repairOne(ctx context.Context, actor server.Actor,
 		return result
 	}
 
+	w.ensureInclude(ctx, client, actor, record)
+
 	content, digest, err := client.ReadRecords(ctx)
 	if err != nil {
 		result.Status = StatusFailed
@@ -312,7 +314,7 @@ func (w *Writer) repairOne(ctx context.Context, actor server.Actor,
 	}
 	w.keepPrevious(ctx, record.ID, content, digest)
 
-	if err := client.WriteRecords(ctx, updated, digest); err != nil {
+	if err := writeRecords(ctx, client, updated, digest); err != nil {
 		result.Status = StatusFailed
 		result.Message = failureMessage(err)
 		return result
@@ -476,6 +478,8 @@ func (w *Writer) mirrorOne(ctx context.Context, actor server.Actor,
 		return result
 	}
 
+	w.ensureInclude(ctx, client, actor, record)
+
 	content, digest, err := client.ReadRecords(ctx)
 	if err != nil {
 		result.Status = StatusFailed
@@ -511,7 +515,7 @@ func (w *Writer) mirrorOne(ctx context.Context, actor server.Actor,
 	// source is brought back with.
 	w.keepPrevious(ctx, record.ID, content, digest)
 
-	if err := client.WriteRecords(ctx, updated, digest); err != nil {
+	if err := writeRecords(ctx, client, updated, digest); err != nil {
 		logging.From(ctx).Error("cannot write a mirrored file",
 			"server", record.Name, "source", source.Name, "error", err)
 

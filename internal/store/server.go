@@ -25,7 +25,7 @@ const serverColumns = `
     id, name, host, ssh_port, transport, ssh_user, ssh_key_path, host_key,
     records_path, reload_cmd, status_cmd,
     base64_path, tee_path, mv_path, sha256_path,
-    check_conf_cmd, reload_fallback_cmd, restart_cmd,
+    check_conf_cmd, reload_fallback_cmd, restart_cmd, ensure_include_cmd,
     enabled, last_seen_at, last_error, created_at, updated_at`
 
 // Create inserts a server and returns it with its identifier.
@@ -35,8 +35,9 @@ INSERT INTO servers
     (name, host, ssh_port, transport, ssh_user, ssh_key_path, host_key,
      records_path, reload_cmd, status_cmd,
      base64_path, tee_path, mv_path, sha256_path,
-     check_conf_cmd, reload_fallback_cmd, restart_cmd, enabled)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+     check_conf_cmd, reload_fallback_cmd, restart_cmd, ensure_include_cmd,
+     enabled)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	result, err := s.db.ExecContext(ctx, query,
 		record.Name, record.Host, record.SSHPort, record.Transport,
@@ -44,6 +45,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 		record.RecordsPath, record.ReloadCmd, record.StatusCmd,
 		record.Base64Path, record.TeePath, record.MvPath, record.Sha256Path,
 		record.CheckConfCmd, record.ReloadFallbackCmd, record.RestartCmd,
+		record.EnsureIncludeCmd,
 		boolToInt(record.Enabled),
 	)
 	if err != nil {
@@ -71,6 +73,7 @@ UPDATE servers
        records_path = ?, reload_cmd = ?, status_cmd = ?,
        base64_path = ?, tee_path = ?, mv_path = ?, sha256_path = ?,
        check_conf_cmd = ?, reload_fallback_cmd = ?, restart_cmd = ?,
+       ensure_include_cmd = ?,
        enabled = ?
  WHERE id = ?`
 
@@ -79,6 +82,7 @@ UPDATE servers
 		record.RecordsPath, record.ReloadCmd, record.StatusCmd,
 		record.Base64Path, record.TeePath, record.MvPath, record.Sha256Path,
 		record.CheckConfCmd, record.ReloadFallbackCmd, record.RestartCmd,
+		record.EnsureIncludeCmd,
 		boolToInt(record.Enabled), record.ID,
 	)
 	if err != nil {
@@ -217,6 +221,7 @@ func scanServer(row scanner) (server.Server, error) {
 		&record.RecordsPath, &record.ReloadCmd, &record.StatusCmd,
 		&record.Base64Path, &record.TeePath, &record.MvPath, &record.Sha256Path,
 		&record.CheckConfCmd, &record.ReloadFallbackCmd, &record.RestartCmd,
+		&record.EnsureIncludeCmd,
 		&enabled, &lastSeen, &record.LastError, &created, &updated,
 	)
 	if err != nil {

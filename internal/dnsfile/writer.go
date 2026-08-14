@@ -132,6 +132,30 @@ func Delete(content []byte, record Record) ([]byte, error) {
 	return join(kept), nil
 }
 
+// ClauseHeader opens the Unbound clause the records belong to.
+const ClauseHeader = "server:"
+
+// EnsureHeader puts the clause header at the top of the file.
+//
+// A local-data line is only legal inside a server clause, so without a header
+// of its own the file can only be included from inside one. That makes the
+// position of the include line in the main configuration something the panel
+// would have to reason about on every target. With the header the file stands
+// on its own and the include can go anywhere, which is what lets the panel
+// repair a missing one by appending a single line.
+//
+// Unbound allows a server clause to be opened more than once, so the header is
+// safe even where the include already sits inside one.
+func EnsureHeader(content []byte) []byte {
+	lines := split(content)
+	for _, line := range lines {
+		if strings.TrimSpace(line) == ClauseHeader {
+			return content
+		}
+	}
+	return join(append([]string{ClauseHeader}, lines...))
+}
+
 // split breaks the file into lines and drops the empty tail a trailing newline
 // leaves behind, so the tail is decided in one place instead of by whoever
 // wrote the file last.

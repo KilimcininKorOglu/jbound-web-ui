@@ -43,6 +43,13 @@ const (
 	ActionCacheRefresh = "cache_refresh"
 	ActionFileRestore  = "file_restore"
 
+	// ActionConfigInclude marks a main resolver configuration the panel had to
+	// repair, because it did not include the file the panel writes. It is its
+	// own action rather than a note on the change that found it: the panel
+	// edited a file outside the one it manages, on a server somebody else set
+	// up.
+	ActionConfigInclude = "config_include"
+
 	ActionSIEMConfig = "siem_config"
 	ActionSIEMTest   = "siem_test"
 

@@ -69,6 +69,13 @@
     </div>
 
     <div class="col-12">
+      <label class="form-label" for="ensure_include_cmd">{{t "serverform.ensure_include_cmd"}}</label>
+      <input class="form-control" id="ensure_include_cmd" name="ensure_include_cmd"
+             value="{{.Server.EnsureIncludeCmd}}" spellcheck="false">
+      <div class="form-text">{{t "serverform.ensure_include_cmd_help"}}</div>
+    </div>
+
+    <div class="col-12">
       <details>
         <summary class="mb-2">{{t "serverform.tool_paths"}}</summary>
         <div class="row g-3">

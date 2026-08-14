@@ -577,6 +577,7 @@ func serverFromForm(r *http.Request) (server.Server, error) {
 		CheckConfCmd:      strings.TrimSpace(r.PostFormValue("check_conf_cmd")),
 		ReloadFallbackCmd: strings.TrimSpace(r.PostFormValue("reload_fallback_cmd")),
 		RestartCmd:        strings.TrimSpace(r.PostFormValue("restart_cmd")),
+		EnsureIncludeCmd:  strings.TrimSpace(r.PostFormValue("ensure_include_cmd")),
 
 		Enabled: r.PostFormValue("enabled") != "",
 	}

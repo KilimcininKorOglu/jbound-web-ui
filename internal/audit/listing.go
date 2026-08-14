@@ -71,6 +71,7 @@ func Actions() []string {
 		ActionDNSAdd, ActionDNSEdit, ActionDNSDelete,
 		ActionDNSRestart, ActionDNSQuery,
 		ActionDiffRepair, ActionDiffSync, ActionCacheRefresh, ActionFileRestore,
+		ActionConfigInclude,
 		ActionServerCreate, ActionServerUpdate, ActionServerDelete, ActionServerTrust,
 		ActionServerRotateKey, ActionServerTest,
 		ActionGroupCreate, ActionGroupUpdate, ActionGroupDelete,

@@ -552,3 +552,61 @@ func TestAnAcceptedTextValueReadsBackUnchanged(t *testing.T) {
 		})
 	}
 }
+
+func TestAFileWithoutTheClauseHeaderGetsOne(t *testing.T) {
+	content := []byte("local-data: \"www.example.local. A 10.0.0.20\"\n")
+
+	got := string(dnsfile.EnsureHeader(content))
+	want := "server:\nlocal-data: \"www.example.local. A 10.0.0.20\"\n"
+	if got != want {
+		t.Errorf("EnsureHeader wrote %q, want %q", got, want)
+	}
+}
+
+func TestTheClauseHeaderIsWrittenOnlyOnce(t *testing.T) {
+	// The panel rewrites the whole file on every change, so a header it added
+	// on the last write must not gain a second one on the next.
+	first := dnsfile.EnsureHeader([]byte("local-data: \"a.example.local. A 10.0.0.1\"\n"))
+	second := dnsfile.EnsureHeader(first)
+
+	if string(second) != string(first) {
+		t.Errorf("a second pass changed the file to %q", second)
+	}
+	if count := strings.Count(string(second), "server:"); count != 1 {
+		t.Errorf("the file holds %d clause headers, want one", count)
+	}
+}
+
+func TestAnIndentedClauseHeaderCounts(t *testing.T) {
+	// A file written by hand on the target carries whatever indentation that
+	// operator used. Adding a second header because of a leading space would
+	// be a change the panel makes for nothing.
+	content := []byte("    server:\nlocal-data: \"a.example.local. A 10.0.0.1\"\n")
+
+	if got := string(dnsfile.EnsureHeader(content)); got != string(content) {
+		t.Errorf("EnsureHeader changed the file to %q", got)
+	}
+}
+
+func TestTheClauseHeaderIsNotReadBackAsARecord(t *testing.T) {
+	// The header is configuration, not data. A parser that returned it would
+	// put a nonsense row in front of every operator.
+	content := dnsfile.EnsureHeader(
+		[]byte("local-data: \"www.example.local. A 10.0.0.20\"\n"))
+
+	records := dnsfile.Parse(content)
+	if len(records) != 1 {
+		t.Fatalf("the file parsed into %d records, want one", len(records))
+	}
+	if records[0].FQDN != "www.example.local" {
+		t.Errorf("read back %q", records[0].FQDN)
+	}
+}
+
+func TestAnEmptyFileGetsTheClauseHeader(t *testing.T) {
+	// A fresh target holds an empty file. The first write has to leave a file
+	// the resolver can load, not a bare local-data line outside any clause.
+	if got := string(dnsfile.EnsureHeader(nil)); got != "server:\n" {
+		t.Errorf("EnsureHeader wrote %q, want the header alone", got)
+	}
+}

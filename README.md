@@ -40,7 +40,7 @@ Panel host:
 Managed DNS server:
 
 - Unbound with an `include:` line for the records file.
-- An SSH account, `sudo`, and six exact sudoers rules created by
+- An SSH account, `sudo`, and seven exact sudoers rules created by
   `deploy/setup-target.sh`.
 - `unbound-control` for the reload that keeps the cache. A resolver without it
   still works: the panel falls back to a plain reload, and to a restart.
@@ -107,7 +107,7 @@ sudo ./deploy/setup-target.sh -k "ssh-ed25519 AAAA... jbound"
 ```
 
 It creates the `dnsops` account, adds the public key the panel generated,
-creates `/etc/unbound/local_records.conf` with mode `644` and installs six exact
+creates `/etc/unbound/local_records.conf` with mode `644` and installs seven exact
 sudoers rules. The permissions of `/etc/unbound` are left alone: reading needs
 no sudo, and everything else goes through the rules.
 
@@ -119,6 +119,7 @@ no sudo, and everything else goes through the rules.
 | `unbound-control reload_keep_cache` | reloads without discarding the cache |
 | `service unbound reload` | reloads when the control socket is not there |
 | `service unbound restart` | restarts when neither reload works |
+| `jbound-ensure-include` | makes the main configuration read the records file |
 
 The paths of these commands differ between distributions and each rule has to
 match the command the panel runs exactly, so the script resolves them with
@@ -132,13 +133,21 @@ Re-run the script after changing the records path in the panel. The rules
 are derived from that path.
 
 **Re-run it on every server you prepared with an earlier version.** The last
-four rules are newer than the first two. Without them **Test** reports the
+five rules are newer than the first two. Without them **Test** reports the
 configuration check as failed, and a record written to that server is rolled
 back rather than applied.
 
 ### What the panel does to a resolver
 
-A change is one write, one check and one reload.
+A change is one confirmation, one write, one check and one reload.
+
+The confirmation comes first. `jbound-ensure-include` puts the clause header at
+the top of the records file and appends the include line to the main
+configuration when it is missing. Without it a resolver takes every write,
+accepts every configuration check, reloads without complaint and answers none
+of the records, and nothing anywhere reports a problem. The script takes no
+arguments: both paths were written into it when the target was prepared, so the
+panel never names a file a managed server then writes.
 
 The write goes to a temporary file in the same directory and is moved over the
 records file, so the resolver never reads a half written file. The panel

@@ -199,6 +199,8 @@
   "serverform.check_conf_cmd": "Configuration check command",
   "serverform.check_conf_cmd_help": "Run after a change is written and before the resolver reads it. The included file cannot be checked on its own, so this names the main configuration file. A check that refuses the configuration puts the previous file back.",
   "serverform.enabled": "Enabled. A disabled server is skipped by group operations.",
+  "serverform.ensure_include_cmd": "Include repair command",
+  "serverform.ensure_include_cmd_help": "Runs before every change. It takes no arguments: the setup script writes both paths into it on the target, so the panel never names a file the target then writes. A main configuration that does not include the records file takes every write and answers none of the records, and this is what catches that.",
   "serverform.existing_key": "Use an existing private key",
   "serverform.host": "Host",
   "serverform.ladder_help": "The three commands are tried in order until the resolver is running again. The first one preserves the cache. Leave one empty to skip that step.",

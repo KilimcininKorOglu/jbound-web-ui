@@ -96,16 +96,39 @@ type writableTarget struct {
 	// expectations records what each write was checked against, which is what
 	// proves the digest travels back.
 	expectations []string
+
+	// includeOutput is what the target says when asked to confirm the
+	// resolver reads the records file, and includeErr is how that fails.
+	// calls records the order of every transport call, because whether the
+	// include is confirmed before the read is the whole point of the step.
+	includeOutput string
+	includeErr    error
+	calls         []string
 }
 
 func newWritableTarget(content string) *writableTarget {
 	return &writableTarget{content: []byte(content), active: true}
 }
 
+func (t *writableTarget) EnsureInclude(context.Context) (string, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	t.calls = append(t.calls, "ensure-include")
+	if t.includeErr != nil {
+		return "", t.includeErr
+	}
+	if t.includeOutput == "" {
+		return "ok", nil
+	}
+	return t.includeOutput, nil
+}
+
 func (t *writableTarget) ReadRecords(context.Context) ([]byte, string, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	t.calls = append(t.calls, "read")
 	if t.readErr != nil {
 		return nil, "", t.readErr
 	}
@@ -116,6 +139,7 @@ func (t *writableTarget) WriteRecords(_ context.Context, data []byte, expect str
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	t.calls = append(t.calls, "write")
 	t.expectations = append(t.expectations, expect)
 	if t.writeErr != nil {
 		return t.writeErr
@@ -167,6 +191,7 @@ func (t *writableTarget) CheckConfig(context.Context) (string, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	t.calls = append(t.calls, "checkconf")
 	t.checks++
 	if t.checkErr != nil {
 		return "unbound-checkconf: fatal error", t.checkErr
@@ -214,7 +239,11 @@ func contentDigest(content []byte) string {
 
 // --- Harness ---------------------------------------------------------------
 
-const seeded = `# managed by the panel
+// seeded is what a target holds before a test changes anything. It carries the
+// clause header, because every write the panel makes puts one there and a
+// target that has taken one write has it from then on.
+const seeded = `server:
+# managed by the panel
 local-data: "www.example.net. A 192.0.2.10"
 local-data: "mail.example.net. MX 20 mx1.example.net"
 `
@@ -1085,4 +1114,11 @@ func TestABatchBeyondTheLimitIsRefused(t *testing.T) {
 	if err := (Operation{Kind: OpAddMany, Records: records}).Validate(); err == nil {
 		t.Error("a batch beyond the limit was accepted")
 	}
+}
+
+// callOrder reports every transport call this target took, in order.
+func (t *writableTarget) callOrder() []string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return append([]string(nil), t.calls...)
 }

@@ -94,6 +94,8 @@ func (w *Writer) RestoreFile(ctx context.Context, actor server.Actor,
 		return result, nil
 	}
 
+	w.ensureInclude(ctx, client, actor, record)
+
 	current, digest, err := client.ReadRecords(ctx)
 	if err != nil {
 		result.Status = StatusFailed
@@ -115,7 +117,7 @@ func (w *Writer) RestoreFile(ctx context.Context, actor server.Actor,
 	// out of a bad state, and a check that refused it would take the recovery
 	// path away at the moment it is needed. What goes back is what the server
 	// held before, so it is a state the resolver already ran with.
-	if err := client.WriteRecords(ctx, backup.Content, digest); err != nil {
+	if err := writeRecords(ctx, client, backup.Content, digest); err != nil {
 		logging.From(ctx).Error("cannot restore the previous records file",
 			"server", record.Name, "error", err)
 

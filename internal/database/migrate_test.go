@@ -359,3 +359,52 @@ func TestTheRenameKeepsTheStoredRecordsPath(t *testing.T) {
 		t.Errorf("records path = %q, want the stored %q", stored, chosen)
 	}
 }
+
+func TestTheIncludeMigrationFillsTheServersThatWereAlreadyThere(t *testing.T) {
+	// A server added before this step has no command for it. Leaving the
+	// column empty would skip the repair on exactly the servers that were set
+	// up when nothing checked the include line.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "panel.db")
+
+	db, err := Open(context.Background(), path)
+	if err != nil {
+		t.Fatalf("Open returned an error: %v", err)
+	}
+	if _, err := db.Exec(
+		`INSERT INTO servers (name, host, ssh_user, ssh_key_path)
+		 VALUES ('dns1', 'dns1', 'dnsops', 'keys/1.key')`); err != nil {
+		t.Fatalf("cannot seed a server: %v", err)
+	}
+
+	for _, statement := range []string{
+		"ALTER TABLE servers DROP COLUMN ensure_include_cmd",
+		"DELETE FROM schema_migrations WHERE name = '0008_ensure_include.sql'",
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatalf("cannot undo the migration (%s): %v", statement, err)
+		}
+	}
+	db.Close()
+
+	upgraded, err := Open(context.Background(), path)
+	if err != nil {
+		t.Fatalf("the upgrade failed: %v", err)
+	}
+	defer upgraded.Close()
+
+	var command string
+	if err := upgraded.QueryRow(
+		"SELECT ensure_include_cmd FROM servers").Scan(&command); err != nil {
+		t.Fatalf("cannot read the server back: %v", err)
+	}
+	if strings.TrimSpace(command) == "" {
+		t.Error("the existing server has no include repair command")
+	}
+
+	// The command carries no arguments, so nothing the panel holds decides
+	// which file a managed server writes.
+	if fields := strings.Fields(command); len(fields) != 2 {
+		t.Errorf("the command carries arguments: %q", command)
+	}
+}

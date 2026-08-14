@@ -57,6 +57,11 @@ var classes = map[string]Class{
 
 	audit.ActionDiffRepair: {"Record Drift Repaired", 3, syslog.LOG_NOTICE},
 
+	// The panel wrote to the main resolver configuration of a managed server.
+	// A receiver that watches for changes outside the managed file wants to
+	// see this one.
+	audit.ActionConfigInclude: {"Resolver Configuration Repaired", 5, syslog.LOG_WARNING},
+
 	// An import reaches into the trail itself. A receiver that suddenly sees
 	// rows older than the panel needs to be told why, and a warning is what
 	// makes somebody look.

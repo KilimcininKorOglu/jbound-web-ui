@@ -33,6 +33,11 @@ const (
 	// its own, so the check names the main configuration file.
 	DefaultCheckConfCmd = "sudo /usr/sbin/unbound-checkconf /etc/unbound/unbound.conf"
 
+	// The command that makes the resolver read the records file. It carries no
+	// arguments on purpose: the setup script writes both paths into it on the
+	// target, so the panel never names a file the target then writes.
+	DefaultEnsureIncludeCmd = "sudo /usr/local/sbin/jbound-ensure-include"
+
 	DefaultStatusCmd  = "systemctl is-active unbound"
 	DefaultBase64Path = "/usr/bin/base64"
 	DefaultTeePath    = "/usr/bin/tee"
@@ -79,6 +84,11 @@ type Server struct {
 	ReloadFallbackCmd string
 	RestartCmd        string
 
+	// EnsureIncludeCmd repairs a main configuration that does not include the
+	// records file. An empty command skips the repair, which is a target
+	// prepared before this command existed.
+	EnsureIncludeCmd string
+
 	Enabled    bool
 	LastSeenAt *time.Time
 	LastError  string
@@ -115,6 +125,7 @@ func (s *Server) ApplyDefaults() {
 		&s.CheckConfCmd:      DefaultCheckConfCmd,
 		&s.ReloadFallbackCmd: DefaultReloadFallbackCmd,
 		&s.RestartCmd:        DefaultRestartCmd,
+		&s.EnsureIncludeCmd:  DefaultEnsureIncludeCmd,
 	} {
 		if strings.TrimSpace(*field) == "" {
 			*field = value
@@ -185,6 +196,7 @@ func (s Server) inputProblems() []string {
 		CheckConfCmd:      s.CheckConfCmd,
 		ReloadFallbackCmd: s.ReloadFallbackCmd,
 		RestartCmd:        s.RestartCmd,
+		EnsureIncludeCmd:  s.EnsureIncludeCmd,
 	}
 	if err := probe.Validate(); err != nil {
 		problems = append(problems, strings.TrimPrefix(err.Error(), "invalid server configuration: "))
@@ -230,6 +242,7 @@ func (s Server) TransportConfig(dataDir string, connectTimeout, commandTimeout t
 		CheckConfCmd:      s.CheckConfCmd,
 		ReloadFallbackCmd: s.ReloadFallbackCmd,
 		RestartCmd:        s.RestartCmd,
+		EnsureIncludeCmd:  s.EnsureIncludeCmd,
 
 		ConnectTimeout: connectTimeout,
 		CommandTimeout: commandTimeout,

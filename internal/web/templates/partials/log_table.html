@@ -70,7 +70,7 @@
 <span class="badge bg-label-secondary" data-field="action">{{.}}</span>
 {{else if or (eq . "login_failed") (eq . "dns_delete") (eq . "server_delete") (eq . "server_trust")}}
 <span class="badge bg-label-danger" data-field="action">{{.}}</span>
-{{else if or (eq . "dns_restart") (eq . "server_create") (eq . "server_update")}}
+{{else if or (eq . "dns_restart") (eq . "server_create") (eq . "server_update") (eq . "config_include")}}
 <span class="badge bg-label-warning" data-field="action">{{.}}</span>
 {{else}}
 <span class="badge bg-label-primary" data-field="action">{{.}}</span>

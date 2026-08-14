@@ -199,6 +199,8 @@
   "serverform.check_conf_cmd": "Config doğrulama komutu",
   "serverform.check_conf_cmd_help": "Değişiklik yazıldıktan sonra, çözümleyici okumadan önce çalışır. Include edilen dosya tek başına doğrulanamadığı için bu komut ana config dosyasını adlandırır. Config reddedilirse önceki dosya geri konur.",
   "serverform.enabled": "Etkin. Devre dışı sunucu grup işlemlerinde atlanır.",
+  "serverform.ensure_include_cmd": "Include onarma komutu",
+  "serverform.ensure_include_cmd_help": "Her değişiklikten önce çalışır. Argüman almaz: kurulum betiği iki yolu da hedefteki betiğin içine yazar, yani panel hedefe yazılacak bir dosya adı göndermez. Kayıt dosyasını include etmeyen bir ana yapılandırma her yazmayı kabul eder ve hiçbir kaydı cevaplamaz; bunu yakalayan adım budur.",
   "serverform.existing_key": "Var olan bir özel anahtarı kullan",
   "serverform.host": "Sunucu adresi",
   "serverform.ladder_help": "Üç komut, çözümleyici yeniden çalışana kadar sırayla denenir. Birincisi önbelleği korur. Boş bırakılan adım atlanır.",

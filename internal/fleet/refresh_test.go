@@ -177,6 +177,7 @@ func (f *fakeTransport) Reload(context.Context) (string, error)             { re
 func (f *fakeTransport) ReloadFallback(context.Context) (string, error)     { return "", nil }
 func (f *fakeTransport) Restart(context.Context) (string, error)            { return "", nil }
 func (f *fakeTransport) CheckConfig(context.Context) (string, error)        { return "", nil }
+func (f *fakeTransport) EnsureInclude(context.Context) (string, error)      { return "ok", nil }
 func (f *fakeTransport) Probe(context.Context) error                        { return nil }
 func (f *fakeTransport) Close() error                                       { return nil }
 

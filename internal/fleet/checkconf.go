@@ -63,7 +63,7 @@ func (w *Writer) checkConfig(ctx context.Context, client transport.Transport,
 			ErrConfigRefused, foldOutput(output, maxCheckOutput))
 	}
 
-	if restoreErr := client.WriteRecords(ctx, previous, digest); restoreErr != nil {
+	if restoreErr := writeRecords(ctx, client, previous, digest); restoreErr != nil {
 		logging.From(ctx).Error("cannot put the previous file back",
 			"server", record.Name, "error", restoreErr)
 

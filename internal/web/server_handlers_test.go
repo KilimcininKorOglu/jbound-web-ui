@@ -314,8 +314,12 @@ func TestRestoringPutsTheStoredFileBackOnTheServer(t *testing.T) {
 		t.Fatalf("status = %d, want 200:\n%s", recorder.Code, recorder.Body.String())
 	}
 
-	if string(env.transport.content) != previousFile {
-		t.Errorf("the server holds:\n%s\nwant:\n%s", env.transport.content, previousFile)
+	// The clause header goes with it. A backup taken before the panel wrote
+	// headers holds none, and putting that back byte for byte would leave the
+	// resolver including a file it cannot load.
+	want := "server:\n" + previousFile
+	if string(env.transport.content) != want {
+		t.Errorf("the server holds:\n%s\nwant:\n%s", env.transport.content, want)
 	}
 
 	// The file that was replaced becomes the next copy, so the operator can

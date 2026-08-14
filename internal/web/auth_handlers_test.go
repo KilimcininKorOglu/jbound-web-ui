@@ -432,6 +432,7 @@ func (s *stubTransport) Restart(ctx context.Context) (string, error) {
 }
 
 func (s *stubTransport) CheckConfig(context.Context) (string, error)         { return "", nil }
+func (s *stubTransport) EnsureInclude(context.Context) (string, error)       { return "ok", nil }
 func (s *stubTransport) ServiceStatus(context.Context) (bool, string, error) { return true, "", nil }
 func (s *stubTransport) Probe(context.Context) error                         { return s.probeErr }
 func (s *stubTransport) Close() error                                        { return nil }

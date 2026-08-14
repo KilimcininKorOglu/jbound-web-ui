@@ -437,7 +437,7 @@ func (w *Writer) applyOne(ctx context.Context, actor server.Actor,
 	lock.Lock()
 	defer lock.Unlock()
 
-	if err := w.write(ctx, record, op); err != nil {
+	if err := w.write(ctx, actor, record, op); err != nil {
 		// The response table is the only other place this appears, and it
 		// lives exactly as long as the page it was rendered into.
 		logging.From(ctx).Error("cannot write a record to a server",
@@ -525,11 +525,15 @@ func failureMessage(err error) string {
 }
 
 // write performs the read, change and write of one server.
-func (w *Writer) write(ctx context.Context, record server.Server, op Operation) error {
+func (w *Writer) write(ctx context.Context, actor server.Actor,
+	record server.Server, op Operation) error {
+
 	client, err := w.pool.Get(w.transportConfig(record))
 	if err != nil {
 		return err
 	}
+
+	w.ensureInclude(ctx, client, actor, record)
 
 	content, digest, err := client.ReadRecords(ctx)
 	if err != nil {
@@ -547,7 +551,7 @@ func (w *Writer) write(ctx context.Context, record server.Server, op Operation) 
 
 	// The digest travels back with the write, so a file that changed on the
 	// target between the read and the write is refused rather than replaced.
-	if err := client.WriteRecords(ctx, updated, digest); err != nil {
+	if err := writeRecords(ctx, client, updated, digest); err != nil {
 		return err
 	}
 	return w.checkConfig(ctx, client, record, content)

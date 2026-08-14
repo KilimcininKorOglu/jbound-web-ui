@@ -508,3 +508,25 @@ func TestAnUnapprovedHostKeyStoresItsOwnClass(t *testing.T) {
 		t.Errorf("stored failure = %q, want %q", stored, transport.CodeHostKeyUnknown)
 	}
 }
+
+func TestACacheWriteFailureIsLogged(t *testing.T) {
+	// Nobody waits for this error on the timer path, and the state row still
+	// says the server was read, so the panel would serve stale records with
+	// nothing anywhere to explain them.
+	logged := captureLog(t)
+
+	h := newHarness(t, workingTarget())
+	h.records.err = errors.New("database is locked")
+
+	if _, err := h.refresher.One(context.Background(), 1); err != nil {
+		t.Fatalf("One returned an error: %v", err)
+	}
+
+	output := logged.String()
+	if !strings.Contains(output, "cannot store the records of a server") {
+		t.Fatalf("the store failure was not logged:\n%s", output)
+	}
+	if !strings.Contains(output, "database is locked") {
+		t.Errorf("the log does not carry the cause:\n%s", output)
+	}
+}

@@ -162,6 +162,11 @@ func (r *Refresher) refresh(ctx context.Context, record server.Server) Result {
 
 	records := dnsfile.Parse(content)
 	if err := r.records.Replace(ctx, record.ID, records); err != nil {
+		// On the timer path nobody is waiting for this error, and the state row
+		// keeps saying the server was read, so the panel would serve stale
+		// records with nothing anywhere to explain them.
+		slog.Error("cannot store the records of a server",
+			"server", record.Name, "error", err)
 		result.Err = err
 		return result
 	}
@@ -185,6 +190,8 @@ func (r *Refresher) refresh(ctx context.Context, record server.Server) Result {
 		RecordCount:   len(records),
 	}
 	if err := r.states.SetFetched(ctx, state); err != nil {
+		slog.Error("cannot store the state of a server",
+			"server", record.Name, "error", err)
 		result.Err = err
 		return result
 	}

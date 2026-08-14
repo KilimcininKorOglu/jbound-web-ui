@@ -149,6 +149,14 @@
     if (refused) {
       refused.focus();
     }
+
+    /* A form that came back with several rows needs its remove buttons in the
+       right state, and a form with one row needs its button off. */
+    target.querySelectorAll('form').forEach(function (form) {
+      if (form.querySelector('[data-field="record-row"]')) {
+        updateRowControls(form);
+      }
+    });
   });
 
   /* Click handlers, delegated from the document so they survive a swap. */
@@ -181,6 +189,18 @@
     if (trigger.dataset.action === 'close-record-panel') {
       event.preventDefault();
       clearPanel('record-panel');
+      return;
+    }
+
+    if (trigger.dataset.action === 'add-record-row') {
+      event.preventDefault();
+      addRecordRow(trigger.closest('form'));
+      return;
+    }
+
+    if (trigger.dataset.action === 'remove-record-row') {
+      event.preventDefault();
+      removeRecordRow(trigger.closest('[data-field="record-row"]'));
     }
   });
 
@@ -191,12 +211,57 @@
       return;
     }
 
-    const form = select.form;
-    const priority = form ? form.querySelector('[data-field="priority"]') : null;
+    /* Scoped to the row rather than to the form. The add form holds several
+       rows, and hiding the preference of every one of them because one row
+       stopped being an MX is not what the operator asked for. */
+    const scope = select.closest('[data-field="record-row"]') || select.form;
+    const priority = scope ? scope.querySelector('[data-field="priority"]') : null;
     if (priority) {
       priority.hidden = select.value !== 'MX';
     }
   });
+
+  /* Another record in the same submission. A row is cloned from the last one,
+     so the markup lives in the template rather than in here. */
+  function addRecordRow(form) {
+    const rows = form ? form.querySelectorAll('[data-field="record-row"]') : [];
+    if (!rows.length) {
+      return;
+    }
+
+    const row = rows[rows.length - 1].cloneNode(true);
+    row.querySelectorAll('input').forEach(function (input) {
+      input.value = input.type === 'number' ? input.defaultValue : '';
+    });
+    rows[rows.length - 1].after(row);
+    updateRowControls(form);
+
+    const first = row.querySelector('input');
+    if (first) {
+      first.focus();
+    }
+  }
+
+  function removeRecordRow(row) {
+    const form = row ? row.closest('form') : null;
+    if (!form || form.querySelectorAll('[data-field="record-row"]').length < 2) {
+      return;
+    }
+    row.remove();
+    updateRowControls(form);
+  }
+
+  /* A single row has nothing to remove, so its button says so rather than
+     leaving a control that does nothing. */
+  function updateRowControls(form) {
+    const rows = form.querySelectorAll('[data-field="record-row"]');
+    rows.forEach(function (row) {
+      const button = row.querySelector('[data-action="remove-record-row"]');
+      if (button) {
+        button.disabled = rows.length < 2;
+      }
+    });
+  }
 
   function clearPanel(id) {
     const panel = document.getElementById(id);

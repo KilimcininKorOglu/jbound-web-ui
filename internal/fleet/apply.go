@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -19,7 +20,17 @@ const (
 	OpAdd    = "add"
 	OpEdit   = "edit"
 	OpDelete = "delete"
+
+	// OpAddMany writes several records in one pass. The whole batch reaches
+	// the file in one write, so a group of records either arrives together or
+	// not at all, and one reload follows all of them.
+	OpAddMany = "add_many"
 )
+
+// maxBatch bounds one submission. It is generous enough for the list an
+// operator pastes in and small enough that a rejected batch is still a message
+// somebody can read.
+const maxBatch = 100
 
 // Outcome of one server in a fleet operation.
 const (
@@ -45,6 +56,9 @@ type Operation struct {
 
 	// Old carries the record being replaced. It is only read for an edit.
 	Old dnsfile.Record
+
+	// Records carries the batch of an OpAddMany.
+	Records []dnsfile.Record
 }
 
 // Validate reports every problem before any server is touched.
@@ -55,6 +69,8 @@ func (o Operation) Validate() error {
 	switch o.Kind {
 	case OpAdd:
 		return o.Record.Validate()
+	case OpAddMany:
+		return o.validateBatch()
 	case OpDelete:
 		// A record on the way out is judged more leniently, so a line an
 		// earlier panel wrote with the wrong address family can still be
@@ -70,6 +86,35 @@ func (o Operation) Validate() error {
 	}
 }
 
+// validateBatch reports the first row that cannot be written.
+//
+// The row is named, because a message about a batch of twenty that does not
+// say which one is wrong leaves the operator to find it themselves. A duplicate
+// inside the batch is caught here as well: the file would refuse the second
+// copy halfway through, after the first records were already in the content.
+func (o Operation) validateBatch() error {
+	if len(o.Records) == 0 {
+		return fmt.Errorf("%w: no record was given", dnsfile.ErrInvalid)
+	}
+	if len(o.Records) > maxBatch {
+		return fmt.Errorf("%w: %d records at once, the limit is %d",
+			dnsfile.ErrInvalid, len(o.Records), maxBatch)
+	}
+
+	seen := make(map[dnsfile.Record]int, len(o.Records))
+	for i, record := range o.Records {
+		if err := record.Validate(); err != nil {
+			return fmt.Errorf("row %d: %w", i+1, err)
+		}
+		if first, ok := seen[record]; ok {
+			return fmt.Errorf("%w: row %d repeats row %d",
+				dnsfile.ErrDuplicate, i+1, first)
+		}
+		seen[record] = i + 1
+	}
+	return nil
+}
+
 // apply changes the file content.
 func (o Operation) apply(content []byte) ([]byte, error) {
 	switch o.Kind {
@@ -79,6 +124,19 @@ func (o Operation) apply(content []byte) ([]byte, error) {
 			return nil, err
 		}
 		return dnsfile.EnsureZone(updated, o.Record.FQDN), nil
+	case OpAddMany:
+		// Every record goes into the content before anything is written, so a
+		// row the file refuses leaves the server as it was rather than half
+		// way through the batch.
+		updated := content
+		for i, record := range o.Records {
+			next, err := dnsfile.Add(updated, record)
+			if err != nil {
+				return nil, fmt.Errorf("row %d: %w", i+1, err)
+			}
+			updated = dnsfile.EnsureZone(next, record.FQDN)
+		}
+		return updated, nil
 	case OpEdit:
 		updated, err := dnsfile.Edit(content, o.Old, o.Record)
 		if err != nil {
@@ -100,7 +158,7 @@ func (o Operation) apply(content []byte) ([]byte, error) {
 // auditAction names the action written for one server.
 func (o Operation) auditAction() string {
 	switch o.Kind {
-	case OpAdd:
+	case OpAdd, OpAddMany:
 		return audit.ActionDNSAdd
 	case OpEdit:
 		return audit.ActionDNSEdit
@@ -115,6 +173,9 @@ func (o Operation) auditDetails() string {
 	case OpAdd:
 		return fmt.Sprintf("Added %s record: %s -> %s",
 			o.Record.Type, o.Record.FQDN, o.Record.Value)
+	case OpAddMany:
+		return fmt.Sprintf("Added %d records: %s",
+			len(o.Records), foldOutput(recordList(o.Records), maxBatchDetails))
 	case OpEdit:
 		return fmt.Sprintf("Edited: %s (%s %s) -> %s (%s %s)",
 			o.Old.FQDN, o.Old.Type, o.Old.Value,
@@ -130,11 +191,26 @@ func (o Operation) message() string {
 	switch o.Kind {
 	case OpAdd:
 		return "Record added"
+	case OpAddMany:
+		return fmt.Sprintf("%d records added", len(o.Records))
 	case OpEdit:
 		return "Record updated"
 	default:
 		return "Record deleted"
 	}
+}
+
+// maxBatchDetails bounds how much of a batch reaches one audit row. The names
+// are what makes the row worth reading; a hundred of them are not.
+const maxBatchDetails = 400
+
+// recordList names the records of a batch for a person reading the trail.
+func recordList(records []dnsfile.Record) string {
+	names := make([]string, 0, len(records))
+	for _, record := range records {
+		names = append(names, record.Type+" "+record.FQDN+" -> "+record.Value)
+	}
+	return strings.Join(names, ", ")
 }
 
 // ServerResult is what one server did.

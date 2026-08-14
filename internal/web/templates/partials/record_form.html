@@ -1,6 +1,11 @@
 {{/* The add and edit form. A change reaches every server of the target, so the
      target is part of the form rather than something the operator sets
-     elsewhere and hopes is still selected. */}}
+     elsewhere and hopes is still selected.
+
+     The two differ in shape. An edit is about one line of one file, so it keeps
+     labelled fields. An add takes as many records as the operator wants to
+     write in one pass, and repeated ids would break every label, so the rows
+     carry column captions and each control names itself. */}}
 {{define "record-form"}}
 {{$query := .Query}}
 <div class="card">
@@ -13,6 +18,23 @@
 
       {{if .Problem}}{{template "alert" (alert "error" .Problem)}}{{end}}
 
+      {{if .IsNew}}
+      <div class="row g-2 d-none d-md-flex record-row-head">
+        <div class="col-md-4">{{t "common.name"}}</div>
+        <div class="col-md-2">{{t "common.type"}}</div>
+        <div class="col-md-2">{{t "record.preference"}}</div>
+        <div class="col-md-3">{{t "common.value"}}</div>
+        <div class="col-md-1"></div>
+      </div>
+
+      {{range .Rows}}{{template "record-row" .}}{{end}}
+
+      <div class="mt-2">
+        <button class="btn btn-sm btn-outline-secondary" type="button"
+                data-action="add-record-row">{{t "record.add_row"}}</button>
+        <span class="form-text ms-2">{{t "record.add_row_help"}}</span>
+      </div>
+      {{else}}
       <div class="row g-3">
         <div class="col-md-5">
           <label class="form-label" for="fqdn">{{t "common.name"}}</label>
@@ -47,7 +69,10 @@
                  placeholder="192.0.2.10" autocapitalize="none" spellcheck="false" required>
           <div class="form-text">{{t "record.value_help"}}</div>
         </div>
+      </div>
+      {{end}}
 
+      <div class="row g-3 mt-1">
         <div class="col-md-6">
           <label class="form-label" for="form_target">{{t "record.apply_to"}}</label>
           <select class="form-select" id="form_target" name="target">
@@ -94,6 +119,47 @@
         </button>
       </div>
     </form>
+  </div>
+</div>
+{{end}}
+
+{{/* One record of a bulk addition. The controls name themselves rather than
+     pointing at a label, because the row is cloned and an id may only appear
+     once on a page. */}}
+{{define "record-row"}}
+<div class="row g-2 align-items-start mt-1" data-field="record-row">
+  <div class="col-md-4">
+    <input class="form-control" name="fqdn" value="{{.Record.FQDN}}"
+           aria-label="{{t "common.name"}}" placeholder="www.example.net"
+           autocapitalize="none" spellcheck="false" required>
+  </div>
+
+  <div class="col-md-2">
+    {{$record := .Record}}
+    <select class="form-select" name="type" data-action="record-type"
+            aria-label="{{t "common.type"}}">
+      {{range .Types}}
+      <option value="{{.}}" {{if eq $record.Type .}}selected{{end}}>{{.}}</option>
+      {{end}}
+    </select>
+  </div>
+
+  <div class="col-md-2" data-field="priority" {{if ne .Record.Type "MX"}}hidden{{end}}>
+    <input class="form-control" name="priority" type="number" min="0" max="65535"
+           value="{{.Record.Priority}}" aria-label="{{t "record.preference"}}">
+  </div>
+
+  <div class="col-md-3">
+    <input class="form-control" name="value" value="{{.Record.Value}}"
+           aria-label="{{t "common.value"}}" placeholder="192.0.2.10"
+           autocapitalize="none" spellcheck="false" required>
+  </div>
+
+  <div class="col-md-1">
+    <button class="btn btn-outline-danger btn-icon" type="button"
+            data-action="remove-record-row" aria-label="{{t "record.remove_row"}}">
+      <i class="bx bx-x" aria-hidden="true"></i>
+    </button>
   </div>
 </div>
 {{end}}

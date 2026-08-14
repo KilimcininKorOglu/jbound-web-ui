@@ -1063,3 +1063,110 @@ func TestACancelledRequestStillLeavesTheCacheCurrent(t *testing.T) {
 		t.Errorf("the table does not show the record that was written:\n%s", table)
 	}
 }
+
+func TestSeveralRowsReachTheServerInOneSubmission(t *testing.T) {
+	// The rows post under the same names a single record does, so the handler
+	// reads one shape and the operator gets one write and one reload.
+	env := newFleetEnv(t)
+
+	recorder := env.adminForm(t, http.MethodPost, "/dns/records", env.cookie, groupForm(url.Values{
+		"fqdn":     {"one.example.local", "two.example.local", "three.example.local"},
+		"type":     {"A", "A", "MX"},
+		"value":    {"10.0.0.61", "10.0.0.62", "mx1.example.local"},
+		"priority": {"0", "0", "20"},
+	}))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200:\n%s", recorder.Code, recorder.Body.String())
+	}
+
+	for id := int64(1); id <= 3; id++ {
+		file := env.target(id).file()
+		for _, want := range []string{"one.example.local", "two.example.local", "three.example.local"} {
+			if !strings.Contains(file, want) {
+				t.Errorf("server %d is missing %s:\n%s", id, want, file)
+			}
+		}
+	}
+	if !strings.Contains(recorder.Body.String(), "3 records added") {
+		t.Errorf("the result table does not say how many were added:\n%s", recorder.Body.String())
+	}
+}
+
+func TestOneRowStaysAnOrdinaryAdd(t *testing.T) {
+	// The common case has to read in the result table and in the trail exactly
+	// as it did before the form learned to hold several rows.
+	env := newFleetEnv(t)
+
+	recorder := env.adminForm(t, http.MethodPost, "/dns/records", env.cookie, groupForm(url.Values{
+		"fqdn": {"single.example.local"}, "type": {"A"}, "value": {"10.0.0.63"},
+	}))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200:\n%s", recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), "Record added") {
+		t.Errorf("the single add does not read as one:\n%s", recorder.Body.String())
+	}
+}
+
+func TestARefusedBatchComesBackWithEveryRow(t *testing.T) {
+	// Retyping the rows that were fine is not a correction.
+	env := newFleetEnv(t)
+
+	recorder := env.adminForm(t, http.MethodPost, "/dns/records", env.cookie, groupForm(url.Values{
+		"fqdn":  {"good.example.local", "bad.example.local"},
+		"type":  {"A", "A"},
+		"value": {"10.0.0.64", "not-an-address"},
+	}))
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400:\n%s", recorder.Code, recorder.Body.String())
+	}
+
+	body := recorder.Body.String()
+	for _, want := range []string{"good.example.local", "bad.example.local", "10.0.0.64"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the form came back without %q:\n%s", want, body)
+		}
+	}
+	for id := int64(1); id <= 3; id++ {
+		if strings.Contains(env.target(id).file(), "good.example.local") {
+			t.Errorf("server %d took half the batch", id)
+		}
+	}
+}
+
+func TestTheAddFormOffersARowToRepeat(t *testing.T) {
+	env := newFleetEnv(t)
+
+	recorder := env.do(t, httptest.NewRequest(http.MethodGet, "/dns/records/new", nil), env.cookie)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+
+	body := recorder.Body.String()
+	for _, want := range []string{`data-field="record-row"`, `data-action="add-record-row"`,
+		`data-action="remove-record-row"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the form carries no %s:\n%s", want, body)
+		}
+	}
+}
+
+func TestTheEditFormStaysASingleRecord(t *testing.T) {
+	// An edit is about one line of one file, and a second row would have no
+	// old record to match against.
+	env := newFleetEnv(t)
+
+	recorder := env.do(t, httptest.NewRequest(http.MethodGet,
+		"/dns/records/edit?fqdn=www.example.local&type=A&value=10.0.0.20", nil), env.cookie)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+
+	body := recorder.Body.String()
+	if strings.Contains(body, `data-action="add-record-row"`) {
+		t.Errorf("the edit form offers more rows:\n%s", body)
+	}
+	if !strings.Contains(body, `name="old_fqdn"`) {
+		t.Errorf("the edit form lost the record it replaces:\n%s", body)
+	}
+}

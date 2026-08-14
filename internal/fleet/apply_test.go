@@ -924,3 +924,165 @@ func TestATargetWithNoCheckCommandStillTakesTheChange(t *testing.T) {
 		t.Errorf("the change was rolled back:\n%s", h.targets["dns1"].file())
 	}
 }
+
+func batchOperation(values ...string) Operation {
+	records := make([]dnsfile.Record, 0, len(values))
+	for i, value := range values {
+		records = append(records, dnsfile.Record{
+			FQDN:  fmt.Sprintf("bulk%d.example.net", i+1),
+			Type:  "A",
+			Value: value,
+		})
+	}
+	return Operation{Kind: OpAddMany, Records: records}
+}
+
+func TestABatchReachesTheServerInOneWrite(t *testing.T) {
+	// One write and one reload for the whole list. Writing each record on its
+	// own would put the fleet through as many read, write and reload rounds as
+	// the operator typed rows.
+	h := newWriteHarness(t, 1)
+	target := h.targets["dns1"]
+
+	op := batchOperation("192.0.2.31", "192.0.2.32", "192.0.2.33")
+	report, err := h.writer.Apply(context.Background(), testActor(),
+		Target{Scope: ScopeServer, ServerID: 1}, op)
+	if err != nil {
+		t.Fatalf("Apply returned an error: %v", err)
+	}
+	if !report.OK() {
+		t.Fatalf("got %+v", report.Results)
+	}
+
+	file := target.file()
+	for _, value := range []string{"192.0.2.31", "192.0.2.32", "192.0.2.33"} {
+		if !strings.Contains(file, value) {
+			t.Errorf("%s is not in the file:\n%s", value, file)
+		}
+	}
+	if len(target.expectations) != 1 {
+		t.Errorf("the server was written to %d times, want 1", len(target.expectations))
+	}
+}
+
+func TestABatchDeclaresTheZoneOfEveryRecord(t *testing.T) {
+	h := newWriteHarness(t, 1)
+
+	op := Operation{Kind: OpAddMany, Records: []dnsfile.Record{
+		{FQDN: "one.example.net", Type: "A", Value: "192.0.2.31"},
+		{FQDN: "two.example.org", Type: "A", Value: "192.0.2.32"},
+	}}
+	if _, err := h.writer.Apply(context.Background(), testActor(),
+		Target{Scope: ScopeServer, ServerID: 1}, op); err != nil {
+		t.Fatalf("Apply returned an error: %v", err)
+	}
+
+	file := h.targets["dns1"].file()
+	for _, zone := range []string{`"example.net."`, `"example.org."`} {
+		if !strings.Contains(file, "local-zone: "+zone) {
+			t.Errorf("no zone line for %s:\n%s", zone, file)
+		}
+	}
+}
+
+func TestOneBadRowStopsTheWholeBatch(t *testing.T) {
+	// Half a list is worse than none of it: the operator has to work out which
+	// half arrived before they can try again.
+	op := batchOperation("192.0.2.31", "not-an-address", "192.0.2.33")
+
+	err := op.Validate()
+	if err == nil {
+		t.Fatal("the batch was accepted")
+	}
+	if !strings.Contains(err.Error(), "row 2") {
+		t.Errorf("the message does not name the row: %v", err)
+	}
+}
+
+func TestARefusedBatchReachesNoServer(t *testing.T) {
+	h := newWriteHarness(t, 1)
+	target := h.targets["dns1"]
+	before := target.file()
+
+	op := Operation{Kind: OpAddMany, Records: []dnsfile.Record{
+		{FQDN: "one.example.net", Type: "A", Value: "192.0.2.31"},
+		// Already in the seeded file, so the add refuses it.
+		{FQDN: "www.example.net", Type: "A", Value: "192.0.2.10"},
+	}}
+
+	report, err := h.writer.Apply(context.Background(), testActor(),
+		Target{Scope: ScopeServer, ServerID: 1}, op)
+	if err != nil {
+		t.Fatalf("Apply returned an error: %v", err)
+	}
+	if report.OK() {
+		t.Fatalf("the batch was reported as written: %+v", report.Results)
+	}
+	if got := target.file(); got != before {
+		t.Errorf("part of the batch was written:\n%s", got)
+	}
+}
+
+func TestABatchThatRepeatsARowIsRefusedBeforeAnyServerIsTouched(t *testing.T) {
+	op := Operation{Kind: OpAddMany, Records: []dnsfile.Record{
+		{FQDN: "one.example.net", Type: "A", Value: "192.0.2.31"},
+		{FQDN: "one.example.net", Type: "A", Value: "192.0.2.31"},
+	}}
+
+	err := op.Validate()
+	if err == nil {
+		t.Fatal("the batch was accepted")
+	}
+	if !strings.Contains(err.Error(), "row 2") {
+		t.Errorf("the message does not name the row: %v", err)
+	}
+}
+
+func TestAnEmptyBatchIsRefused(t *testing.T) {
+	if err := (Operation{Kind: OpAddMany}).Validate(); err == nil {
+		t.Error("a batch with no record was accepted")
+	}
+}
+
+func TestABatchLeavesOneAuditRowPerServer(t *testing.T) {
+	// One action, one row. A row per record would bury the change the operator
+	// made under the records it consisted of.
+	h := newWriteHarness(t, 3)
+
+	op := batchOperation("192.0.2.31", "192.0.2.32", "192.0.2.33")
+	if _, err := h.writer.Apply(context.Background(), testActor(),
+		groupTarget(), op); err != nil {
+		t.Fatalf("Apply returned an error: %v", err)
+	}
+
+	entries := h.audit.all()
+	if len(entries) != 3 {
+		t.Fatalf("got %d audit rows, want one per server", len(entries))
+	}
+	for _, entry := range entries {
+		if entry.Action != audit.ActionDNSAdd {
+			t.Errorf("action = %q", entry.Action)
+		}
+		if !strings.Contains(entry.Details, "Added 3 records") {
+			t.Errorf("details = %q", entry.Details)
+		}
+		if !strings.Contains(entry.Details, "bulk1.example.net") {
+			t.Errorf("the row does not name what was added: %q", entry.Details)
+		}
+	}
+}
+
+func TestABatchBeyondTheLimitIsRefused(t *testing.T) {
+	records := make([]dnsfile.Record, maxBatch+1)
+	for i := range records {
+		records[i] = dnsfile.Record{
+			FQDN:  fmt.Sprintf("bulk%d.example.net", i),
+			Type:  "A",
+			Value: "192.0.2.31",
+		}
+	}
+
+	if err := (Operation{Kind: OpAddMany, Records: records}).Validate(); err == nil {
+		t.Error("a batch beyond the limit was accepted")
+	}
+}

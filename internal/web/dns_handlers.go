@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -57,14 +58,28 @@ type pageLink struct {
 
 // recordFormData feeds the add and edit form.
 type recordFormData struct {
-	Record  dnsfile.Record
-	Old     dnsfile.Record
+	// Record and Old are the edit form, which is about one line of one file.
+	Record dnsfile.Record
+	Old    dnsfile.Record
+
+	// Rows is the add form, which takes as many records as the operator wants
+	// to write in one pass. A refused submission comes back with what they
+	// typed, so this holds the rows rather than one record.
+	Rows []recordRow
+
 	Query   fleet.Query
 	Servers []server.Server
 	Groups  []server.Group
 	Types   []string
 	IsNew   bool
 	Problem string
+}
+
+// recordRow is one row of the add form. It carries the types with it, because
+// a template invoked with one argument cannot reach the data around it.
+type recordRow struct {
+	Record dnsfile.Record
+	Types  []string
 }
 
 // reportData feeds the per server result table.
@@ -300,6 +315,7 @@ func (a *App) handleRecordForm(w http.ResponseWriter, r *http.Request) {
 	// The form is the one place that knows nobody has chosen a preference
 	// yet. Once a record exists, zero is a preference like any other.
 	data.Record.Priority = dnsfile.DefaultMXPriority
+	data.Rows = []recordRow{{Record: data.Record, Types: dnsfile.Types}}
 
 	// An edit arrives with the record it is about, because the file is the
 	// source of truth and the panel has no identifier for a line.
@@ -308,6 +324,7 @@ func (a *App) handleRecordForm(w http.ResponseWriter, r *http.Request) {
 		data.IsNew = false
 		data.Record = recordFromValues(values)
 		data.Old = data.Record
+		data.Rows = nil
 	}
 
 	servers, err := a.Servers.List(r.Context())
@@ -348,8 +365,20 @@ func (a *App) applyOperation(w http.ResponseWriter, r *http.Request, kind string
 	}
 
 	op := fleet.Operation{Kind: kind, Record: recordFromValues(r.Form)}
-	if kind == fleet.OpEdit {
+	switch kind {
+	case fleet.OpEdit:
 		op.Old = oldRecordFromValues(r.Form)
+	case fleet.OpAdd:
+		// The add form posts one row or several under the same names. A batch
+		// of one stays an ordinary add, so the common case reads in the trail
+		// and in the result table exactly as it did before.
+		if rows := rowsFrom(r.Form); len(rows) > 1 {
+			op.Kind = fleet.OpAddMany
+			op.Records = make([]dnsfile.Record, 0, len(rows))
+			for _, row := range rows {
+				op.Records = append(op.Records, row.Record)
+			}
+		}
 	}
 
 	target, err := targetFromValues(r.Form)
@@ -584,6 +613,44 @@ func recordFromValues(values valueSource) dnsfile.Record {
 	}
 }
 
+// rowsFrom reads every row of the add form.
+//
+// One row is the ordinary case, and the form posts it under the same names a
+// bulk submission uses, so there is one shape to read rather than two.
+func rowsFrom(form url.Values) []recordRow {
+	names := form["fqdn"]
+	types := form["type"]
+	values := form["value"]
+	priorities := form["priority"]
+
+	rows := make([]recordRow, 0, len(names))
+	for i := range names {
+		row := recordRow{Types: dnsfile.Types}
+		row.Record.FQDN = strings.TrimSpace(names[i])
+		row.Record.Type = at(types, i)
+		row.Record.Value = at(values, i)
+		row.Record.Priority = parseInt(at(priorities, i))
+		rows = append(rows, row)
+	}
+
+	if len(rows) == 0 {
+		rows = append(rows, recordRow{
+			Types:  dnsfile.Types,
+			Record: dnsfile.Record{Priority: dnsfile.DefaultMXPriority},
+		})
+	}
+	return rows
+}
+
+// at reads one column of a row, tolerating a browser that sent fewer values
+// than names. A hidden preference field posts nothing at all.
+func at(values []string, i int) string {
+	if i >= len(values) {
+		return ""
+	}
+	return strings.TrimSpace(values[i])
+}
+
 // oldRecordFromValues reads the record an edit replaces.
 func oldRecordFromValues(values valueSource) dnsfile.Record {
 	return dnsfile.Record{
@@ -663,11 +730,15 @@ func (a *App) recordProblem(w http.ResponseWriter, r *http.Request,
 		Record:  recordFromValues(r.Form),
 		Query:   listingFrom(r.Form),
 		Types:   dnsfile.Types,
-		IsNew:   kind == fleet.OpAdd,
+		IsNew:   kind != fleet.OpEdit,
 		Problem: problem,
 	}
 	if kind == fleet.OpEdit {
 		data.Old = oldRecordFromValues(r.Form)
+	} else {
+		// Everything the operator typed comes back, not just the row that was
+		// refused. Retyping the other four is not a correction.
+		data.Rows = rowsFrom(r.Form)
 	}
 
 	// A form whose target lists are empty refuses the next submission for a

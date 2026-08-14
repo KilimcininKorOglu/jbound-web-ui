@@ -186,7 +186,9 @@ func TestDeletingAServerLeavesTheGroupBehind(t *testing.T) {
 
 func TestTheCachedRecordsOfOneServerAreDropped(t *testing.T) {
 	// A server that leaves the panel takes its cache with it, and the cache of
-	// another server may not go with it.
+	// another server may not go with it. The schema does this through the
+	// cascade rather than a delete the panel runs, so the cascade is what has
+	// to be proven.
 	f := newCacheFixture(t)
 	ctx := context.Background()
 
@@ -200,8 +202,8 @@ func TestTheCachedRecordsOfOneServerAreDropped(t *testing.T) {
 		t.Fatalf("cannot fill the cache: %v", err)
 	}
 
-	if err := f.records.Clear(ctx, f.first.ID); err != nil {
-		t.Fatalf("cannot clear the cache: %v", err)
+	if err := f.servers.Delete(ctx, f.first.ID); err != nil {
+		t.Fatalf("cannot delete the server: %v", err)
 	}
 
 	byServer, err := f.records.ByServer(ctx, fleet.Query{})

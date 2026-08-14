@@ -57,15 +57,6 @@ VALUES (?, ?, ?, ?, ?, ?, ?)`
 	return nil
 }
 
-// Clear drops the cached records of one server.
-func (r *Records) Clear(ctx context.Context, serverID int64) error {
-	if _, err := r.db.ExecContext(ctx,
-		"DELETE FROM record_cache WHERE server_id = ?", serverID); err != nil {
-		return fmt.Errorf("cannot clear the cached records: %w", err)
-	}
-	return nil
-}
-
 // recordKey groups the rows of one record across the servers of a target.
 //
 // The priority belongs in the key, because an MX that differs only in its

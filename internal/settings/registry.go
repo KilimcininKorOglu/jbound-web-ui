@@ -19,6 +19,14 @@ const (
 	KindInt      = "int"
 	KindBool     = "bool"
 	KindEnum     = "enum"
+
+	// KindText is free text the operator types, such as the panel name.
+	KindText = "text"
+
+	// KindServer holds the identifier of a managed server, or nothing at all.
+	// The registry cannot check that the server exists, because this package
+	// does not know about servers, so the page that offers the choices does.
+	KindServer = "server"
 )
 
 // Groups. They are the cards of the settings page, in this order.
@@ -26,6 +34,7 @@ const (
 	GroupTiming    = "timing"
 	GroupLimits    = "limits"
 	GroupSIEM      = "siem"
+	GroupFleet     = "fleet"
 	GroupInterface = "interface"
 )
 
@@ -47,6 +56,10 @@ const (
 	RecordsPerPage       = "records_per_page"
 
 	SIEMForwardingEnabled = "siem_forwarding_enabled"
+
+	SourceServerID = "source_server_id"
+
+	PanelName = "panel_name"
 
 	DefaultLanguage = "default_language"
 	DefaultTheme    = "default_theme"
@@ -73,6 +86,9 @@ type Definition struct {
 
 	// Options lists the accepted values of an enum.
 	Options []string
+
+	// MaxLen bounds a text setting.
+	MaxLen int
 }
 
 // registry is every setting the panel has, in the order the page shows them.
@@ -137,6 +153,15 @@ var registry = []Definition{
 	},
 
 	{
+		Key: SourceServerID, Group: GroupFleet, Kind: KindServer,
+		Default: "",
+	},
+
+	{
+		Key: PanelName, Group: GroupInterface, Kind: KindText,
+		Default: "JanBound DNS Panel", MaxLen: 60,
+	},
+	{
 		Key: DefaultLanguage, Group: GroupInterface, Kind: KindEnum,
 		Default: "en", Options: []string{"en", "tr"},
 	},
@@ -155,7 +180,7 @@ func Definitions() []Definition {
 
 // Groups returns the group names in page order.
 func Groups() []string {
-	return []string{GroupTiming, GroupLimits, GroupSIEM, GroupInterface}
+	return []string{GroupTiming, GroupLimits, GroupSIEM, GroupFleet, GroupInterface}
 }
 
 // Lookup returns the definition of one key.

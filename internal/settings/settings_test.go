@@ -453,3 +453,79 @@ func ExampleService_DurationOf() {
 	fmt.Println(idle())
 	// Output: 30m0s
 }
+
+func TestATextSettingIsBoundedAndPrintable(t *testing.T) {
+	// The panel name travels into a page title and a log line alike, where a
+	// control character reads as nothing and hides what follows it.
+	definition, ok := Lookup(PanelName)
+	if !ok {
+		t.Fatal("the panel name is not in the registry")
+	}
+
+	cases := map[string]bool{
+		"JanBound DNS Panel":    true,
+		"Şirket DNS Paneli":     true,
+		"":                      false,
+		"   ":                   false,
+		strings.Repeat("x", 61): false,
+		strings.Repeat("x", 60): true,
+		"broken\x00name":        false,
+		"two\nlines":            false,
+	}
+
+	for value, want := range cases {
+		err := Validate(definition, value)
+		if (err == nil) != want {
+			t.Errorf("Validate(%q) = %v, want accepted=%v", value, err, want)
+		}
+	}
+}
+
+func TestAServerSettingAcceptsNothingOrAnIdentifier(t *testing.T) {
+	// Empty is a legitimate state: no source server has been chosen. Whether
+	// the identifier names a live server is a question this package cannot ask.
+	definition, ok := Lookup(SourceServerID)
+	if !ok {
+		t.Fatal("the source server is not in the registry")
+	}
+
+	cases := map[string]bool{
+		"":     true,
+		"1":    true,
+		"4711": true,
+		"0":    false,
+		"-1":   false,
+		"two":  false,
+		"1.5":  false,
+	}
+
+	for value, want := range cases {
+		err := Validate(definition, value)
+		if (err == nil) != want {
+			t.Errorf("Validate(%q) = %v, want accepted=%v", value, err, want)
+		}
+	}
+}
+
+func TestAnUnchosenSourceReadsAsZero(t *testing.T) {
+	values := mustValues(t, map[string]string{})
+	if got := values.Int64(SourceServerID); got != 0 {
+		t.Errorf("Int64 = %d, want 0 while nothing is chosen", got)
+	}
+
+	values = mustValues(t, map[string]string{SourceServerID: "7"})
+	if got := values.Int64(SourceServerID); got != 7 {
+		t.Errorf("Int64 = %d, want 7", got)
+	}
+}
+
+// mustValues builds a snapshot and fails on a value the registry refuses.
+func mustValues(t *testing.T, stored map[string]string) *Values {
+	t.Helper()
+
+	values, refused := NewValues(stored)
+	if len(refused) != 0 {
+		t.Fatalf("the snapshot refused %v", refused)
+	}
+	return values
+}

@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 // ErrInvalid marks a value the panel refuses to store.
@@ -79,6 +81,15 @@ func (v *Values) Int(key string) int {
 	return value
 }
 
+// Int64 returns an identifier setting. It answers zero when nothing is chosen.
+func (v *Values) Int64(key string) int64 {
+	value, err := strconv.ParseInt(strings.TrimSpace(v.raw[key]), 10, 64)
+	if err != nil {
+		return 0
+	}
+	return value
+}
+
 // Bool returns a boolean setting.
 func (v *Values) Bool(key string) bool {
 	value, err := strconv.ParseBool(v.raw[key])
@@ -120,12 +131,20 @@ const (
 	CodeUnknownKind      = "unknown_kind"
 	CodeStaleTooShort    = "stale_too_short"
 	CodeLifetimeTooShort = "lifetime_too_short"
+
+	CodeTextEmpty      = "text_empty"
+	CodeTextLength     = "text_length"
+	CodeTextCharacters = "text_characters"
+	CodeServerRef      = "server_ref"
+	CodeUnknownServer  = "unknown_server"
 )
 
 // problemCodes is every code the package raises.
 var problemCodes = []string{
 	CodeNotASetting, CodeDuration, CodeDurationRange, CodeInt, CodeIntRange,
 	CodeBool, CodeEnum, CodeUnknownKind, CodeStaleTooShort, CodeLifetimeTooShort,
+	CodeTextEmpty, CodeTextLength, CodeTextCharacters, CodeServerRef,
+	CodeUnknownServer,
 }
 
 // Codes returns every problem code.
@@ -171,6 +190,16 @@ func (p *Problem) sentence() string {
 		return fmt.Sprintf("has the unknown kind %q", p.Args...)
 	case CodeStaleTooShort:
 		return fmt.Sprintf("(%v) must be longer than the cache refresh interval (%v)", p.Args...)
+	case CodeTextEmpty:
+		return "cannot be empty"
+	case CodeTextLength:
+		return fmt.Sprintf("must be at most %v characters, got %v", p.Args...)
+	case CodeTextCharacters:
+		return "cannot hold a control character"
+	case CodeServerRef:
+		return fmt.Sprintf("must name a server, got %q", p.Args...)
+	case CodeUnknownServer:
+		return "must name a server that exists and is enabled"
 	case CodeLifetimeTooShort:
 		return fmt.Sprintf("(%v) must be at least the idle timeout (%v)", p.Args...)
 	default:
@@ -212,6 +241,29 @@ func Validate(definition Definition, value string) error {
 	case KindEnum:
 		if !slices.Contains(definition.Options, trimmed) {
 			return refuse(CodeEnum, strings.Join(definition.Options, ", "), value)
+		}
+
+	case KindText:
+		if trimmed == "" {
+			return refuse(CodeTextEmpty)
+		}
+		if definition.MaxLen > 0 && utf8.RuneCountInString(trimmed) > definition.MaxLen {
+			return refuse(CodeTextLength, definition.MaxLen, utf8.RuneCountInString(trimmed))
+		}
+		// A control character would travel into a page title and a log line
+		// alike, where it reads as nothing and hides what follows it.
+		if strings.ContainsFunc(trimmed, unicode.IsControl) {
+			return refuse(CodeTextCharacters)
+		}
+
+	case KindServer:
+		// Empty means no server was chosen, which is a legitimate state.
+		if trimmed == "" {
+			return nil
+		}
+		id, err := strconv.ParseInt(trimmed, 10, 64)
+		if err != nil || id <= 0 {
+			return refuse(CodeServerRef, value)
 		}
 
 	default:

@@ -197,6 +197,20 @@ Exercise the restore on a spare host. A backup nobody has restored is a backup
 nobody knows the state of, and the fleet is the thing that pays for the
 difference.
 
+### The copy an upgrade leaves behind
+
+When a new binary has a migration to apply, it copies the database first and
+writes it next to the original as `unbound.db.before-<migration>.sql`. A
+migration can be one way: `0002` drops a column the previous binary reads, so
+without that copy there is no going back to the version that was running
+before. Roll back by stopping the service, putting the copy in place of
+`unbound.db` and installing the older binary.
+
+The panel refuses to start if it cannot write the copy, because the copy is
+what protects against the step that follows it. Each file is written once; a
+second attempt at the same upgrade keeps the first copy, which is the state you
+actually want back. Delete them yourself once the upgrade has proven itself.
+
 ### Running it on a timer
 
 The installer sets up no schedule, because where the backups go and how long

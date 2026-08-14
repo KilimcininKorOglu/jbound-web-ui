@@ -112,38 +112,113 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 		return fmt.Errorf("cannot create schema_migrations: %w", err)
 	}
 
-	entries, err := migrations.ReadDir("migrations")
+	pending, applied, err := db.pendingMigrations(ctx)
 	if err != nil {
-		return fmt.Errorf("cannot read the migrations directory: %w", err)
+		return err
+	}
+	if len(pending) == 0 {
+		return nil
 	}
 
+	// Nothing to roll back to on a database that has never been migrated, so a
+	// fresh install is not asked to keep a copy of an empty file.
+	if applied > 0 {
+		if err := db.snapshotBefore(ctx, pending[0]); err != nil {
+			return err
+		}
+	}
+
+	for _, name := range pending {
+		if err := db.apply(ctx, name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// pendingMigrations lists what has not run yet and how much already has.
+func (db *DB) pendingMigrations(ctx context.Context) ([]string, int, error) {
+	entries, err := migrations.ReadDir("migrations")
+	if err != nil {
+		return nil, 0, fmt.Errorf("cannot read the migrations directory: %w", err)
+	}
+
+	var applied int
+	if err := db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM schema_migrations").Scan(&applied); err != nil {
+		return nil, 0, fmt.Errorf("cannot read the applied migrations: %w", err)
+	}
+
+	var pending []string
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
 		}
 		name := entry.Name()
 
-		var applied int
+		var seen int
 		row := db.QueryRowContext(ctx,
 			"SELECT COUNT(*) FROM schema_migrations WHERE name = ?", name)
-		if err := row.Scan(&applied); err != nil {
-			return fmt.Errorf("cannot check migration %s: %w", name, err)
+		if err := row.Scan(&seen); err != nil {
+			return nil, 0, fmt.Errorf("cannot check migration %s: %w", name, err)
 		}
-		if applied > 0 {
-			continue
+		if seen == 0 {
+			pending = append(pending, name)
 		}
+	}
+	return pending, applied, nil
+}
 
-		statements, err := migrations.ReadFile("migrations/" + name)
-		if err != nil {
-			return fmt.Errorf("cannot read migration %s: %w", name, err)
-		}
-		if _, err := db.ExecContext(ctx, string(statements)); err != nil {
-			return fmt.Errorf("migration %s failed: %w", name, err)
-		}
-		if _, err := db.ExecContext(ctx,
-			"INSERT INTO schema_migrations (name) VALUES (?)", name); err != nil {
-			return fmt.Errorf("cannot record migration %s: %w", name, err)
-		}
+// snapshotBefore keeps a copy of the database from before the upgrade.
+//
+// A migration can be destructive: 0002 drops a column the previous binary
+// reads, so once it has run there is no way back to the version that was
+// running an hour ago. The copy is that way back.
+//
+// A failure here stops the start. The copy is what protects against the very
+// step that follows it, and running a one way migration without it would take
+// away the only answer to "put it back the way it was".
+func (db *DB) snapshotBefore(ctx context.Context, name string) error {
+	target := db.path + ".before-" + name
+
+	// A copy from an earlier attempt describes the state before the first try,
+	// which is the one worth keeping. Writing a second one over it would
+	// replace the answer with the question.
+	if _, err := os.Stat(target); err == nil {
+		return nil
+	}
+	return db.SnapshotTo(ctx, target)
+}
+
+// apply runs one migration and records it in the same transaction.
+//
+// The two have to commit together. A file may hold several statements, and
+// SQLite commits each one on its own outside a transaction, so an interrupted
+// run left the schema half changed with nothing in the applied list. The next
+// start replayed the file, died on the half that was already there, and
+// systemd restarted into the same failure every five seconds.
+func (db *DB) apply(ctx context.Context, name string) error {
+	statements, err := migrations.ReadFile("migrations/" + name)
+	if err != nil {
+		return fmt.Errorf("cannot read migration %s: %w", name, err)
+	}
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("cannot start migration %s: %w", name, err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, string(statements)); err != nil {
+		return fmt.Errorf("migration %s failed: %w", name, err)
+	}
+	if _, err := tx.ExecContext(ctx,
+		"INSERT INTO schema_migrations (name) VALUES (?)", name); err != nil {
+		return fmt.Errorf("cannot record migration %s: %w", name, err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("cannot commit migration %s: %w", name, err)
 	}
 	return nil
 }

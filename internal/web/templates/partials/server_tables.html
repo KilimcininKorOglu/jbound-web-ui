@@ -131,7 +131,7 @@
 {{else if eq .Status "untrusted"}}
   <span class="status-indicator"><span class="dot orange"></span> {{t "servers.state.untrusted"}}</span>
 {{else if eq .Status "failing"}}
-  <span class="status-indicator" title="{{.LastError}}"><span class="dot red"></span> {{t "servers.state.failing"}}</span>
+  <span class="status-indicator" title="{{.Failure}}"><span class="dot red"></span> {{t "servers.state.failing"}}</span>
 {{else if eq .Status "disabled"}}
   <span class="status-indicator"><span class="dot"></span> {{t "servers.state.disabled"}}</span>
 {{else}}

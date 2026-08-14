@@ -36,6 +36,11 @@ type serverRow struct {
 
 	// Records is how many entries the panel last read from that server.
 	Records int
+
+	// Failure is the last contact failure as a sentence. The stored value is a
+	// class rather than the text of the error, because that text names the
+	// remote command and its stderr.
+	Failure string
 }
 
 // groupRow is one line of the group table.
@@ -121,6 +126,7 @@ func (a *App) serversPageData(r *http.Request) (serversPageData, error) {
 		return serversPageData{}, err
 	}
 
+	catalog := a.catalog(r)
 	byID := map[int64]server.Server{}
 	rows := make([]serverRow, 0, len(servers))
 	for _, record := range servers {
@@ -132,6 +138,7 @@ func (a *App) serversPageData(r *http.Request) (serversPageData, error) {
 			Status:  serverStatus(record),
 			Pending: record.Enabled && state.Pending(),
 			Records: state.RecordCount,
+			Failure: cacheErrorText(catalog, record.LastError),
 		})
 	}
 

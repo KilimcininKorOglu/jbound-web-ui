@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"unbound-web/internal/auth"
+	"unbound-web/internal/i18n"
 	"unbound-web/internal/server"
 	"unbound-web/internal/settings"
 	"unbound-web/internal/transport"
@@ -609,5 +610,45 @@ func TestDisablingTheSourceServerClearsTheSetting(t *testing.T) {
 
 	if got := env.app.Settings.String(settings.SourceServerID); got != "" {
 		t.Errorf("the source setting still reads %q", got)
+	}
+}
+
+func TestTheServerTableTooltipCarriesNoRemoteCommand(t *testing.T) {
+	// The tooltip used to print what the probe returned, which is the same
+	// text userMessage refuses to show one step to the right on the same page.
+	env := newTestEnv(t)
+	cookie := env.login(t, "dnsadmin")
+	env.addServer(t, cookie, "dns1")
+	// A server nobody approved reads as untrusted, and the failing row is the
+	// one that carries the tooltip.
+	if err := env.trust(1); err != nil {
+		t.Fatalf("cannot approve the host key: %v", err)
+	}
+
+	env.transport.probeErr = &transport.ProbeError{
+		Step: transport.StepWrite,
+		Err: &transport.CommandError{
+			Command:  "/usr/bin/base64 -w0 /etc/unbound/host_entries.conf",
+			ExitCode: 1,
+			Stderr:   "sudo: a password is required",
+		},
+	}
+	env.adminForm(t, http.MethodPost, "/servers/1/test", cookie, url.Values{})
+
+	table := env.do(t, httptest.NewRequest(http.MethodGet, "/servers/table", nil), cookie)
+	if table.Code != http.StatusOK {
+		t.Fatalf("GET /servers/table = %d, want 200", table.Code)
+	}
+
+	body := table.Body.String()
+	for _, secret := range []string{"base64", "host_entries.conf", "a password is required"} {
+		if strings.Contains(body, secret) {
+			t.Errorf("the table carries %q:\n%s", secret, body)
+		}
+	}
+
+	catalog := env.app.Catalogs.Catalog(i18n.Default)
+	if !strings.Contains(body, catalog.T("system.error."+transport.CodeCommandFailed)) {
+		t.Errorf("the table does not say what went wrong:\n%s", body)
 	}
 }

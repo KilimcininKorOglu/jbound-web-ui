@@ -391,7 +391,13 @@ func (s *Service) TestConnection(ctx context.Context, id int64) (TestResult, err
 		}
 	}
 
-	if err := s.servers.SetReachability(ctx, id, s.now().UTC(), probeErr.Error()); err != nil {
+	// The class rather than the text. What is stored is read back into the
+	// server table, and the text of a probe failure names the remote command,
+	// its paths and its stderr. The panel turns the class into a sentence in
+	// the language of the reader, and the detail stays in the connection test
+	// panel where the operator asked for it.
+	if err := s.servers.SetReachability(ctx, id, s.now().UTC(),
+		transport.FailureCode(probeErr)); err != nil {
 		return TestResult{}, err
 	}
 	return result, nil

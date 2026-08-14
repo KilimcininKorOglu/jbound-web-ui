@@ -752,3 +752,38 @@ func TestTheGroupReadsGoStraightToTheStore(t *testing.T) {
 		t.Errorf("%d groups came back, want 1", len(all))
 	}
 }
+
+func TestARecordedProbeFailureKeepsItsTextOutOfTheDatabase(t *testing.T) {
+	// The stored value is read back into the server table, where it used to
+	// travel into a tooltip. A probe failure names the remote command, its
+	// paths and its stderr, so the class is what is kept.
+	h := newHarness(t)
+	ctx := context.Background()
+	h.connector.transport.probeErr = &transport.ProbeError{
+		Step: transport.StepWrite,
+		Err: &transport.CommandError{
+			Command:  "/usr/bin/base64 -w0 /etc/unbound/host_entries.conf",
+			ExitCode: 1,
+			Stderr:   "sudo: a password is required",
+		},
+	}
+
+	record, _, err := h.service.Create(ctx, testActor(), newServerInput("dns1"))
+	if err != nil {
+		t.Fatalf("Create returned an error: %v", err)
+	}
+	if _, err := h.service.TestConnection(ctx, record.ID); err != nil {
+		t.Fatalf("TestConnection returned an error: %v", err)
+	}
+
+	stored, _ := h.servers.Get(ctx, record.ID)
+	if stored.LastError != transport.CodeCommandFailed {
+		t.Errorf("stored failure = %q, want the class %q",
+			stored.LastError, transport.CodeCommandFailed)
+	}
+	for _, secret := range []string{"base64", "host_entries.conf", "sudo"} {
+		if strings.Contains(stored.LastError, secret) {
+			t.Errorf("the stored failure carries %q", secret)
+		}
+	}
+}

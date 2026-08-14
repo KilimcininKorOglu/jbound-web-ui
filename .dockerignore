@@ -1,0 +1,25 @@
+# What reaches the Docker daemon on every build.
+#
+# The compose services build from the repository root, so that the COPY
+# directives can name paths under docker/ and deploy/. Without this file the
+# root travels whole: the development SSH private key, the fixture passwords in
+# .env.dev, and the full history in .git.
+#
+# The list is an allow list rather than a deny list. Nothing is in the context
+# unless a COPY needs it, so a secret that lands in the repository tomorrow is
+# out by default rather than in until somebody notices. A Dockerfile that needs
+# a new path adds it here, and until it does the build says the file is not in
+# the context, which is a loud failure rather than a quiet leak.
+#
+# The panel sources and the development keys are not here on purpose. They
+# reach the containers as bind mounts at run time, which is what lets air
+# rebuild on edit.
+
+*
+
+!deploy/
+!docker/
+
+# Inside docker/, everything except the keys. They are mounted read only at run
+# time and have no business in an image layer or a build cache.
+docker/keys/

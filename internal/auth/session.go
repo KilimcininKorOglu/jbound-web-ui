@@ -21,6 +21,15 @@ const SessionCookieName = "unbound_web_session"
 // minutes bounds how long a stolen identifier stays useful.
 const rotateInterval = 5 * time.Minute
 
+// rotationGrace is how long the identifier a session just left behind is still
+// accepted.
+//
+// The panel makes overlapping requests by design, so a request can be in
+// flight with the previous identifier while the one beside it rotates. The
+// window covers that race and nothing more: rotation exists to bound how long
+// a stolen identifier stays useful, and a long grace would undo it.
+const rotationGrace = 10 * time.Second
+
 // Session states reported by Load. The caller turns each into a redirect or a
 // plain rejection, so the reasons stay distinct here.
 var (
@@ -65,9 +74,9 @@ func (s SessionSummary) IsAdmin() bool { return s.Role == RoleAdmin }
 // delete and an insert, because a crash between the two would log the user out.
 type SessionRepository interface {
 	Create(ctx context.Context, session Session) error
-	Get(ctx context.Context, id string) (Session, error)
+	Find(ctx context.Context, id string, rotatedSince time.Time) (Session, error)
 	Touch(ctx context.Context, id string, at time.Time) error
-	Rotate(ctx context.Context, oldID, newID string, at time.Time) error
+	Rotate(ctx context.Context, oldID, newID string, at time.Time) (bool, error)
 	Delete(ctx context.Context, id string) error
 	ListLive(ctx context.Context, since time.Time) ([]SessionSummary, error)
 	DeleteByUIDExcept(ctx context.Context, uid int, keepID string) (int, error)
@@ -153,7 +162,9 @@ func (m *SessionManager) Load(ctx context.Context, w http.ResponseWriter,
 		return Session{}, ErrNoSession
 	}
 
-	session, err := m.repo.Get(ctx, cookie.Value)
+	now := m.now().UTC()
+
+	session, err := m.repo.Find(ctx, cookie.Value, now.Add(-rotationGrace))
 	if err != nil {
 		// An unknown identifier is indistinguishable from an expired one that
 		// the cleanup loop already removed.
@@ -161,7 +172,10 @@ func (m *SessionManager) Load(ctx context.Context, w http.ResponseWriter,
 		return Session{}, ErrNoSession
 	}
 
-	now := m.now().UTC()
+	// The identifier the row carries is not the one that arrived, so a request
+	// beside this one rotated a moment ago. Its response already handed the
+	// browser the new identifier.
+	rotatedBySibling := session.ID != cookie.Value
 
 	if now.Sub(session.LastActive) > m.idle() {
 		m.destroy(ctx, w, session.ID)
@@ -182,18 +196,26 @@ func (m *SessionManager) Load(ctx context.Context, w http.ResponseWriter,
 		return Session{}, ErrFingerprintMismatch
 	}
 
-	if now.Sub(session.RegeneratedAt) >= rotateInterval {
+	if !rotatedBySibling && now.Sub(session.RegeneratedAt) >= rotateInterval {
 		newID, err := randomToken()
 		if err != nil {
 			return Session{}, err
 		}
-		if err := m.repo.Rotate(ctx, session.ID, newID, now); err != nil {
+
+		rotated, err := m.repo.Rotate(ctx, session.ID, newID, now)
+		if err != nil {
 			return Session{}, fmt.Errorf("cannot rotate the session: %w", err)
 		}
-		session.ID = newID
-		session.RegeneratedAt = now
-		session.LastActive = now
-		m.setCookie(w, newID)
+		if rotated {
+			session.ID = newID
+			session.RegeneratedAt = now
+			session.LastActive = now
+			m.setCookie(w, newID)
+			return session, nil
+		}
+		// A request beside this one rotated first. Both hold the same live
+		// session, and the cookie the browser keeps is the one that request
+		// set, so this response leaves it alone.
 		return session, nil
 	}
 

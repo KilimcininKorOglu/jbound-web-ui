@@ -906,3 +906,94 @@ func TestAStaticAssetKeepsItsOwnCacheDirective(t *testing.T) {
 		t.Errorf("Cache-Control = %q, want no-cache", got)
 	}
 }
+
+// dueForRotation ages a session so the next request through it rotates.
+func (e *testEnv) dueForRotation(t *testing.T, cookie *http.Cookie) {
+	t.Helper()
+
+	past := time.Now().UTC().Add(-10 * time.Minute)
+	if _, err := e.db.Exec(
+		"UPDATE sessions SET regenerated_at = ? WHERE id = ?",
+		past.Format("2006-01-02 15:04:05"), cookie.Value); err != nil {
+		t.Fatalf("cannot age the session: %v", err)
+	}
+}
+
+func TestTwoRequestsThatMeetOnARotationBothSucceed(t *testing.T) {
+	// The panel polls its own pages, so a status refresh landing at the same
+	// instant as a user action is routine. Both requests carry the identifier
+	// the browser has, one of them replaces it, and the other used to be told
+	// its session is unknown: an expiring Set-Cookie that destroys a live
+	// session, or an internal error page.
+	env := newTestEnv(t)
+	cookie := env.login(t, "dnsadmin")
+	env.dueForRotation(t, cookie)
+
+	var wait sync.WaitGroup
+	answers := make([]*httptest.ResponseRecorder, 2)
+	for i := range answers {
+		wait.Go(func() {
+			answers[i] = env.do(t, httptest.NewRequest(http.MethodGet, "/dns", nil), cookie)
+		})
+	}
+	wait.Wait()
+
+	var cleared int
+	for i, answer := range answers {
+		if answer.Code != http.StatusOK {
+			t.Errorf("request %d = %d, want 200", i, answer.Code)
+		}
+		for _, set := range answer.Result().Cookies() {
+			if set.Name == auth.SessionCookieName && set.MaxAge < 0 {
+				cleared++
+			}
+		}
+	}
+	if cleared > 0 {
+		t.Errorf("%d of the two responses cleared the session cookie", cleared)
+	}
+
+	// Whatever identifier the browser ends up with, it still names the session.
+	session, err := env.sessions.Find(context.Background(), cookie.Value,
+		time.Now().UTC().Add(-10*time.Second))
+	if err != nil {
+		t.Fatalf("the session is gone after the rotation: %v", err)
+	}
+	if session.Username != "dnsadmin" {
+		t.Errorf("the session belongs to %q", session.Username)
+	}
+}
+
+func TestARequestStillCarryingTheOldIdentifierIsKept(t *testing.T) {
+	// The deterministic half of the race above: one request has already
+	// rotated, and the one that was in flight beside it arrives afterwards
+	// with the identifier the browser had. Clearing its cookie would sign the
+	// user out of a session that is alive.
+	env := newTestEnv(t)
+	cookie := env.login(t, "dnsadmin")
+	env.dueForRotation(t, cookie)
+
+	first := env.do(t, httptest.NewRequest(http.MethodGet, "/dns", nil), cookie)
+	if first.Code != http.StatusOK {
+		t.Fatalf("the first request = %d, want 200", first.Code)
+	}
+	var rotated *http.Cookie
+	for _, set := range first.Result().Cookies() {
+		if set.Name == auth.SessionCookieName {
+			rotated = set
+		}
+	}
+	if rotated == nil || rotated.Value == cookie.Value {
+		t.Fatal("the first request did not rotate the session")
+	}
+
+	late := env.do(t, httptest.NewRequest(http.MethodGet, "/dns", nil), cookie)
+	if late.Code != http.StatusOK {
+		t.Fatalf("the late request = %d, want 200", late.Code)
+	}
+	for _, set := range late.Result().Cookies() {
+		if set.Name == auth.SessionCookieName {
+			t.Errorf("the late request rewrote the cookie to %q, want it left alone", set.Value)
+		}
+	}
+}

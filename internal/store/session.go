@@ -43,19 +43,43 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	return nil
 }
 
-// Get reads one session by identifier.
-func (s *Sessions) Get(ctx context.Context, id string) (auth.Session, error) {
-	const query = `
+// sessionColumns is what one session row reads back as.
+const sessionColumns = `
 SELECT id, uid, username, role, fingerprint, csrf_token,
        last_active, regenerated_at, created_at
   FROM sessions
- WHERE id = ?`
+`
+
+// Get reads one session by the identifier it currently carries.
+func (s *Sessions) Get(ctx context.Context, id string) (auth.Session, error) {
+	return s.read(ctx, sessionColumns+" WHERE id = ?", id)
+}
+
+// Find reads the session an identifier names, including one that was rotated
+// away a moment ago.
+//
+// A live session gets a new identifier every few minutes, and the panel makes
+// overlapping requests by design: a status poll can be in flight while the
+// request beside it rotates. The one that arrives second still carries the
+// previous identifier, and treating that as an unknown session would clear a
+// cookie that is perfectly valid. The grace window is short, because rotation
+// exists to bound how long a stolen identifier stays useful.
+func (s *Sessions) Find(ctx context.Context, id string,
+	rotatedSince time.Time) (auth.Session, error) {
+
+	const where = ` WHERE id = ? OR (previous_id = ? AND rotated_at > ?)`
+	return s.read(ctx, sessionColumns+where, id, id, formatTime(rotatedSince))
+}
+
+// read runs one session query and builds the session it returns.
+func (s *Sessions) read(ctx context.Context, query string,
+	args ...any) (auth.Session, error) {
 
 	var (
 		session                          auth.Session
 		lastActive, regenerated, created string
 	)
-	err := s.db.QueryRowContext(ctx, query, id).Scan(
+	err := s.db.QueryRowContext(ctx, query, args...).Scan(
 		&session.ID, &session.UID, &session.Username, &session.Role,
 		&session.Fingerprint, &session.CSRFToken,
 		&lastActive, &regenerated, &created,
@@ -96,23 +120,35 @@ func (s *Sessions) Touch(ctx context.Context, id string, at time.Time) error {
 	return requireOneRow(result, "session", id)
 }
 
-// Rotate gives a live session a new identifier.
+// Rotate gives a live session a new identifier and remembers the old one.
 //
 // One statement rather than a delete followed by an insert. A failure between
 // the two would drop a valid session, and the primary key would reject any
 // overlap anyway.
-func (s *Sessions) Rotate(ctx context.Context, oldID, newID string, at time.Time) error {
+//
+// It reports whether this call was the one that rotated. A row that no longer
+// carries the old identifier means a request beside this one rotated first,
+// which is a race the panel produces on its own and not a failure: both
+// requests hold the same live session.
+func (s *Sessions) Rotate(ctx context.Context, oldID, newID string,
+	at time.Time) (bool, error) {
+
 	const query = `
 UPDATE sessions
-   SET id = ?, regenerated_at = ?, last_active = ?
+   SET id = ?, previous_id = id, rotated_at = ?, regenerated_at = ?, last_active = ?
  WHERE id = ?`
 
 	stamp := formatTime(at)
-	result, err := s.db.ExecContext(ctx, query, newID, stamp, stamp, oldID)
+	result, err := s.db.ExecContext(ctx, query, newID, stamp, stamp, stamp, oldID)
 	if err != nil {
-		return fmt.Errorf("cannot rotate the session: %w", err)
+		return false, fmt.Errorf("cannot rotate the session: %w", err)
 	}
-	return requireOneRow(result, "session", oldID)
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("cannot count the affected rows: %w", err)
+	}
+	return affected > 0, nil
 }
 
 // Delete removes one session.

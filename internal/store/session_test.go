@@ -109,8 +109,12 @@ func TestRotateKeepsTheSessionContents(t *testing.T) {
 	}
 
 	at := session.RegeneratedAt.Add(5 * time.Minute)
-	if err := sessions.Rotate(ctx, session.ID, "session-id-2", at); err != nil {
+	rotated, err := sessions.Rotate(ctx, session.ID, "session-id-2", at)
+	if err != nil {
 		t.Fatalf("Rotate returned an error: %v", err)
+	}
+	if !rotated {
+		t.Fatal("Rotate reported that it changed nothing")
 	}
 
 	if _, err := sessions.Get(ctx, session.ID); !errors.Is(err, store.ErrNotFound) {
@@ -129,7 +133,7 @@ func TestRotateKeepsTheSessionContents(t *testing.T) {
 	}
 }
 
-func TestTouchAndRotateReportAMissingRow(t *testing.T) {
+func TestTouchReportsAMissingRow(t *testing.T) {
 	// A no op update means the row vanished between the read and the write.
 	// Reporting success would hand the caller a session that no longer exists.
 	sessions := newSessionStore(t)
@@ -138,8 +142,55 @@ func TestTouchAndRotateReportAMissingRow(t *testing.T) {
 	if err := sessions.Touch(ctx, "no-such-session", time.Now()); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("Touch returned %v, want ErrNotFound", err)
 	}
-	if err := sessions.Rotate(ctx, "no-such-session", "new-id", time.Now()); !errors.Is(err, store.ErrNotFound) {
-		t.Errorf("Rotate returned %v, want ErrNotFound", err)
+}
+
+// A rotation that changes nothing is a race, not a failure. The panel makes
+// overlapping requests on its own, and the one that arrives second used to turn
+// this into an internal error page.
+func TestARotationThatChangedNothingIsReportedAsSuch(t *testing.T) {
+	sessions := newSessionStore(t)
+	ctx := context.Background()
+
+	rotated, err := sessions.Rotate(ctx, "no-such-session", "new-id", time.Now())
+	if err != nil {
+		t.Fatalf("Rotate returned an error: %v", err)
+	}
+	if rotated {
+		t.Error("Rotate claimed to have rotated a session that is not there")
+	}
+}
+
+// The identifier a session left behind still names it for a short while, so a
+// request that was already in flight is not treated as an unknown session.
+func TestTheIdentifierASessionLeftBehindStillFindsIt(t *testing.T) {
+	sessions := newSessionStore(t)
+	ctx := context.Background()
+	session := sampleSession()
+
+	if err := sessions.Create(ctx, session); err != nil {
+		t.Fatalf("Create returned an error: %v", err)
+	}
+
+	at := session.RegeneratedAt.Add(5 * time.Minute)
+	if _, err := sessions.Rotate(ctx, session.ID, "session-id-2", at); err != nil {
+		t.Fatalf("Rotate returned an error: %v", err)
+	}
+
+	found, err := sessions.Find(ctx, session.ID, at.Add(-10*time.Second))
+	if err != nil {
+		t.Fatalf("Find returned an error: %v", err)
+	}
+	if found.ID != "session-id-2" {
+		t.Errorf("Find returned %q, want the identifier the session carries now", found.ID)
+	}
+
+	// Past the window it is gone, which is what rotation is for.
+	if _, err := sessions.Find(ctx, session.ID, at.Add(time.Second)); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("Find returned %v after the window, want ErrNotFound", err)
+	}
+	// And the exact lookup never answers for it.
+	if _, err := sessions.Get(ctx, session.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("Get returned %v, want ErrNotFound", err)
 	}
 }
 

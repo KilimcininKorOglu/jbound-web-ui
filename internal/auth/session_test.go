@@ -17,10 +17,20 @@ import (
 type fakeSessionRepo struct {
 	sessions  map[string]Session
 	createErr error
+
+	// rotatedFrom maps the identifier a session left behind to the one it
+	// carries now, and rotatedAt says when, which is what the grace window of
+	// an overlapping request is measured against.
+	rotatedFrom map[string]string
+	rotatedAt   map[string]time.Time
 }
 
 func newFakeSessionRepo() *fakeSessionRepo {
-	return &fakeSessionRepo{sessions: map[string]Session{}}
+	return &fakeSessionRepo{
+		sessions:    map[string]Session{},
+		rotatedFrom: map[string]string{},
+		rotatedAt:   map[string]time.Time{},
+	}
 }
 
 func (f *fakeSessionRepo) Create(_ context.Context, session Session) error {
@@ -49,17 +59,39 @@ func (f *fakeSessionRepo) Touch(_ context.Context, id string, at time.Time) erro
 	return nil
 }
 
-func (f *fakeSessionRepo) Rotate(_ context.Context, oldID, newID string, at time.Time) error {
+// Find answers for the identifier a session carries and for the one it left
+// behind inside the window.
+func (f *fakeSessionRepo) Find(_ context.Context, id string,
+	rotatedSince time.Time) (Session, error) {
+
+	if session, ok := f.sessions[id]; ok {
+		return session, nil
+	}
+	if current, ok := f.rotatedFrom[id]; ok && f.rotatedAt[id].After(rotatedSince) {
+		if session, ok := f.sessions[current]; ok {
+			return session, nil
+		}
+	}
+	return Session{}, errors.New("not found")
+}
+
+func (f *fakeSessionRepo) Rotate(_ context.Context, oldID, newID string,
+	at time.Time) (bool, error) {
+
 	session, ok := f.sessions[oldID]
 	if !ok {
-		return errors.New("not found")
+		// A request beside this one rotated first, which is a race rather than
+		// a failure.
+		return false, nil
 	}
 	delete(f.sessions, oldID)
 	session.ID = newID
 	session.RegeneratedAt = at
 	session.LastActive = at
 	f.sessions[newID] = session
-	return nil
+	f.rotatedFrom[oldID] = newID
+	f.rotatedAt[oldID] = at
+	return true, nil
 }
 
 func (f *fakeSessionRepo) Delete(_ context.Context, id string) error {

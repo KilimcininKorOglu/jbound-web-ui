@@ -47,8 +47,9 @@ const (
 // usage is printed for an argument the command does not know.
 const usage = `jbound manages several Unbound resolvers over SSH.
 
-  jbound                 run the panel
-  jbound backup <dir>    write a consistent copy of the data directory
+  jbound                        run the panel
+  jbound backup <dir>           write a consistent copy of the data directory
+  jbound import-audit <file>    read the audit trail of an older installation
 `
 
 func main() {
@@ -73,6 +74,11 @@ func dispatch(args []string) error {
 			return fmt.Errorf("backup needs one target directory")
 		}
 		return runBackup(args[1])
+	case "import-audit":
+		if len(args) != 2 {
+			return fmt.Errorf("import-audit needs one file to read")
+		}
+		return runImportAudit(args[1])
 	default:
 		fmt.Fprint(os.Stderr, usage)
 		os.Exit(2)

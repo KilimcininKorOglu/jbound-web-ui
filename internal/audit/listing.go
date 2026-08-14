@@ -75,6 +75,6 @@ func Actions() []string {
 		ActionServerRotateKey, ActionServerTest,
 		ActionGroupCreate, ActionGroupUpdate, ActionGroupDelete,
 		ActionSIEMConfig, ActionSIEMTest,
-		ActionSettingsUpdate,
+		ActionSettingsUpdate, ActionAuditImport,
 	}
 }

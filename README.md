@@ -236,6 +236,44 @@ gets before anybody picks a language or a theme.
 The language and the theme of one browser are its own choice and live in a
 cookie. Nothing about a reader is stored server side.
 
+### Bringing an older trail with you
+
+If this panel replaces a single-server installation that kept its own audit
+table, its history can be carried over. Export the table as CSV with a header
+row, from any client:
+
+```
+SELECT id, user_id, username, action, details, ip_address, created_at
+  FROM audit_logs ORDER BY id
+```
+
+Then, as the service account:
+
+```
+sudo -u jbound jbound import-audit /path/to/audit_logs.csv
+```
+
+The header names the columns, so their order does not matter and a column the
+panel has no use for can stay in the file. `username`, `action` and `created_at`
+are required. A row that cannot be read stops the whole import and names its
+line, because a trail that stops halfway with nothing to say so is worse than
+one that was never imported.
+
+Two things about the rows it writes:
+
+- They carry uid `-1`. The panel identifies a user by the uid the operating
+  system gave them, and the number in the export belongs to a user table that no
+  longer exists. Writing it into a column that means "uid" would put a wrong
+  number in the trail and forward it to the SIEM as `suid`.
+- They name no server. The installation they come from managed one resolver, and
+  which of this panel's records that became is not something the import can know.
+
+A timestamp without a zone is read as UTC, which is what the panel stores. Export
+it as RFC 3339 with an offset if the old host did not run on UTC.
+
+The import leaves one row about itself, so a trail that suddenly reaches further
+back than the panel has existed says where that came from.
+
 ## Backup and restore
 
 Take the backup with the panel binary, as the service account:

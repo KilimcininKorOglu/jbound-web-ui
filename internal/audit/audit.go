@@ -47,6 +47,10 @@ const (
 	ActionSIEMTest   = "siem_test"
 
 	ActionSettingsUpdate = "settings_update"
+
+	// ActionAuditImport marks the one row the import command writes about
+	// itself, so a trail that suddenly reaches further back says why.
+	ActionAuditImport = "audit_import"
 )
 
 // Entry is one audit row. ServerID stays nil for actions that target no

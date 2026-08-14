@@ -56,6 +56,11 @@ var classes = map[string]Class{
 	audit.ActionServerTrust:  {"SSH Host Key Trusted", 5, syslog.LOG_WARNING},
 
 	audit.ActionDiffRepair: {"Record Drift Repaired", 3, syslog.LOG_NOTICE},
+
+	// An import reaches into the trail itself. A receiver that suddenly sees
+	// rows older than the panel needs to be told why, and a warning is what
+	// makes somebody look.
+	audit.ActionAuditImport: {"Audit Trail Imported", 5, syslog.LOG_WARNING},
 }
 
 // Classify reports how an action is sent.

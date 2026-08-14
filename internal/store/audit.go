@@ -20,6 +20,23 @@ func NewAuditLogs(db *sql.DB) *AuditLogs { return &AuditLogs{db: db} }
 
 // Write inserts one audit entry.
 func (a *AuditLogs) Write(ctx context.Context, entry audit.Entry, at time.Time) error {
+	return writeAudit(ctx, a.db, entry, at)
+}
+
+// WriteAuditTx inserts one entry inside a transaction the caller owns.
+//
+// The import command writes a whole trail or none of it, and a half imported
+// trail is worse than no import because nobody can tell where it stops.
+func WriteAuditTx(ctx context.Context, tx *sql.Tx, entry audit.Entry, at time.Time) error {
+	return writeAudit(ctx, tx, entry, at)
+}
+
+// execer is the part of *sql.DB and *sql.Tx that an insert needs.
+type execer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+func writeAudit(ctx context.Context, db execer, entry audit.Entry, at time.Time) error {
 	const query = `
 INSERT INTO audit_logs
     (user_id, username, server_id, action, details, ip_address, created_at)
@@ -32,7 +49,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?)`
 		serverID = *entry.ServerID
 	}
 
-	_, err := a.db.ExecContext(ctx, query,
+	_, err := db.ExecContext(ctx, query,
 		entry.UID, entry.Username, serverID, entry.Action,
 		entry.Details, entry.IPAddress, formatTime(at))
 	if err != nil {

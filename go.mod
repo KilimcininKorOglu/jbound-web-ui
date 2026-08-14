@@ -2,6 +2,12 @@ module unbound-web
 
 go 1.26
 
+// The language version alone accepts any 1.26.x, including the releases with
+// the reachable html/template, net/http, crypto/tls and encoding/asn1 fixes
+// still missing. The toolchain line states the lowest patch level the panel is
+// allowed to be built with.
+toolchain go1.26.6
+
 require (
 	golang.org/x/crypto v0.55.0
 	modernc.org/sqlite v1.56.0

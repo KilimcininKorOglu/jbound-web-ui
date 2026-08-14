@@ -3,7 +3,10 @@
 # The panel runs unprivileged. Only the setuid helper touches PAM. No Unbound
 # runs here, because the panel manages remote targets over SSH.
 
-FROM golang:1.26-bookworm
+# Pinned to the patch level, not to 1.26. A floating tag would ship whatever
+# the base image happens to resolve to, which is the same hole the toolchain
+# line in go.mod closes for the build itself.
+FROM golang:1.26.6-bookworm
 
 ENV DEBIAN_FRONTEND=noninteractive
 

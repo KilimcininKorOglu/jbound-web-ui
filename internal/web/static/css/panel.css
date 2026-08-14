@@ -213,6 +213,15 @@ button.layout-menu-toggle {
   width: auto;
 }
 
+/* The name is a setting, so it can be longer than the word the template was
+   drawn for. It wraps rather than pushing the menu wider. */
+.app-brand-text {
+  font-size: 1.125rem;
+  line-height: 1.3;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .login-mark {
   height: 56px;
   width: auto;

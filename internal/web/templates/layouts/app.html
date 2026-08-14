@@ -39,11 +39,11 @@
     <aside id="layout-menu" class="layout-menu menu-vertical menu bg-menu-theme"
            aria-label="{{t "nav.main"}}">
       <div class="app-brand demo">
-        {{/* The mark carries no name of its own, so the link takes the one
-             the operator typed. An image with an empty alt inside a labelled
-             link is announced once rather than twice. */}}
-        <a href="/dns" class="app-brand-link" aria-label="{{.PanelName}}">
+        {{/* The mark and the name the operator typed. The image carries an
+             empty alt, so the link is announced once, through its text. */}}
+        <a href="/dns" class="app-brand-link">
           <img class="app-brand-mark" src="/static/img/favicon.svg" alt="" width="32" height="32">
+          <span class="app-brand-text fw-bold ms-2">{{.PanelName}}</span>
         </a>
         {{/* A button rather than a fragment link: it runs a script and
              navigates nowhere, and a link that goes nowhere is announced as
@@ -135,8 +135,8 @@
         </main>
 
         <footer class="content-footer footer bg-footer-theme">
-          <div class="container-xxl d-flex flex-wrap justify-content-between py-2 flex-md-row flex-column">
-            <div class="mb-2 mb-md-0" data-field="panel-name">{{tf "layout.copyright" .Year .PanelName}}</div>
+          <div class="container-xxl d-flex flex-wrap justify-content-center py-2">
+            <div data-field="panel-name">{{tf "layout.copyright" .Year .PanelName}}</div>
           </div>
         </footer>
 

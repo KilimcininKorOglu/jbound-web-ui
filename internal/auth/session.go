@@ -185,17 +185,19 @@ func (m *SessionManager) Load(ctx context.Context, w http.ResponseWriter,
 	return session, nil
 }
 
-// Destroy ends the session of the current request.
+// Destroy ends one session.
+//
+// The identifier comes from the loaded session rather than from the request
+// cookie, because Load rotates it on the same request and the request object
+// still carries the value the browser sent.
 func (m *SessionManager) Destroy(ctx context.Context, w http.ResponseWriter,
-	r *http.Request) error {
+	sessionID string) error {
 
-	cookie, err := r.Cookie(SessionCookieName)
-	if err != nil || cookie.Value == "" {
-		m.clearCookie(w)
+	m.clearCookie(w)
+	if sessionID == "" {
 		return nil
 	}
-	m.clearCookie(w)
-	if err := m.repo.Delete(ctx, cookie.Value); err != nil {
+	if err := m.repo.Delete(ctx, sessionID); err != nil {
 		return fmt.Errorf("cannot delete the session: %w", err)
 	}
 	return nil

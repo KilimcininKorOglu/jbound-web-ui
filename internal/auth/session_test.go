@@ -342,13 +342,11 @@ func TestDestroyRemovesTheSession(t *testing.T) {
 	repo := newFakeSessionRepo()
 	manager := NewSessionManager(repo, settings.Fixed(30*time.Minute),
 		settings.Fixed(24*time.Hour), false)
-	session, cookie := startSession(t, manager)
+	session, _ := startSession(t, manager)
 
-	r := testRequest(testUserAgent, "203.0.113.5:1000")
-	r.AddCookie(cookie)
 	recorder := httptest.NewRecorder()
 
-	if err := manager.Destroy(context.Background(), recorder, r); err != nil {
+	if err := manager.Destroy(context.Background(), recorder, session.ID); err != nil {
 		t.Fatalf("Destroy returned an error: %v", err)
 	}
 	if _, ok := repo.sessions[session.ID]; ok {
@@ -379,5 +377,37 @@ func TestClientIPIgnoresForwardingHeaders(t *testing.T) {
 
 	if got := ClientIP(r); got != "203.0.113.5" {
 		t.Errorf("ClientIP = %q, want 203.0.113.5", got)
+	}
+}
+
+func TestSignOutRemovesTheSessionThatRotatedOnTheSameRequest(t *testing.T) {
+	// Load rotates the identifier and writes the new cookie to the response.
+	// The request still carries the old one, so a sign out that read the
+	// cookie deleted nothing and left the session live on the server.
+	repo := newFakeSessionRepo()
+	manager := NewSessionManager(repo, settings.Fixed(30*time.Minute),
+		settings.Fixed(24*time.Hour), false)
+	session, cookie := startSession(t, manager)
+
+	// Old enough that the next load rotates.
+	stored := repo.sessions[session.ID]
+	stored.RegeneratedAt = stored.RegeneratedAt.Add(-2 * rotateInterval)
+	repo.sessions[session.ID] = stored
+
+	r := testRequest(testUserAgent, "203.0.113.5:1000")
+	r.AddCookie(cookie)
+	loaded, err := manager.Load(context.Background(), httptest.NewRecorder(), r)
+	if err != nil {
+		t.Fatalf("Load returned an error: %v", err)
+	}
+	if loaded.ID == session.ID {
+		t.Fatal("the identifier did not rotate, the test proves nothing")
+	}
+
+	if err := manager.Destroy(context.Background(), httptest.NewRecorder(), loaded.ID); err != nil {
+		t.Fatalf("Destroy returned an error: %v", err)
+	}
+	if len(repo.sessions) != 0 {
+		t.Errorf("%d session(s) survived the sign out", len(repo.sessions))
 	}
 }

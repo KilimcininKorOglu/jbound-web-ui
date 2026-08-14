@@ -159,7 +159,7 @@ func (a *App) handleLogout(w http.ResponseWriter, r *http.Request) {
 	}
 	ip := auth.ClientIP(r)
 
-	if err := a.Sessions.Destroy(r.Context(), w, r); err != nil {
+	if err := a.Sessions.Destroy(r.Context(), w, session.ID); err != nil {
 		slog.Error("cannot destroy the session", "username", session.Username, "error", err)
 	}
 

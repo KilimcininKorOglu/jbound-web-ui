@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"unbound-web/internal/auth"
@@ -115,9 +116,24 @@ UPDATE sessions
 }
 
 // Delete removes one session.
+//
+// A delete that matched nothing is reported rather than swallowed, because it
+// means a sign out left the session alive on the server.
 func (s *Sessions) Delete(ctx context.Context, id string) error {
-	if _, err := s.db.ExecContext(ctx, "DELETE FROM sessions WHERE id = ?", id); err != nil {
+	result, err := s.db.ExecContext(ctx, "DELETE FROM sessions WHERE id = ?", id)
+	if err != nil {
 		return fmt.Errorf("cannot delete the session: %w", err)
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("cannot count the affected rows: %w", err)
+	}
+	if affected == 0 {
+		// The cleanup loop may have swept it a moment earlier, so this does
+		// not fail the sign out. The identifier stays out of the line: it is
+		// live credential material until the row is gone.
+		slog.Warn("a session delete matched no row")
 	}
 	return nil
 }

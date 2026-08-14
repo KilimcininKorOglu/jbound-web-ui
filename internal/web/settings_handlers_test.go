@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"unbound-web/internal/fleet"
 	"unbound-web/internal/i18n"
 	"unbound-web/internal/settings"
 )
@@ -469,4 +470,35 @@ func (e *testEnv) lastSettingsDetails(t *testing.T) string {
 		t.Fatalf("cannot read the audit table: %v", err)
 	}
 	return details
+}
+
+func TestTheConfiguredPageSizeReachesTheRecordListing(t *testing.T) {
+	// The setting validated, persisted and appeared on the page, and nothing
+	// ever read it. A stored value that silently does nothing also makes the
+	// settings that do work harder to trust.
+	env := newFleetEnv(t)
+	admin := env.adminCookie(t)
+
+	body := env.settingsForm(t, map[string]string{settings.RecordsPerPage: "10"})
+	if recorder := env.do(t, postForm("/settings", body), admin); recorder.Code != http.StatusOK {
+		t.Fatalf("POST /settings = %d, want 200", recorder.Code)
+	}
+
+	page, err := env.records.Page(context.Background(), fleet.Query{})
+	if err != nil {
+		t.Fatalf("cannot read the listing: %v", err)
+	}
+	if page.PerPage != 10 {
+		t.Errorf("page size = %d, want the configured 10", page.PerPage)
+	}
+
+	// A request that names its own size still wins, because that is the
+	// control the reader just used.
+	page, err = env.records.Page(context.Background(), fleet.Query{PerPage: 50})
+	if err != nil {
+		t.Fatalf("cannot read the listing: %v", err)
+	}
+	if page.PerPage != 50 {
+		t.Errorf("page size = %d, want the requested 50", page.PerPage)
+	}
 }

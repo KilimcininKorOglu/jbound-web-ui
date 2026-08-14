@@ -145,7 +145,8 @@ func newLiveApp(t *testing.T) *App {
 		fleet.NewWriter(serverStore, servers, pool, refresher, auditLog,
 			dataDir, timeouts, options.IntOf(settings.FleetMaxConcurrent)),
 		refresher, dnsquery.New(cfg.DigPath, options.DurationOf(settings.DNSQueryTimeout)),
-		auditLog, options.DurationOf(settings.CacheStaleAfter))
+		auditLog, options.DurationOf(settings.CacheStaleAfter),
+		options.IntOf(settings.RecordsPerPage))
 
 	app, err := NewApp(Deps{
 		Config: cfg,

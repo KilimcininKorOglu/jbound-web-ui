@@ -111,7 +111,7 @@ func newHarness(t *testing.T) *harness {
 		refresher: refresher,
 		service: fleet.NewService(records, states, writer, refresher,
 			dnsquery.New("dig", settings.Fixed(10*time.Second)), auditLog,
-			settings.Fixed(15*time.Minute)),
+			settings.Fixed(15*time.Minute), settings.Fixed(fleet.DefaultPerPage)),
 		servers: servers,
 		records: records,
 		states:  states,

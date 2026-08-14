@@ -137,7 +137,8 @@ func newTestEnv(t *testing.T) *testEnv {
 		auditLog, dataDir, timeouts, settings.Fixed(2))
 	queries := &stubQuerier{answers: map[string][]string{}}
 	records := fleet.NewService(recordStore, stateStore, writer, refresher,
-		queries, auditLog, settings.Fixed(15*time.Minute))
+		queries, auditLog, settings.Fixed(15*time.Minute),
+		options.IntOf(settings.RecordsPerPage))
 
 	siemDir := t.TempDir()
 	rsyslog := siem.NewManager(

@@ -32,13 +32,19 @@ type Service struct {
 	audit   *audit.Logger
 
 	staleAfter func() time.Duration
-	now        func() time.Time
+
+	// perPage is the page size a listing starts at when the request names
+	// none. It is read per request, so a change on the settings page applies
+	// to the next listing rather than to the next restart.
+	perPage func() int
+
+	now func() time.Time
 }
 
 // NewService builds the record service.
 func NewService(records RecordLister, states StateStore, writer *Writer,
 	refresh *Refresher, queries NameQuerier, auditLog *audit.Logger,
-	staleAfter func() time.Duration) *Service {
+	staleAfter func() time.Duration, perPage func() int) *Service {
 
 	return &Service{
 		records:    records,
@@ -48,6 +54,7 @@ func NewService(records RecordLister, states StateStore, writer *Writer,
 		queries:    queries,
 		audit:      auditLog,
 		staleAfter: staleAfter,
+		perPage:    perPage,
 		now:        time.Now,
 	}
 }
@@ -60,6 +67,12 @@ func NewService(records RecordLister, states StateStore, writer *Writer,
 // The page also carries how many servers the target covers, because a row
 // reports the servers that hold it and that count is the denominator.
 func (s *Service) Page(ctx context.Context, query Query) (Page, error) {
+	// A request that names no page size gets the one the operator configured.
+	// Normalise would otherwise fill in the compile time default and the
+	// setting would be a value the panel stores and never reads.
+	if query.PerPage == 0 {
+		query.PerPage = s.perPage()
+	}
 	// The scope is read here as well as in the store, so an empty query counts
 	// the whole fleet rather than reaching Members with no scope at all.
 	query.Normalise()

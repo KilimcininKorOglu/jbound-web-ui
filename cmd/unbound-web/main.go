@@ -233,7 +233,8 @@ func run() error {
 		cfg.DataDir, timeouts, concurrent)
 	queries := dnsquery.New(cfg.DigPath, options.DurationOf(settings.DNSQueryTimeout))
 	recordService := fleet.NewService(records, states, writer, refresher,
-		queries, auditLog, options.DurationOf(settings.CacheStaleAfter))
+		queries, auditLog, options.DurationOf(settings.CacheStaleAfter),
+		options.IntOf(settings.RecordsPerPage))
 
 	rsyslog := siem.NewManager(cfg.RsyslogConfPath, cfg.SyslogLogPath,
 		cfg.RsyslogValidateCmd, cfg.RsyslogRestartCmd, cfg.RsyslogStatusCmd)

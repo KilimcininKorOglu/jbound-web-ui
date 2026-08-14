@@ -140,9 +140,20 @@ type fakeTransport struct {
 	inFlight *atomic.Int32
 	peak     *atomic.Int32
 	delay    time.Duration
+
+	// reads counts every read of this server, which is how a pass that was
+	// joined is told apart from a second pass. release holds each read until
+	// the test lets it go.
+	reads   atomic.Int32
+	release chan struct{}
 }
 
 func (f *fakeTransport) ReadHostEntries(context.Context) ([]byte, string, error) {
+	f.reads.Add(1)
+	if f.release != nil {
+		<-f.release
+	}
+
 	if f.inFlight != nil {
 		current := f.inFlight.Add(1)
 		defer f.inFlight.Add(-1)
@@ -621,4 +632,74 @@ func TestAPassNamesTheServersItCouldNotRefresh(t *testing.T) {
 	if !strings.Contains(output, "failed=1") {
 		t.Errorf("the summary line is missing:\n%s", output)
 	}
+}
+
+func TestConcurrentRefreshesCollapseIntoOnePass(t *testing.T) {
+	// The refresh button is reachable by every signed in account, and every
+	// pass queues on the same per server locks and on the single database
+	// writer. Stacking passes makes the panel slower rather than the cache
+	// fresher.
+	target := workingTarget()
+	target.release = make(chan struct{})
+	h := newHarness(t, target)
+
+	const callers = 5
+	results := make([][]Result, callers)
+	errs := make([]error, callers)
+
+	var wait sync.WaitGroup
+	for i := range callers {
+		wait.Go(func() {
+			results[i], errs[i] = h.refresher.All(context.Background())
+		})
+	}
+
+	// Every caller is now either the pass or waiting for it. Letting the one
+	// read through finishes all five.
+	waitFor(t, func() bool { return target.reads.Load() == 1 })
+	close(target.release)
+	wait.Wait()
+
+	if got := target.reads.Load(); got != 1 {
+		t.Errorf("the server was read %d times, want one pass", got)
+	}
+	for i := range callers {
+		if errs[i] != nil {
+			t.Errorf("caller %d failed: %v", i, errs[i])
+		}
+		if len(results[i]) != 1 || results[i][0].Records == 0 {
+			t.Errorf("caller %d got %+v, want the results of the pass", i, results[i])
+		}
+	}
+}
+
+func TestAPassThatFinishedDoesNotStandInForTheNextOne(t *testing.T) {
+	// Joining is for the callers that overlap. A refresh asked for afterwards
+	// has to reach the servers, or the button would stop working.
+	target := workingTarget()
+	h := newHarness(t, target)
+
+	for range 2 {
+		if _, err := h.refresher.All(context.Background()); err != nil {
+			t.Fatalf("All returned an error: %v", err)
+		}
+	}
+
+	if got := target.reads.Load(); got != 2 {
+		t.Errorf("the server was read %d times, want one read per pass", got)
+	}
+}
+
+// waitFor blocks until the condition holds or the test gives up on it.
+func waitFor(t *testing.T, condition func() bool) {
+	t.Helper()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if condition() {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("the condition never held")
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sync"
 	"time"
 
@@ -61,6 +62,18 @@ type Refresher struct {
 	// snapshot after it, or the cache would describe a file that is gone.
 	mu    sync.Mutex
 	locks map[int64]*sync.Mutex
+
+	// passMu guards pass, which is the fleet wide read in progress. A second
+	// caller joins that one rather than starting another.
+	passMu sync.Mutex
+	pass   *refreshPass
+}
+
+// refreshPass is one fleet wide read and the callers waiting for it.
+type refreshPass struct {
+	done    chan struct{}
+	results []Result
+	err     error
 }
 
 // NewRefresher builds the refresher.
@@ -143,7 +156,53 @@ func (r *Refresher) oneHeld(ctx context.Context, serverID int64) (Result, error)
 //
 // A server that cannot be read does not stop the others. The panel manages a
 // fleet, and one unreachable host must not blank the whole view.
+// A pass already running is joined rather than duplicated. Every pass queues
+// on the same per server locks and on the single database writer, so stacking
+// them makes the panel slower rather than the cache fresher, and the refresh
+// button is reachable by every signed in account.
 func (r *Refresher) All(ctx context.Context) ([]Result, error) {
+	pass, leading := r.startPass()
+	if !leading {
+		select {
+		case <-pass.done:
+			// The results belong to the pass, and the caller may do what it
+			// likes with the slice it gets.
+			return slices.Clone(pass.results), pass.err
+		case <-ctx.Done():
+			// This caller went away. The pass carries on for the ones that
+			// have not.
+			return nil, ctx.Err()
+		}
+	}
+
+	pass.results, pass.err = r.allOnce(ctx)
+	r.endPass()
+	close(pass.done)
+
+	return pass.results, pass.err
+}
+
+// startPass joins the pass in progress or becomes it.
+func (r *Refresher) startPass() (*refreshPass, bool) {
+	r.passMu.Lock()
+	defer r.passMu.Unlock()
+
+	if r.pass != nil {
+		return r.pass, false
+	}
+	r.pass = &refreshPass{done: make(chan struct{})}
+	return r.pass, true
+}
+
+// endPass lets the next caller start a pass of its own.
+func (r *Refresher) endPass() {
+	r.passMu.Lock()
+	defer r.passMu.Unlock()
+	r.pass = nil
+}
+
+// allOnce performs one pass over the fleet.
+func (r *Refresher) allOnce(ctx context.Context) ([]Result, error) {
 	servers, err := r.servers.ListEnabled(ctx)
 	if err != nil {
 		return nil, err

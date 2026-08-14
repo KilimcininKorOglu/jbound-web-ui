@@ -141,14 +141,85 @@ gets before anybody picks a language or a theme.
 The language and the theme of one browser are its own choice and live in a
 cookie. Nothing about a reader is stored server side.
 
-## Backup
+## Backup and restore
 
-Back up `/var/lib/unbound-web`. It holds:
+Take the backup with the panel binary, as the service account:
 
-- `unbound.db`, the server records, the groups and the audit trail.
+```
+sudo -u unbound-web unbound-web backup /var/backups/unbound-web/$(date +%F)
+```
+
+The target directory must not exist yet. The command writes:
+
+- `unbound.db`, a consistent snapshot of the server records, the groups, the
+  host key pins and the audit trail.
 - `keys/`, the SSH private keys.
 
-The backup gives access to every managed DNS server, so it has to be encrypted.
+Do not copy `/var/lib/unbound-web` with `cp` or `tar` while the panel runs. The
+database is open in WAL mode, so its state is spread across `unbound.db` and
+`unbound.db-wal`, and a file level copy can catch the two at different moments.
+The result is a database that is either short of committed transactions or
+refused as corrupt, and you find out during the recovery. The command uses
+`VACUUM INTO`, which reads under one transaction and writes a single self
+contained file, then reopens that file and runs `PRAGMA integrity_check` before
+it reports success.
+
+The directory reaches every managed DNS server, so encrypt it before it leaves
+the host.
+
+### Restore
+
+```
+systemctl stop unbound-web
+rm -rf /var/lib/unbound-web/unbound.db /var/lib/unbound-web/unbound.db-wal \
+       /var/lib/unbound-web/unbound.db-shm /var/lib/unbound-web/keys
+cp -a <backup>/unbound.db <backup>/keys /var/lib/unbound-web/
+chown -R unbound-web:unbound-web /var/lib/unbound-web
+chmod 700 /var/lib/unbound-web /var/lib/unbound-web/keys
+chmod 600 /var/lib/unbound-web/unbound.db /var/lib/unbound-web/keys/*
+systemctl start unbound-web
+```
+
+`/etc/unbound-web/unbound-web.env` is not part of the backup. It is installed
+once and never rewritten, so keep it with your configuration management.
+
+### What this gets you
+
+- **Recovery point.** The moment the last backup ran. There is no continuous
+  archiving, so everything after it is lost: records added through the panel
+  are still on the resolvers, but audit rows, new servers and group changes
+  from that window are not.
+- **Recovery time.** The time to place the directory and start the service. No
+  DNS server has to be touched, because the private keys and the approved host
+  keys come back with the backup.
+
+Exercise the restore on a spare host. A backup nobody has restored is a backup
+nobody knows the state of, and the fleet is the thing that pays for the
+difference.
+
+### Running it on a timer
+
+The installer sets up no schedule, because where the backups go and how long
+they are kept is your policy. A pair of units is enough:
+
+```
+# /etc/systemd/system/unbound-web-backup.service
+[Service]
+Type=oneshot
+User=unbound-web
+ExecStart=/bin/sh -c 'exec /usr/local/bin/unbound-web backup /var/backups/unbound-web/$(date +%%F-%%H%%M)'
+
+# /etc/systemd/system/unbound-web-backup.timer
+[Timer]
+OnCalendar=daily
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+Removing the old directories is your policy too, and so is moving them off the
+host.
 
 ## Development
 

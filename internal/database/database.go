@@ -41,6 +41,37 @@ var pragmas = []string{
 // The file is created with mode 0600 because audit rows record who changed
 // which DNS record from which address.
 func Open(ctx context.Context, path string) (*DB, error) {
+	db, err := connect(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := os.Chmod(path, 0o600); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("cannot set mode 0600 on %s: %w", path, err)
+	}
+
+	if err := db.migrate(ctx); err != nil {
+		db.Close()
+		return nil, err
+	}
+	return db, nil
+}
+
+// OpenExisting opens a database without changing it.
+//
+// No migration runs and the mode is left alone, so a command that only reads
+// the file cannot alter the schema of a panel that is running a different
+// version of the binary.
+func OpenExisting(ctx context.Context, path string) (*DB, error) {
+	if _, err := os.Stat(path); err != nil {
+		return nil, fmt.Errorf("cannot read %s: %w", path, err)
+	}
+	return connect(ctx, path)
+}
+
+// connect opens the handle and applies the pragmas both entry points need.
+func connect(ctx context.Context, path string) (*DB, error) {
 	dsn := "file:" + path + "?_txlock=immediate"
 
 	handle, err := sql.Open("sqlite", dsn)
@@ -60,18 +91,7 @@ func Open(ctx context.Context, path string) (*DB, error) {
 			return nil, fmt.Errorf("cannot apply %q: %w", pragma, err)
 		}
 	}
-
-	if err := os.Chmod(path, 0o600); err != nil {
-		handle.Close()
-		return nil, fmt.Errorf("cannot set mode 0600 on %s: %w", path, err)
-	}
-
-	db := &DB{DB: handle, path: path}
-	if err := db.migrate(ctx); err != nil {
-		handle.Close()
-		return nil, err
-	}
-	return db, nil
+	return &DB{DB: handle, path: path}, nil
 }
 
 // Path reports the database file location.

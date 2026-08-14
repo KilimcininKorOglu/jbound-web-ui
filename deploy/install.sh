@@ -198,7 +198,9 @@ Installed. What is left:
      panel. The panel generates the key pair; the setup script takes the public
      half.
 
-Back up $DATA_DIR. It holds the database and the SSH private keys, so the
-backup itself has to be encrypted.
+Back up with "sudo -u $SERVICE_USER $PREFIX/bin/unbound-web backup <dir>". Do not copy
+$DATA_DIR while the panel runs; the database is open and a file copy of it
+cannot be trusted. The backup holds the SSH private keys of every managed
+server, so it has to be encrypted. See the README for the restore steps.
 
 EOF

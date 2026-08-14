@@ -37,10 +37,39 @@ const (
 	cleanupInterval = 10 * time.Minute
 )
 
+// usage is printed for an argument the command does not know.
+const usage = `unbound-web manages several Unbound resolvers over SSH.
+
+  unbound-web                 run the panel
+  unbound-web backup <dir>    write a consistent copy of the data directory
+`
+
 func main() {
-	if err := run(); err != nil {
+	if err := dispatch(os.Args[1:]); err != nil {
 		slog.Error("startup failed", "error", err)
 		os.Exit(1)
+	}
+}
+
+// dispatch picks what the process does.
+//
+// No arguments keeps the behaviour the systemd unit relies on, so an upgrade
+// changes nothing about how the panel is started.
+func dispatch(args []string) error {
+	if len(args) == 0 {
+		return run()
+	}
+
+	switch args[0] {
+	case "backup":
+		if len(args) != 2 {
+			return fmt.Errorf("backup needs one target directory")
+		}
+		return runBackup(args[1])
+	default:
+		fmt.Fprint(os.Stderr, usage)
+		os.Exit(2)
+		return nil
 	}
 }
 

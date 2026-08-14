@@ -70,20 +70,36 @@ type syslogCard struct {
 type systemStatus struct {
 	Servers []systemRow
 	Summary string
+
+	// ShowEndpoints says whether the reader may see where the panel connects.
+	// Columns is the width of the table, which follows from it.
+	ShowEndpoints bool
+	Columns       int
 }
 
 // systemRow is one server as the panel last saw it.
 //
-// The cache fields are named apart from the ones the server record carries.
-// LastError on the record is the last SSH operation, and CacheError is the
-// last read of the file, which are two different failures.
+// The fields are named one by one rather than embedding the server record.
+// This page is open to every signed in account, and embedding put every column
+// of the record within reach of a template that is not.
+//
+// CacheError is the last read of the file rather than the last SSH operation,
+// and it carries a classified sentence rather than what the remote command
+// said, so it names no path and no command.
 type systemRow struct {
-	server.Server
+	Name    string
+	Enabled bool
+
+	// Endpoint is where the panel connects, and it is filled for an
+	// administrator only. The login name, the host and the port are the non
+	// secret half of the panel's credential pair and a ready made target list
+	// for the fleet, which is why every other view of them is behind
+	// requireAdmin.
+	Endpoint string
 
 	State         string
 	Records       int
 	Pending       bool
-	Reachable     bool
 	UnboundActive bool
 	FetchedAt     *time.Time
 	CacheError    string
@@ -150,22 +166,42 @@ func (a *App) systemStatus(r *http.Request) (systemStatus, error) {
 		return systemStatus{}, err
 	}
 
+	session, _ := SessionFrom(r.Context())
+	admin := session.IsAdmin()
+
 	rows := make([]systemRow, 0, len(servers))
 	for _, record := range servers {
 		state := states[record.ID]
-		rows = append(rows, systemRow{
-			Server:        record,
+		row := systemRow{
+			Name:          record.Name,
+			Enabled:       record.Enabled,
 			State:         systemState(record, state),
 			Records:       state.RecordCount,
 			Pending:       record.Enabled && state.Pending(),
-			Reachable:     state.Reachable,
 			UnboundActive: state.UnboundActive,
 			FetchedAt:     state.FetchedAt,
 			CacheError:    cacheErrorText(catalog, state.LastError),
-		})
+		}
+		if admin {
+			row.Endpoint = fmt.Sprintf("%s@%s:%d",
+				record.SSHUser, record.Host, record.SSHPort)
+		}
+		rows = append(rows, row)
 	}
 
-	return systemStatus{Servers: rows, Summary: systemSummary(catalog, rows)}, nil
+	// The address column disappears for a reader who may not see it, rather
+	// than standing there empty.
+	columns := 6
+	if admin {
+		columns++
+	}
+
+	return systemStatus{
+		Servers:       rows,
+		Summary:       systemSummary(catalog, rows),
+		ShowEndpoints: admin,
+		Columns:       columns,
+	}, nil
 }
 
 // cacheErrorText turns a stored failure class into a sentence.

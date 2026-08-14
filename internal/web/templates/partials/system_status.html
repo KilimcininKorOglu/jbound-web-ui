@@ -16,7 +16,7 @@
       <thead>
         <tr>
           <th scope="col">{{t "common.server"}}</th>
-          <th scope="col">{{t "system.address"}}</th>
+          {{if .ShowEndpoints}}<th scope="col">{{t "system.address"}}</th>{{end}}
           <th scope="col">{{t "system.state"}}</th>
           <th scope="col">{{t "system.unbound"}}</th>
           <th scope="col">{{t "system.records"}}</th>
@@ -28,7 +28,7 @@
         {{range .Servers}}
         <tr data-server="{{.Name}}">
           <td><strong>{{.Name}}</strong></td>
-          <td class="text-muted">{{.SSHUser}}@{{.Host}}:{{.SSHPort}}</td>
+          {{if .Endpoint}}<td class="text-muted">{{.Endpoint}}</td>{{end}}
           <td>
             {{if eq .State "ok"}}
             <span class="badge bg-label-success" data-field="state">{{t "system.state.reachable"}}</span>
@@ -65,7 +65,7 @@
         </tr>
         {{if .CacheError}}
         <tr class="table-danger">
-          <td colspan="7" data-field="cache-error">
+          <td colspan="{{$.Columns}}" data-field="cache-error">
             <i class="bx bx-error-circle" aria-hidden="true"></i> {{.Name}}: {{.CacheError}}
           </td>
         </tr>

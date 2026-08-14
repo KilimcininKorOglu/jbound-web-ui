@@ -258,16 +258,16 @@ func TestTheSummaryCountsOnlyTheEnabledServers(t *testing.T) {
 		{
 			name: "a disabled server is left out of both counts",
 			rows: []systemRow{
-				{Server: server.Server{Enabled: true}, State: systemOK},
-				{Server: server.Server{Enabled: false}, State: systemDisabled},
+				{Enabled: true, State: systemOK},
+				{Enabled: false, State: systemDisabled},
 			},
 			want: "All 1 enabled servers answered the last read.",
 		},
 		{
 			name: "one is down",
 			rows: []systemRow{
-				{Server: server.Server{Enabled: true}, State: systemOK},
-				{Server: server.Server{Enabled: true}, State: systemUnreachable},
+				{Enabled: true, State: systemOK},
+				{Enabled: true, State: systemUnreachable},
 			},
 			want: "1 of 2 enabled servers answered the last read.",
 		},
@@ -391,5 +391,76 @@ func TestALegacyFailureTextNeverReachesThePage(t *testing.T) {
 	}
 	if got != catalog.T("system.error."+transport.CodeUnknown) {
 		t.Errorf("got %q, want the unknown sentence", got)
+	}
+}
+
+func TestThePlainUserSeesNoSSHCoordinates(t *testing.T) {
+	// The login name, the host and the port of every resolver are the non
+	// secret half of the panel's credential pair and a ready made target list.
+	// Every other view of them is behind requireAdmin, and this page was not.
+	env := newTestEnv(t)
+	admin := env.login(t, "dnsadmin")
+	if recorder := env.addServer(t, admin, "dns1"); recorder.Code != http.StatusOK {
+		t.Fatalf("cannot add the server: %d", recorder.Code)
+	}
+
+	user := env.login(t, "dnsuser")
+	for _, path := range []string{"/system", "/system/status"} {
+		recorder := env.do(t, httptest.NewRequest(http.MethodGet, path, nil), user)
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("GET %s = %d, want 200", path, recorder.Code)
+		}
+
+		body := recorder.Body.String()
+		for _, secret := range []string{"dnsops@", "dns1.example", ":22"} {
+			if strings.Contains(body, secret) {
+				t.Errorf("GET %s carries %q:\n%s", path, secret, body)
+			}
+		}
+		// What the page is for is still there.
+		if !strings.Contains(body, "dns1") {
+			t.Errorf("GET %s does not name the server at all", path)
+		}
+	}
+
+	// The administrator keeps the inventory view.
+	body := env.do(t, httptest.NewRequest(http.MethodGet, "/system/status", nil), admin).Body.String()
+	if !strings.Contains(body, "dnsops@dns1.example:22") {
+		t.Errorf("the administrator lost the address column:\n%s", body)
+	}
+}
+
+func TestTheCacheErrorRowSpansTheWholeTable(t *testing.T) {
+	// The address column comes and goes with the reader, and a colspan that
+	// does not follow it breaks the table for whoever is left.
+	env := newTestEnv(t)
+	admin := env.login(t, "dnsadmin")
+	if recorder := env.addServer(t, admin, "dns1"); recorder.Code != http.StatusOK {
+		t.Fatalf("cannot add the server: %d", recorder.Code)
+	}
+	if err := env.trust(1); err != nil {
+		t.Fatalf("cannot approve the host key: %v", err)
+	}
+	env.transport.failReads(transport.ErrUnreachable)
+	if _, err := env.records.Refresh(context.Background()); err != nil {
+		t.Fatalf("cannot fill the cache: %v", err)
+	}
+
+	for _, want := range []struct {
+		cookie  *http.Cookie
+		colspan string
+	}{
+		{admin, `colspan="7"`},
+		{env.login(t, "dnsuser"), `colspan="6"`},
+	} {
+		body := env.do(t,
+			httptest.NewRequest(http.MethodGet, "/system/status", nil), want.cookie).Body.String()
+
+		if !strings.Contains(body, "cache-error") {
+			t.Fatalf("the failure is not on the page:\n%s", body)
+		}
+		if !strings.Contains(body, want.colspan) {
+			t.Errorf("the failure row does not span the table, want %s:\n%s", want.colspan, body)
+		}
 	}
 }

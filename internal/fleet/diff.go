@@ -318,6 +318,12 @@ func (w *Writer) repairOne(ctx context.Context, actor server.Actor,
 		return result
 	}
 
+	if err := w.checkConfig(ctx, client, record, content); err != nil {
+		result.Status = StatusFailed
+		result.Message = failureMessage(err)
+		return result
+	}
+
 	result.Status = StatusSuccess
 	result.Message = "Record added"
 	refillCtx, cancelRefill := afterChange(ctx)
@@ -509,6 +515,12 @@ func (w *Writer) mirrorOne(ctx context.Context, actor server.Actor,
 		logging.From(ctx).Error("cannot write a mirrored file",
 			"server", record.Name, "source", source.Name, "error", err)
 
+		result.Status = StatusFailed
+		result.Message = failureMessage(err)
+		return result
+	}
+
+	if err := w.checkConfig(ctx, client, record, content); err != nil {
 		result.Status = StatusFailed
 		result.Message = failureMessage(err)
 		return result

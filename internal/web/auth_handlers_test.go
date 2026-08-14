@@ -419,6 +419,9 @@ func (s *stubTransport) failReload(err error) {
 	s.reloadErr = err
 }
 
+func (s *stubTransport) ReloadFallback(context.Context) (string, error)      { return "", nil }
+func (s *stubTransport) Restart(context.Context) (string, error)             { return "", nil }
+func (s *stubTransport) CheckConfig(context.Context) (string, error)         { return "", nil }
 func (s *stubTransport) ServiceStatus(context.Context) (bool, string, error) { return true, "", nil }
 func (s *stubTransport) Probe(context.Context) error                         { return s.probeErr }
 func (s *stubTransport) Close() error                                        { return nil }

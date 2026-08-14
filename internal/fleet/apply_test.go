@@ -76,13 +76,30 @@ type writableTarget struct {
 	reloadErr error
 	reloads   int
 
+	// The second and third rungs of a reload, counted so a test can prove a
+	// rung that should not have run did not run.
+	fallbackErr error
+	fallbacks   int
+	restartErr  error
+	restarts    int
+
+	// checkErr is what the configuration check answers. checks counts the
+	// calls, because the check runs on the write path rather than on demand.
+	checkErr error
+	checks   int
+
+	// active is what ServiceStatus reports. activeAfter lets a rung change it,
+	// which is how a reload that leaves the resolver stopped is written down.
+	active      bool
+	activeAfter map[string]bool
+
 	// expectations records what each write was checked against, which is what
 	// proves the digest travels back.
 	expectations []string
 }
 
 func newWritableTarget(content string) *writableTarget {
-	return &writableTarget{content: []byte(content)}
+	return &writableTarget{content: []byte(content), active: true}
 }
 
 func (t *writableTarget) ReadHostEntries(context.Context) ([]byte, string, error) {
@@ -115,17 +132,63 @@ func (t *writableTarget) Reload(context.Context) (string, error) {
 	defer t.mu.Unlock()
 
 	t.reloads++
+	t.applyRungState("reload")
 	if t.reloadErr != nil {
 		return "", t.reloadErr
 	}
 	return t.reloadOut, nil
 }
 
+func (t *writableTarget) ReloadFallback(context.Context) (string, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	t.fallbacks++
+	t.applyRungState("fallback")
+	if t.fallbackErr != nil {
+		return "", t.fallbackErr
+	}
+	return "reloaded", nil
+}
+
+func (t *writableTarget) Restart(context.Context) (string, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	t.restarts++
+	t.applyRungState("restart")
+	if t.restartErr != nil {
+		return "", t.restartErr
+	}
+	return "restarted", nil
+}
+
+func (t *writableTarget) CheckConfig(context.Context) (string, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	t.checks++
+	if t.checkErr != nil {
+		return "unbound-checkconf: fatal error", t.checkErr
+	}
+	return "unbound-checkconf: no errors", nil
+}
+
+// applyRungState moves the service state the way a rung would. The caller
+// holds the lock.
+func (t *writableTarget) applyRungState(rung string) {
+	if active, ok := t.activeAfter[rung]; ok {
+		t.active = active
+	}
+}
+
 func (t *writableTarget) Probe(context.Context) error { return nil }
 func (t *writableTarget) Close() error                { return nil }
 
 func (t *writableTarget) ServiceStatus(context.Context) (bool, string, error) {
-	return true, "active", nil
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.active, "state", nil
 }
 
 func (t *writableTarget) file() string {
@@ -759,5 +822,91 @@ func TestADeleteLeavesTheZoneLineWhereItIs(t *testing.T) {
 	}
 	if !strings.Contains(file, `local-zone: "example.net." transparent`) {
 		t.Errorf("the zone line went with the record:\n%s", file)
+	}
+}
+
+func TestAChangeTheResolverRefusesPutsThePreviousFileBack(t *testing.T) {
+	// The check can only run once the change is on the target, because the
+	// file the panel writes is included inside a server clause. A refusal
+	// therefore has to undo the write rather than decline to make it.
+	h := newWriteHarness(t, 1)
+	target := h.targets["dns1"]
+	before := target.file()
+	target.checkErr = transport.ErrCommandFailed
+
+	report, err := h.writer.Apply(context.Background(), testActor(),
+		Target{Scope: ScopeServer, ServerID: 1}, addOperation())
+	if err != nil {
+		t.Fatalf("Apply returned an error: %v", err)
+	}
+
+	if report.OK() {
+		t.Errorf("the change was reported as applied: %+v", report.Results)
+	}
+	if got := target.file(); got != before {
+		t.Errorf("the refused change stayed on the server:\n%s", got)
+	}
+	if target.checks != 1 {
+		t.Errorf("the configuration was checked %d times", target.checks)
+	}
+}
+
+func TestARefusedConfigurationSaysWhatTheResolverSaid(t *testing.T) {
+	// "The change failed" sends the operator to the server to find out why.
+	// The resolver already said why on stderr.
+	h := newWriteHarness(t, 1)
+	h.targets["dns1"].checkErr = transport.ErrCommandFailed
+
+	report, err := h.writer.Apply(context.Background(), testActor(),
+		Target{Scope: ScopeServer, ServerID: 1}, addOperation())
+	if err != nil {
+		t.Fatalf("Apply returned an error: %v", err)
+	}
+
+	if len(report.Results) != 1 {
+		t.Fatalf("got %d results, want 1", len(report.Results))
+	}
+	if !strings.Contains(report.Results[0].Message, "unbound-checkconf") {
+		t.Errorf("the message does not carry what the check said: %q",
+			report.Results[0].Message)
+	}
+}
+
+func TestAValidConfigurationLeavesTheChangeWhereItIs(t *testing.T) {
+	h := newWriteHarness(t, 1)
+
+	report, err := h.writer.Apply(context.Background(), testActor(),
+		Target{Scope: ScopeServer, ServerID: 1}, addOperation())
+	if err != nil {
+		t.Fatalf("Apply returned an error: %v", err)
+	}
+	if !report.OK() {
+		t.Fatalf("got %+v", report.Results)
+	}
+
+	if !strings.Contains(h.targets["dns1"].file(), "new.example.net") {
+		t.Errorf("the change did not survive the check:\n%s", h.targets["dns1"].file())
+	}
+	if h.targets["dns1"].checks != 1 {
+		t.Errorf("the configuration was checked %d times, want 1", h.targets["dns1"].checks)
+	}
+}
+
+func TestATargetWithNoCheckCommandStillTakesTheChange(t *testing.T) {
+	// A server whose sudoers rules have not been extended keeps working. The
+	// step is skipped rather than failed.
+	h := newWriteHarness(t, 1)
+	h.targets["dns1"].checkErr = transport.ErrStepSkipped
+
+	report, err := h.writer.Apply(context.Background(), testActor(),
+		Target{Scope: ScopeServer, ServerID: 1}, addOperation())
+	if err != nil {
+		t.Fatalf("Apply returned an error: %v", err)
+	}
+	if !report.OK() {
+		t.Fatalf("got %+v", report.Results)
+	}
+	if !strings.Contains(h.targets["dns1"].file(), "new.example.net") {
+		t.Errorf("the change was rolled back:\n%s", h.targets["dns1"].file())
 	}
 }

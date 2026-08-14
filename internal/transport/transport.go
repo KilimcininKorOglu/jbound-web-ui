@@ -26,8 +26,22 @@ type Transport interface {
 	// between.
 	WriteHostEntries(ctx context.Context, data []byte, expectSHA256 string) error
 
-	// Reload asks the resolver to re-read its configuration.
+	// CheckConfig asks the resolver to validate its configuration.
+	//
+	// It runs after a change is in place and before the resolver is asked to
+	// read it, because the file the panel writes is included inside a server
+	// clause and cannot be validated on its own.
+	CheckConfig(ctx context.Context) (output string, err error)
+
+	// Reload asks the resolver to re-read its configuration. It is the first
+	// rung of a reload and preserves the cache when the configured command
+	// does.
 	Reload(ctx context.Context) (output string, err error)
+
+	// ReloadFallback and Restart are the second and third rungs. Each returns
+	// ErrStepSkipped when the server record names no command for it.
+	ReloadFallback(ctx context.Context) (output string, err error)
+	Restart(ctx context.Context) (output string, err error)
 
 	// ServiceStatus reports whether the resolver is running.
 	ServiceStatus(ctx context.Context) (active bool, detail string, err error)
@@ -51,6 +65,11 @@ var (
 	ErrConflict        = errors.New("the remote file changed since it was read")
 	ErrCommandFailed   = errors.New("remote command failed")
 	ErrRemoteOutput    = errors.New("remote shell produced unexpected output")
+
+	// ErrStepSkipped marks a step the server record names no command for. It
+	// is not a failure: a target whose sudoers rules do not reach that command
+	// yet keeps working without it.
+	ErrStepSkipped = errors.New("no command is configured for this step")
 )
 
 // Failure codes. A stored failure keeps the class and drops the text, because
@@ -106,10 +125,11 @@ type ProbeStep string
 // The probe runs these in order. Each one depends on the one before it, so the
 // first failure is the one worth reporting.
 const (
-	StepConnect ProbeStep = "connect"
-	StepRead    ProbeStep = "read"
-	StepWrite   ProbeStep = "write"
-	StepStatus  ProbeStep = "status"
+	StepConnect   ProbeStep = "connect"
+	StepRead      ProbeStep = "read"
+	StepWrite     ProbeStep = "write"
+	StepCheckConf ProbeStep = "check config"
+	StepStatus    ProbeStep = "status"
 )
 
 // ProbeError says which step of the connection test failed.

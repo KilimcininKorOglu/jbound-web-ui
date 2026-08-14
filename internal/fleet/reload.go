@@ -118,12 +118,19 @@ func (w *Writer) writeReloadAudit(ctx context.Context, actor server.Actor,
 
 // reloadOutput folds a command's output into one readable line.
 func reloadOutput(output string) string {
+	return foldOutput(output, maxReloadOutput)
+}
+
+// foldOutput folds a remote command's output into one readable line and bounds
+// its length. A resolver that fails loudly can produce pages of it, and the
+// places this reaches are meant to be read rather than scrolled.
+func foldOutput(output string, limit int) string {
 	folded := strings.Join(strings.Fields(output), " ")
 	if folded == "" {
 		return "none"
 	}
-	if len(folded) > maxReloadOutput {
-		return folded[:maxReloadOutput] + "..."
+	if len(folded) > limit {
+		return folded[:limit] + "..."
 	}
 	return folded
 }

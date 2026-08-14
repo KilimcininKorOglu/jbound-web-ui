@@ -466,16 +466,42 @@ func parseDigest(output string) (string, error) {
 
 // Reload asks the resolver to re-read its configuration.
 func (t *SSHTransport) Reload(ctx context.Context) (string, error) {
+	return t.step(ctx, t.cfg.ReloadCmd)
+}
+
+// ReloadFallback is the second rung of a reload.
+func (t *SSHTransport) ReloadFallback(ctx context.Context) (string, error) {
+	return t.step(ctx, t.cfg.ReloadFallbackCmd)
+}
+
+// Restart is the third rung of a reload.
+func (t *SSHTransport) Restart(ctx context.Context) (string, error) {
+	return t.step(ctx, t.cfg.RestartCmd)
+}
+
+// CheckConfig asks the resolver to validate its configuration.
+func (t *SSHTransport) CheckConfig(ctx context.Context) (string, error) {
+	return t.step(ctx, t.cfg.CheckConfCmd)
+}
+
+// step runs one configured command and returns everything it said.
+//
+// The command comes from the server record rather than from the caller, so a
+// step cannot become a way to run something the record does not name.
+//
+// Both streams are returned on failure as well. A reload that failed silently
+// would leave the panel showing records the resolver is not serving, and a
+// configuration check says what it refused on stderr.
+func (t *SSHTransport) step(ctx context.Context, command string) (string, error) {
+	if strings.TrimSpace(command) == "" {
+		return "", ErrStepSkipped
+	}
+
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	stdout, stderr, err := t.run(ctx, t.cfg.ReloadCmd, nil)
-	if err != nil {
-		// A reload that failed silently would leave the panel showing records
-		// the resolver is not serving.
-		return strings.TrimSpace(stdout + stderr), err
-	}
-	return strings.TrimSpace(stdout + stderr), nil
+	stdout, stderr, err := t.run(ctx, command, nil)
+	return strings.TrimSpace(stdout + "\n" + stderr), err
 }
 
 // ServiceStatus reports whether the resolver is running.
@@ -535,6 +561,16 @@ func (t *SSHTransport) Probe(ctx context.Context) error {
 	if after != sum {
 		return &ProbeError{Step: StepWrite, Err: fmt.Errorf(
 			"the file changed during a write that should have preserved it")}
+	}
+
+	// The configuration check runs on every change and puts the previous file
+	// back when it refuses. A rule that does not reach it therefore turns a
+	// legitimate change into a rollback, so the operator finds out here, while
+	// they are adding the server, rather than during that change.
+	if strings.TrimSpace(t.cfg.CheckConfCmd) != "" {
+		if _, _, err := t.run(ctx, t.cfg.CheckConfCmd, nil); err != nil {
+			return &ProbeError{Step: StepCheckConf, Err: err}
+		}
 	}
 
 	if _, _, err := t.run(ctx, t.cfg.StatusCmd, nil); err != nil {

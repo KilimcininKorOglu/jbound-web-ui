@@ -464,7 +464,10 @@ func (w *Writer) write(ctx context.Context, record server.Server, op Operation) 
 
 	// The digest travels back with the write, so a file that changed on the
 	// target between the read and the write is refused rather than replaced.
-	return client.WriteHostEntries(ctx, updated, digest)
+	if err := client.WriteHostEntries(ctx, updated, digest); err != nil {
+		return err
+	}
+	return w.checkConfig(ctx, client, record, content)
 }
 
 // writeAudit records one server's share of the change.

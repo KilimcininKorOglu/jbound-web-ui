@@ -111,6 +111,10 @@ func (w *Writer) RestoreFile(ctx context.Context, actor server.Actor,
 
 	w.keepPrevious(ctx, record.ID, current, digest)
 
+	// No configuration check here, unlike every other write. This is the way
+	// out of a bad state, and a check that refused it would take the recovery
+	// path away at the moment it is needed. What goes back is what the server
+	// held before, so it is a state the resolver already ran with.
 	if err := client.WriteHostEntries(ctx, backup.Content, digest); err != nil {
 		logging.From(ctx).Error("cannot restore the previous host entries file",
 			"server", record.Name, "error", err)

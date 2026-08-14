@@ -48,7 +48,12 @@ func devConfig(t *testing.T) Config {
 		ReloadCmd:       "sudo /usr/sbin/service unbound reload",
 		// The containers carry no systemd, so the init script answers instead.
 		// Production uses systemctl, and both are configured per server.
-		StatusCmd:      "/usr/sbin/service unbound status",
+		StatusCmd: "/usr/sbin/service unbound status",
+
+		CheckConfCmd:      "sudo /usr/sbin/unbound-checkconf /etc/unbound/unbound.conf",
+		ReloadFallbackCmd: "sudo /usr/sbin/service unbound reload",
+		RestartCmd:        "sudo /usr/sbin/service unbound restart",
+
 		Sha256Path:     "/usr/bin/sha256sum",
 		Base64Path:     "/usr/bin/base64",
 		TeePath:        "/usr/bin/tee",
@@ -661,5 +666,91 @@ func TestTheTransportMutexSurvivesAHungCommand(t *testing.T) {
 	defer cancel()
 	if _, _, readErr := transport.ReadHostEntries(ctx); readErr != nil {
 		t.Errorf("the next operation could not take the mutex: %v", readErr)
+	}
+}
+
+func TestCheckConfigPassesAgainstAWorkingTarget(t *testing.T) {
+	transport := newTransport(t)
+
+	output, err := transport.CheckConfig(context.Background())
+	if err != nil {
+		t.Fatalf("CheckConfig returned an error: %v\n%s", err, output)
+	}
+}
+
+func TestCheckConfigRefusesABrokenConfiguration(t *testing.T) {
+	// The whole point of the step. What it says has to reach the caller, so
+	// the operator reads the resolver's own complaint rather than "it failed".
+	transport := newTransport(t)
+	preserveHostEntries(t, transport)
+
+	content, digest, err := transport.ReadHostEntries(context.Background())
+	if err != nil {
+		t.Fatalf("cannot read the file: %v", err)
+	}
+
+	broken := append(append([]byte(nil), content...), []byte("this is not a directive\n")...)
+	if err := transport.WriteHostEntries(context.Background(), broken, digest); err != nil {
+		t.Fatalf("cannot write the broken file: %v", err)
+	}
+
+	output, err := transport.CheckConfig(context.Background())
+	if err == nil {
+		t.Fatalf("the check passed on a file the resolver cannot parse:\n%s", output)
+	}
+	if output == "" {
+		t.Error("the check said nothing about what it refused")
+	}
+}
+
+func TestAStepWithNoCommandIsSkippedRatherThanRun(t *testing.T) {
+	cfg := approvedConfig(t)
+	cfg.CheckConfCmd = ""
+	cfg.ReloadFallbackCmd = ""
+	cfg.RestartCmd = ""
+
+	transport, err := NewSSH(cfg)
+	if err != nil {
+		t.Fatalf("cannot build the transport: %v", err)
+	}
+	defer transport.Close()
+
+	for name, step := range map[string]func(context.Context) (string, error){
+		"check":    transport.CheckConfig,
+		"fallback": transport.ReloadFallback,
+		"restart":  transport.Restart,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := step(context.Background()); !errors.Is(err, ErrStepSkipped) {
+				t.Errorf("got %v, want ErrStepSkipped", err)
+			}
+		})
+	}
+}
+
+func TestProbeReportsTheCheckStepWhenSudoRefuses(t *testing.T) {
+	// A rule that does not reach the check turns every later change into a
+	// rollback, so it has to be reported while the operator is adding the
+	// server rather than during that change.
+	cfg := approvedConfig(t)
+	cfg.CheckConfCmd = "sudo /usr/sbin/unbound-checkconf /etc/unbound/somewhere_else.conf"
+
+	transport, err := NewSSH(cfg)
+	if err != nil {
+		t.Fatalf("cannot build the transport: %v", err)
+	}
+	defer transport.Close()
+
+	err = transport.Probe(context.Background())
+	if err == nil {
+		t.Fatal("Probe passed with a check command the sudoers rules do not allow")
+	}
+
+	probeErr, ok := errors.AsType[*ProbeError](err)
+	if !ok {
+		t.Fatalf("got %v, want a ProbeError", err)
+	}
+	if probeErr.Step != StepCheckConf {
+		t.Errorf("step = %q, want %q", probeErr.Step, StepCheckConf)
 	}
 }

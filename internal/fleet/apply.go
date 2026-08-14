@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"unbound-web/internal/audit"
 	"unbound-web/internal/dnsfile"
@@ -353,7 +354,10 @@ func (w *Writer) applyOne(ctx context.Context, actor server.Actor,
 	// The file changed, so what the panel shows for this server is now stale.
 	// A refresh that fails does not undo the write, and saying the change
 	// failed would be worse than showing it late.
-	if _, refreshErr := w.refresh.oneHeld(ctx, record.ID); refreshErr != nil {
+	refillCtx, cancelRefill := afterChange(ctx)
+	defer cancelRefill()
+
+	if _, refreshErr := w.refresh.oneHeld(refillCtx, record.ID); refreshErr != nil {
 		logging.From(ctx).Error("cannot refresh the cache after a write",
 			"server", record.Name, "error", refreshErr)
 		result.Message = op.message() + ", but the cache could not be refreshed"
@@ -364,6 +368,25 @@ func (w *Writer) applyOne(ctx context.Context, actor server.Actor,
 
 	w.writeAudit(ctx, actor, record, op, groupName)
 	return result
+}
+
+// refillTimeout bounds the cache refill that follows a change.
+//
+// Every remote command inside it carries ssh_command_timeout of its own, so
+// this is the backstop that keeps a detached refill from outliving the process.
+const refillTimeout = 2 * time.Minute
+
+// afterChange returns the context for work that follows a change the panel has
+// already made on a server.
+//
+// The remote file is written first, so a client that disconnects mid request
+// would otherwise leave the panel describing a file it has just changed until
+// the next timer pass, up to cache_refresh_interval later. htmx aborts an in
+// flight request whenever the same element fires another, so this is ordinary
+// interface use rather than a network failure. The values of the request are
+// kept, so the log line still names it.
+func afterChange(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), refillTimeout)
 }
 
 // refuse reports the servers no operation may reach, and why.

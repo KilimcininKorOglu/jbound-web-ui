@@ -318,7 +318,10 @@ func (w *Writer) repairOne(ctx context.Context, actor server.Actor,
 
 	result.Status = StatusSuccess
 	result.Message = "Record added"
-	if _, refreshErr := w.refresh.oneHeld(ctx, record.ID); refreshErr != nil {
+	refillCtx, cancelRefill := afterChange(ctx)
+	defer cancelRefill()
+
+	if _, refreshErr := w.refresh.oneHeld(refillCtx, record.ID); refreshErr != nil {
 		result.Message += ", but the cache could not be refreshed"
 	}
 
@@ -506,7 +509,10 @@ func (w *Writer) mirrorOne(ctx context.Context, actor server.Actor,
 
 	result.Status = StatusSuccess
 	result.Message = fmt.Sprintf("%d added, %d removed", len(added), len(removed))
-	if _, refreshErr := w.refresh.oneHeld(ctx, record.ID); refreshErr != nil {
+	refillCtx, cancelRefill := afterChange(ctx)
+	defer cancelRefill()
+
+	if _, refreshErr := w.refresh.oneHeld(refillCtx, record.ID); refreshErr != nil {
 		logging.From(ctx).Error("cannot refresh the cache after a mirror",
 			"server", record.Name, "error", refreshErr)
 		result.Message += ", but the cache could not be refreshed"

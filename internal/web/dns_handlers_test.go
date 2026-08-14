@@ -1029,3 +1029,37 @@ func TestAnMXRecordKeepsThePreferenceTheOperatorTyped(t *testing.T) {
 		}
 	}
 }
+
+func TestACancelledRequestStillLeavesTheCacheCurrent(t *testing.T) {
+	// The remote file is written before the cache is refilled, so a client
+	// that goes away mid request used to leave the panel describing a file it
+	// had just changed, until the next timer pass up to cache_refresh_interval
+	// later. htmx aborts an in flight request whenever the same element fires
+	// another, so this is ordinary use.
+	env := newFleetEnv(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	env.target(1).onWrite(cancel)
+
+	body := groupForm(url.Values{
+		"fqdn": {"cached.example.local"}, "type": {"A"}, "value": {"10.0.0.93"},
+	}).Encode()
+
+	request := httptest.NewRequest(http.MethodPost, "/dns/records",
+		strings.NewReader(body)).WithContext(ctx)
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.Header.Set(auth.CSRFHeader, env.csrfTokenOf(t, env.cookie))
+
+	env.do(t, request, env.cookie)
+
+	if !strings.Contains(env.target(1).file(), "10.0.0.93") {
+		t.Fatal("the record never reached the server, the test proves nothing")
+	}
+
+	// The table is read on a request of its own, the way the browser reads it
+	// after the change.
+	if table := env.table(t, "search=cached"); !strings.Contains(table, "cached.example.local") {
+		t.Errorf("the table does not show the record that was written:\n%s", table)
+	}
+}

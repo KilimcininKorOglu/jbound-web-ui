@@ -80,6 +80,11 @@ func (w *Writer) reloadOne(ctx context.Context, actor server.Actor,
 // The caller holds the lock of this server, so the read goes through the held
 // entry point rather than taking it a second time.
 func (w *Writer) recordApplied(ctx context.Context, serverID int64) error {
+	// The resolver has already reloaded, so this read outlives the request the
+	// way the reload itself does.
+	ctx, cancel := afterChange(ctx)
+	defer cancel()
+
 	result, err := w.refresh.oneHeld(ctx, serverID)
 	if err != nil {
 		return err

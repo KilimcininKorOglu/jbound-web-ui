@@ -64,6 +64,11 @@ type groupFormData struct {
 type keyPanelData struct {
 	Server server.Server
 	Key    server.KeyPair
+
+	// Rotated marks a key that was just replaced. The panel then says that the
+	// server is out of reach until the new line is installed on it, which is
+	// not something to leave the operator to work out.
+	Rotated bool
 }
 
 // testResultData shows the outcome of a connection test.
@@ -287,6 +292,29 @@ func (a *App) handleServerKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.RenderPartial(w, r, http.StatusOK, "server-key", keyPanelData{Server: record, Key: pair})
+}
+
+// handleServerRotateKey replaces the key of one server.
+//
+// The server keeps its record, its group membership and its history. Deleting
+// and re-creating it was the only way to re-key it before, and that takes the
+// cached records, the state row and the group layout with it.
+func (a *App) handleServerRotateKey(w http.ResponseWriter, r *http.Request) {
+	id, ok := a.pathID(w, r)
+	if !ok {
+		return
+	}
+
+	record, pair, err := a.Servers.RotateKey(r.Context(), a.actor(r), id)
+	if err != nil {
+		a.notFoundOrError(w, "cannot rotate the key of a server", err)
+		return
+	}
+
+	SetTrigger(w, "servers-changed", nil)
+	SetToast(w, ToastSuccess, a.catalog(r).T("toast.key_rotated"))
+	a.RenderPartial(w, r, http.StatusOK, "server-key",
+		keyPanelData{Server: record, Key: pair, Rotated: true})
 }
 
 func (a *App) handleServerTest(w http.ResponseWriter, r *http.Request) {

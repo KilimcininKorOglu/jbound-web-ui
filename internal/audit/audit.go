@@ -20,10 +20,11 @@ const (
 	ActionLoginFailed   = "login_failed"
 	ActionSessionRevoke = "session_revoke"
 
-	ActionServerCreate = "server_create"
-	ActionServerUpdate = "server_update"
-	ActionServerDelete = "server_delete"
-	ActionServerTrust  = "server_trust"
+	ActionServerCreate    = "server_create"
+	ActionServerUpdate    = "server_update"
+	ActionServerDelete    = "server_delete"
+	ActionServerTrust     = "server_trust"
+	ActionServerRotateKey = "server_rotate_key"
 
 	ActionGroupCreate = "group_create"
 	ActionGroupUpdate = "group_update"

@@ -42,6 +42,41 @@ func (e *testEnv) addServer(t *testing.T, cookie *http.Cookie, name string) *htt
 	})
 }
 
+func TestRotatingAKeyShowsTheNewPublicHalfAndKeepsTheServer(t *testing.T) {
+	// Replacing a leaked key used to mean deleting the server, which takes its
+	// cached records, its state row and its group membership with it.
+	env := newTestEnv(t)
+	cookie := env.login(t, "dnsadmin")
+	env.addServer(t, cookie, "dns1")
+
+	before := env.do(t, httptest.NewRequest(http.MethodGet, "/servers/1/key", nil), cookie)
+	if before.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", before.Code)
+	}
+
+	recorder := env.adminForm(t, http.MethodPost, "/servers/1/rotate-key", cookie, url.Values{})
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+
+	body := recorder.Body.String()
+	if !strings.Contains(body, "ssh-ed25519 ") {
+		t.Error("the panel does not show the new public key")
+	}
+	if body == before.Body.String() {
+		t.Error("the panel still shows the previous key")
+	}
+	if strings.Contains(body, "PRIVATE KEY") {
+		t.Error("the response mentions a private key block")
+	}
+
+	// The record and its identifier survive, which is the whole point.
+	after := env.do(t, httptest.NewRequest(http.MethodGet, "/servers/1/key", nil), cookie)
+	if after.Code != http.StatusOK {
+		t.Fatalf("the server did not survive the rotation: %d", after.Code)
+	}
+}
+
 func TestServerRoutesRefuseAPlainUser(t *testing.T) {
 	// Hiding the menu entry is not access control, so every route is checked.
 	env := newTestEnv(t)
@@ -66,6 +101,7 @@ func TestServerRoutesRefuseAPlainUser(t *testing.T) {
 		{http.MethodDelete, "/servers/1"},
 		{http.MethodPost, "/servers/1/test"},
 		{http.MethodPost, "/servers/1/trust"},
+		{http.MethodPost, "/servers/1/rotate-key"},
 		{http.MethodPost, "/groups"},
 		{http.MethodDelete, "/groups/1"},
 	}

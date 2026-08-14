@@ -432,6 +432,85 @@ func TestUpdateDropsThePooledConnection(t *testing.T) {
 	}
 }
 
+func TestRotateKeyKeepsTheRecordAndReplacesTheKey(t *testing.T) {
+	// Deleting and re-creating the server was the only way to re-key it, and
+	// that cascade takes the cached records, the state row and the group
+	// membership with it.
+	h := newHarness(t)
+	ctx := context.Background()
+
+	record, first, err := h.service.Create(ctx, testActor(), newServerInput("dns1"))
+	if err != nil {
+		t.Fatalf("Create returned an error: %v", err)
+	}
+
+	same, second, err := h.service.RotateKey(ctx, testActor(), record.ID)
+	if err != nil {
+		t.Fatalf("RotateKey returned an error: %v", err)
+	}
+
+	if second.Fingerprint == first.Fingerprint {
+		t.Error("the rotation produced the same key")
+	}
+	if same.ID != record.ID || same.Name != record.Name {
+		t.Errorf("the record changed: %+v", same)
+	}
+
+	stored, err := h.servers.Get(ctx, record.ID)
+	if err != nil {
+		t.Fatalf("the record did not survive: %v", err)
+	}
+	if stored.SSHKeyPath != record.SSHKeyPath {
+		t.Errorf("key path = %q, want the original", stored.SSHKeyPath)
+	}
+
+	current, err := h.service.PublicKey(ctx, record.ID)
+	if err != nil {
+		t.Fatalf("cannot read the stored key: %v", err)
+	}
+	if current.Fingerprint != second.Fingerprint {
+		t.Error("the stored key is not the one the rotation reported")
+	}
+}
+
+func TestRotateKeyDropsThePooledConnection(t *testing.T) {
+	// The open session was authenticated with the key that just went. Leaving
+	// it up would make the rotation look finished before the new public key is
+	// anywhere near the target.
+	h := newHarness(t)
+	ctx := context.Background()
+
+	record, _, err := h.service.Create(ctx, testActor(), newServerInput("dns1"))
+	if err != nil {
+		t.Fatalf("Create returned an error: %v", err)
+	}
+
+	if _, _, err := h.service.RotateKey(ctx, testActor(), record.ID); err != nil {
+		t.Fatalf("RotateKey returned an error: %v", err)
+	}
+	if len(h.connector.removed) != 1 || h.connector.removed[0] != record.ID {
+		t.Errorf("removed = %v, want the rotated server", h.connector.removed)
+	}
+}
+
+func TestRotateKeyIsAudited(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+
+	record, _, err := h.service.Create(ctx, testActor(), newServerInput("dns1"))
+	if err != nil {
+		t.Fatalf("Create returned an error: %v", err)
+	}
+	if _, _, err := h.service.RotateKey(ctx, testActor(), record.ID); err != nil {
+		t.Fatalf("RotateKey returned an error: %v", err)
+	}
+
+	actions := h.auditLog.actions()
+	if actions[len(actions)-1] != audit.ActionServerRotateKey {
+		t.Errorf("audit actions = %v", actions)
+	}
+}
+
 func TestDeleteRemovesTheRecordTheKeyAndTheConnection(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()

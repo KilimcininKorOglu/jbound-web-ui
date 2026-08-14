@@ -158,6 +158,71 @@ func TestGenerateReplacesTheLeftoverOfADeletedServer(t *testing.T) {
 	}
 }
 
+func TestRotateReplacesTheKeyInPlace(t *testing.T) {
+	store := newKeyStore(t)
+
+	first, err := store.Generate(7)
+	if err != nil {
+		t.Fatalf("Generate returned an error: %v", err)
+	}
+
+	second, err := store.Rotate(7, first.RelPath)
+	if err != nil {
+		t.Fatalf("Rotate returned an error: %v", err)
+	}
+
+	if second.RelPath != first.RelPath {
+		t.Errorf("the key moved to %q, want %q", second.RelPath, first.RelPath)
+	}
+	if second.Fingerprint == first.Fingerprint {
+		t.Error("the rotation produced the same key")
+	}
+
+	material, err := os.ReadFile(keyPath(store, second.RelPath))
+	if err != nil {
+		t.Fatalf("cannot read the key: %v", err)
+	}
+	signer, err := ssh.ParsePrivateKey(material)
+	if err != nil {
+		t.Fatalf("the rotated key is not usable: %v", err)
+	}
+	if ssh.FingerprintSHA256(signer.PublicKey()) != second.Fingerprint {
+		t.Error("the file does not hold the key that was reported")
+	}
+}
+
+func TestRotateLeavesNoStagingFileBehind(t *testing.T) {
+	// A leftover would sit in the key directory with a private key in it and
+	// nothing pointing at it.
+	store := newKeyStore(t)
+
+	pair, err := store.Generate(7)
+	if err != nil {
+		t.Fatalf("Generate returned an error: %v", err)
+	}
+	if _, err := store.Rotate(7, pair.RelPath); err != nil {
+		t.Fatalf("Rotate returned an error: %v", err)
+	}
+
+	entries, err := os.ReadDir(store.Dir())
+	if err != nil {
+		t.Fatalf("cannot read the key directory: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Errorf("the directory holds %d files, want the key alone", len(entries))
+	}
+}
+
+func TestRotateRefusesAPathOutsideTheKeyDirectory(t *testing.T) {
+	// The path is read back out of the database, so a tampered row must not be
+	// able to drop a key file somewhere else on the host.
+	store := newKeyStore(t)
+
+	if _, err := store.Rotate(7, "../../etc/shadow"); err == nil {
+		t.Fatal("a path outside the key directory was accepted")
+	}
+}
+
 func TestImportAcceptsASuppliedKey(t *testing.T) {
 	source := newKeyStore(t)
 	pair, err := source.Generate(1)

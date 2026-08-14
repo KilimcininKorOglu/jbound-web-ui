@@ -142,16 +142,17 @@ func (a *App) Router() http.Handler {
 	// Fleet configuration is admin territory. A plain user may manage records
 	// but not the machines they land on.
 	admin := map[string]http.HandlerFunc{
-		"GET /servers":             a.handleServersPage,
-		"GET /servers/table":       a.handleServerTable,
-		"GET /servers/new":         a.handleServerForm,
-		"POST /servers":            a.handleServerCreate,
-		"GET /servers/{id}/edit":   a.handleServerForm,
-		"POST /servers/{id}":       a.handleServerUpdate,
-		"DELETE /servers/{id}":     a.handleServerDelete,
-		"GET /servers/{id}/key":    a.handleServerKey,
-		"POST /servers/{id}/test":  a.handleServerTest,
-		"POST /servers/{id}/trust": a.handleServerTrust,
+		"GET /servers":                  a.handleServersPage,
+		"GET /servers/table":            a.handleServerTable,
+		"GET /servers/new":              a.handleServerForm,
+		"POST /servers":                 a.handleServerCreate,
+		"GET /servers/{id}/edit":        a.handleServerForm,
+		"POST /servers/{id}":            a.handleServerUpdate,
+		"DELETE /servers/{id}":          a.handleServerDelete,
+		"GET /servers/{id}/key":         a.handleServerKey,
+		"POST /servers/{id}/rotate-key": a.handleServerRotateKey,
+		"POST /servers/{id}/test":       a.handleServerTest,
+		"POST /servers/{id}/trust":      a.handleServerTrust,
 
 		"GET /settings":  a.handleSettingsPage,
 		"POST /settings": a.handleSettingsSave,

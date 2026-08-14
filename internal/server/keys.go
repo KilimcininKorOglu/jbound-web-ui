@@ -63,40 +63,94 @@ func (k *KeyStore) Dir() string { return k.dir }
 // ed25519 rather than RSA: the keys are short, every current OpenSSH accepts
 // them, and there is no key size to get wrong.
 func (k *KeyStore) Generate(id int64) (KeyPair, error) {
-	public, private, err := ed25519.GenerateKey(rand.Reader)
+	block, signer, err := newKeyPair(id)
 	if err != nil {
-		return KeyPair{}, fmt.Errorf("cannot generate a key pair: %w", err)
-	}
-
-	block, err := ssh.MarshalPrivateKey(private, "unbound-web server "+strconv.FormatInt(id, 10))
-	if err != nil {
-		return KeyPair{}, fmt.Errorf("cannot encode the private key: %w", err)
-	}
-
-	signer, err := ssh.NewPublicKey(public)
-	if err != nil {
-		return KeyPair{}, fmt.Errorf("cannot encode the public key: %w", err)
+		return KeyPair{}, err
 	}
 
 	relPath := KeyRelPath(id)
 	path := filepath.Join(k.dataDir, relPath)
 
-	file, err := createKeyFile(path)
+	if err := writeKeyFile(path, block); err != nil {
+		return KeyPair{}, err
+	}
+	return describe(relPath, signer), nil
+}
+
+// Rotate replaces the key of a server that already has one.
+//
+// The new key goes to a file beside the old one and is moved into place with a
+// rename, so the server holds either the whole old key or the whole new one.
+// Writing over the original would leave a server with no key at all if the
+// write stopped halfway, which is worse than the leaked key this replaces.
+//
+// The panel cannot reach the server until the new public key is installed on
+// it. That is what rotation means, and the caller says so to the operator.
+func (k *KeyStore) Rotate(id int64, relPath string) (KeyPair, error) {
+	// The path comes from the database column, so a tampered row must not be
+	// able to drop a key file somewhere else on the host.
+	path, err := k.resolve(relPath)
 	if err != nil {
 		return KeyPair{}, err
+	}
+
+	block, signer, err := newKeyPair(id)
+	if err != nil {
+		return KeyPair{}, err
+	}
+
+	staging := path + ".new"
+	if err := writeKeyFile(staging, block); err != nil {
+		return KeyPair{}, err
+	}
+	if err := os.Rename(staging, path); err != nil {
+		os.Remove(staging)
+		return KeyPair{}, fmt.Errorf("cannot replace the key file %s: %w", path, err)
+	}
+	return describe(relPath, signer), nil
+}
+
+// newKeyPair builds one ed25519 pair ready to be written.
+func newKeyPair(id int64) (*pem.Block, ssh.PublicKey, error) {
+	public, private, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return nil, nil, fmt.Errorf("cannot generate a key pair: %w", err)
+	}
+
+	block, err := ssh.MarshalPrivateKey(private, "unbound-web server "+strconv.FormatInt(id, 10))
+	if err != nil {
+		return nil, nil, fmt.Errorf("cannot encode the private key: %w", err)
+	}
+
+	signer, err := ssh.NewPublicKey(public)
+	if err != nil {
+		return nil, nil, fmt.Errorf("cannot encode the public key: %w", err)
+	}
+	return block, signer, nil
+}
+
+// writeKeyFile writes one encoded key to disk.
+func writeKeyFile(path string, block *pem.Block) error {
+	file, err := createKeyFile(path)
+	if err != nil {
+		return err
 	}
 	defer file.Close()
 
 	if err := pem.Encode(file, block); err != nil {
 		os.Remove(path)
-		return KeyPair{}, fmt.Errorf("cannot write the key file %s: %w", path, err)
+		return fmt.Errorf("cannot write the key file %s: %w", path, err)
 	}
+	return nil
+}
 
+// describe reports a written key the way a caller shows it.
+func describe(relPath string, signer ssh.PublicKey) KeyPair {
 	return KeyPair{
 		RelPath:     relPath,
 		PublicKey:   strings.TrimSpace(string(ssh.MarshalAuthorizedKey(signer))),
 		Fingerprint: ssh.FingerprintSHA256(signer),
-	}, nil
+	}
 }
 
 // Import stores a private key the operator supplied.

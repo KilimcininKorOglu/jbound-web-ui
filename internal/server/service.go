@@ -192,6 +192,39 @@ func (s *Service) Update(ctx context.Context, actor Actor, record Server) error 
 	return nil
 }
 
+// RotateKey writes a new key pair for a server that already has one.
+//
+// The record, its group membership and its history stay exactly as they are.
+// Deleting and re-creating the server is the only way this was possible
+// before, and that cascade drops the cached records, the per-server state and
+// the group membership, and cuts every past audit row loose from the server it
+// describes.
+//
+// The panel cannot reach the server until the operator installs the new public
+// key on it. That is inherent to a rotation, and the returned pair is what they
+// install.
+func (s *Service) RotateKey(ctx context.Context, actor Actor, id int64) (Server, KeyPair, error) {
+	record, err := s.servers.Get(ctx, id)
+	if err != nil {
+		return Server{}, KeyPair{}, err
+	}
+
+	pair, err := s.keys.Rotate(id, record.SSHKeyPath)
+	if err != nil {
+		return Server{}, KeyPair{}, err
+	}
+
+	// The pooled connection was authenticated with the key that just went. It
+	// would keep working and make the rotation look finished before the new
+	// public key is anywhere near the target.
+	s.pool.Remove(id)
+
+	s.writeFor(ctx, actor, audit.ActionServerRotateKey, &record.ID, record.Name,
+		fmt.Sprintf("Rotated the SSH key of %s, new fingerprint %s", record.Name, pair.Fingerprint))
+
+	return record, pair, nil
+}
+
 // Delete removes a server and its private key.
 func (s *Service) Delete(ctx context.Context, actor Actor, id int64) error {
 	record, err := s.servers.Get(ctx, id)

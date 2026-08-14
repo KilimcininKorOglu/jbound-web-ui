@@ -559,7 +559,7 @@ func TestKeepaliveKeepsAConnectionUsable(t *testing.T) {
 	if _, _, err := transport.ReadHostEntries(ctx); err != nil {
 		t.Fatalf("cannot open the connection: %v", err)
 	}
-	if err := transport.keepalive(); err != nil {
+	if err := transport.keepalive(keepaliveTimeout); err != nil {
 		t.Fatalf("keepalive returned an error: %v", err)
 	}
 	if _, _, err := transport.ReadHostEntries(ctx); err != nil {
@@ -572,7 +572,7 @@ func TestKeepaliveIsQuietOnAnIdleTransport(t *testing.T) {
 	// into a stream of log noise.
 	transport := newTransport(t)
 
-	if err := transport.keepalive(); err != nil {
+	if err := transport.keepalive(keepaliveTimeout); err != nil {
 		t.Fatalf("keepalive dialled an idle transport: %v", err)
 	}
 }

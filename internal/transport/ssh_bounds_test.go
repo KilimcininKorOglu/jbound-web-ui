@@ -24,6 +24,10 @@ type floodServer struct {
 	// stdout and stderr are how many bytes one command answers with.
 	stdout int
 	stderr int
+
+	// silent makes the server answer no global request at all, which is what a
+	// flow dropped without an RST and a wedged peer both look like.
+	silent bool
 }
 
 func startFloodServer(t *testing.T, stdout, stderr int) *floodServer {
@@ -77,7 +81,16 @@ func (f *floodServer) serve(conn net.Conn, config *ssh.ServerConfig) {
 		return
 	}
 	defer sshConn.Close()
-	go ssh.DiscardRequests(requests)
+	if f.silent {
+		// Drain without replying. The connection stays open and answers
+		// nothing, which is the case a keepalive exists to catch.
+		go func() {
+			for range requests {
+			}
+		}()
+	} else {
+		go ssh.DiscardRequests(requests)
+	}
 
 	for newChannel := range channels {
 		if newChannel.ChannelType() != "session" {
@@ -195,5 +208,74 @@ func TestNoisyDiagnosticsDoNotFailACommand(t *testing.T) {
 
 	if _, err := transport.Reload(context.Background()); err != nil {
 		t.Fatalf("a noisy reload failed: %v", err)
+	}
+}
+
+// openConnection makes the transport dial, so the keepalive has something to
+// ping. A transport with no connection is left alone on purpose.
+func openConnection(t *testing.T, client *SSHTransport) {
+	t.Helper()
+
+	if _, _, err := client.ReadHostEntries(context.Background()); err != nil {
+		t.Fatalf("cannot open the connection: %v", err)
+	}
+}
+
+func TestAPeerThatNeverAnswersDoesNotHoldTheKeepalive(t *testing.T) {
+	// A connection dropped without an RST answers nothing, which is the exact
+	// case the keepalive exists to catch. Waiting for that answer used to be
+	// waiting for ever, with the transport mutex held.
+	server := startFloodServer(t, 0, 0)
+	server.silent = true
+	client := transportTo(t, server)
+	openConnection(t, client)
+
+	done := make(chan error, 1)
+	go func() { done <- client.keepalive(200 * time.Millisecond) }()
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, ErrUnreachable) {
+			t.Fatalf("keepalive = %v, want an unreachable server", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the keepalive never gave up")
+	}
+
+	// The connection is dropped, so the next operation dials again rather than
+	// speaking down a line nobody answers.
+	client.mu.Lock()
+	held := client.client
+	client.mu.Unlock()
+	if held != nil {
+		t.Error("the wedged connection was kept")
+	}
+}
+
+func TestOneWedgedServerDoesNotStopTheSweep(t *testing.T) {
+	// sweep used to ping one server after another from the maintenance loop.
+	// One connection that never answered stopped every other server from ever
+	// being swept again.
+	wedged := startFloodServer(t, 0, 0)
+	wedged.silent = true
+
+	pool := NewPool(context.Background(), func() time.Duration { return time.Hour })
+	t.Cleanup(pool.Close)
+	pool.pingTimeout = 200 * time.Millisecond
+
+	for id, server := range []*floodServer{wedged, wedged, wedged, startFloodServer(t, 0, 0)} {
+		client := transportTo(t, server)
+		openConnection(t, client)
+		pool.mu.Lock()
+		pool.entries[int64(id+1)] = &poolEntry{
+			transport: client, config: client.cfg, lastUsed: time.Now()}
+		pool.mu.Unlock()
+	}
+
+	start := time.Now()
+	pool.sweep()
+	// Three wedged servers, one after another, would be three deadlines.
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Errorf("the sweep took %s, the servers were pinged one after another", elapsed)
 	}
 }

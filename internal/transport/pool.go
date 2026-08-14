@@ -2,6 +2,7 @@ package transport
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -13,6 +14,14 @@ import (
 // keepalive the next command would block until the TCP timeout, which is
 // minutes rather than seconds.
 const keepaliveInterval = 30 * time.Second
+
+// keepaliveTimeout bounds one ping.
+//
+// A connection that was dropped without an RST answers nothing at all, which
+// is the exact case the keepalive exists to catch. Waiting for it is waiting
+// for ever, so the reply gets a deadline and a silent connection is treated as
+// the dead one it is.
+const keepaliveTimeout = 10 * time.Second
 
 // Pool keeps one connection per server.
 //
@@ -27,6 +36,10 @@ type Pool struct {
 	// idleTimeout is read on every sweep, so a shorter value set on the
 	// settings page starts closing connections on the next one.
 	idleTimeout func() time.Duration
+
+	// pingTimeout bounds one keepalive. It is a field rather than the constant
+	// so a test can wedge a peer without waiting out the real deadline.
+	pingTimeout time.Duration
 
 	closed bool
 }
@@ -45,6 +58,7 @@ func NewPool(ctx context.Context, idleTimeout func() time.Duration) *Pool {
 	pool := &Pool{
 		entries:     map[int64]*poolEntry{},
 		idleTimeout: idleTimeout,
+		pingTimeout: keepaliveTimeout,
 	}
 	go pool.maintain(ctx)
 	return pool
@@ -152,14 +166,19 @@ func (p *Pool) sweep() {
 	}
 	p.mu.Unlock()
 
-	// The pings run without the pool lock. A keepalive that blocks would
-	// otherwise stall every other server.
+	// The pings run without the pool lock and beside each other. One server
+	// that takes the whole keepalive deadline to answer would otherwise push
+	// the sweep of every server behind it past the next tick.
+	var wait sync.WaitGroup
 	for _, entry := range alive {
-		if err := entry.client.keepalive(); err != nil {
-			slog.Debug("keepalive failed, the connection will be reopened",
-				"server_id", entry.id, "error", err)
-		}
+		wait.Go(func() {
+			if err := entry.client.keepalive(p.pingTimeout); err != nil {
+				slog.Debug("keepalive failed, the connection will be reopened",
+					"server_id", entry.id, "error", err)
+			}
+		})
 	}
+	wait.Wait()
 }
 
 // sameEndpoint reports whether two records point at the same connection.
@@ -176,8 +195,13 @@ func sameEndpoint(a, b Config) bool {
 // An idle connection is left alone rather than dialled, because opening a
 // connection nobody asked for would turn an unreachable server into a stream
 // of log noise.
-func (t *SSHTransport) keepalive() error {
-	t.mu.Lock()
+func (t *SSHTransport) keepalive(timeout time.Duration) error {
+	// A transport in the middle of an operation is alive by definition, and
+	// waiting for its mutex would hold the sweep for as long as that operation
+	// runs.
+	if !t.mu.TryLock() {
+		return nil
+	}
 	defer t.mu.Unlock()
 
 	if t.client == nil {
@@ -186,10 +210,28 @@ func (t *SSHTransport) keepalive() error {
 
 	// The request name is arbitrary. The server answers that it does not know
 	// it, and that answer is the proof the connection still carries traffic.
-	_, _, err := t.client.SendRequest("keepalive@unbound-web", true, nil)
-	if err != nil {
+	client := t.client
+	done := make(chan error, 1)
+	go func() {
+		_, _, err := client.SendRequest("keepalive@unbound-web", true, nil)
+		done <- err
+	}()
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.dropConnection()
+			return err
+		}
+		return nil
+	case <-timer.C:
+		// Closing the connection is what ends the request, so the goroutine
+		// above returns rather than waiting on a peer that never answers.
 		t.dropConnection()
-		return err
+		return fmt.Errorf("%w: no keepalive reply within %s",
+			ErrUnreachable, timeout)
 	}
-	return nil
 }

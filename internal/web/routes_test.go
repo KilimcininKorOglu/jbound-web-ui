@@ -411,25 +411,23 @@ func TestARefusedRuleIsReportedByItsKind(t *testing.T) {
 		name    string
 		err     error
 		message string
-		status  int
 	}{
 		{
 			name:    "a rule the panel will not write",
 			err:     fmt.Errorf("%w: line 1: *.* @@host", siem.ErrRule),
 			message: "Line 1: *.* @@host.",
-			status:  http.StatusUnprocessableEntity,
 		},
 		{
 			name:    "a configuration the daemon refused",
 			err:     fmt.Errorf("%w: unknown parameter", siem.ErrConfig),
 			message: "Rsyslog rejected the configuration: unknown parameter.",
-			status:  http.StatusBadRequest,
 		},
 		{
+			// A write that failed names the path and the reason, which the
+			// reader has no business seeing and cannot act on.
 			name:    "anything else",
 			err:     errors.New("permission denied"),
 			message: "The panel could not complete the request.",
-			status:  http.StatusBadRequest,
 		},
 	}
 
@@ -443,9 +441,6 @@ func TestARefusedRuleIsReportedByItsKind(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			if got := siemMessage(context.Background(), catalog, testCase.err); got != testCase.message {
 				t.Errorf("message = %q, want %q", got, testCase.message)
-			}
-			if got := siemStatus(testCase.err); got != testCase.status {
-				t.Errorf("status = %d, want %d", got, testCase.status)
 			}
 		})
 	}

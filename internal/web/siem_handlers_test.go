@@ -178,6 +178,40 @@ func TestARefusedRuleComesBackWithTheReason(t *testing.T) {
 	}
 }
 
+func TestASaveThatCannotWriteTheFileIsAServerError(t *testing.T) {
+	// A backend fault answered as a client fault never reaches a log alert
+	// that counts server errors, and the panel would carry it silently.
+	if os.Geteuid() == 0 {
+		t.Skip("root writes a read only file regardless of its mode")
+	}
+	env := newFleetEnv(t)
+
+	if recorder := env.saveRules(t, "local6.*    @@siem-sink:514"); recorder.Code != http.StatusOK {
+		t.Fatalf("the first save returned %d", recorder.Code)
+	}
+
+	conf := filepath.Join(env.siemDir, "60-panel.conf")
+	if err := os.Chmod(conf, 0o400); err != nil {
+		t.Fatalf("cannot make the configuration read only: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(conf, 0o600) })
+
+	recorder := env.saveRules(t, "local6.*    @@other.example.net:514")
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", recorder.Code)
+	}
+
+	// The panel swaps nothing on a 500, so the message travels in the header
+	// and the client raises it as a toast.
+	if !strings.Contains(recorder.Header().Get("HX-Trigger"), "toast") {
+		t.Errorf("the failure carries no message: %q", recorder.Header().Get("HX-Trigger"))
+	}
+	// The body of a server error names nothing about the host.
+	if strings.Contains(recorder.Body.String(), conf) {
+		t.Errorf("the response names the configuration path:\n%s", recorder.Body.String())
+	}
+}
+
 func TestSavingTheRulesIsAudited(t *testing.T) {
 	env := newFleetEnv(t)
 	env.saveRules(t, "local6.*    @@siem-sink:514")

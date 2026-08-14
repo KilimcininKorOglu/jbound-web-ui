@@ -118,7 +118,20 @@ func (a *App) handleSIEMSave(w http.ResponseWriter, r *http.Request) {
 	rules := strings.ReplaceAll(strings.TrimSpace(r.PostFormValue("rules")), "\r\n", "\n")
 
 	if err := a.SIEM.Save(r.Context(), rules); err != nil {
-		a.siemProblem(w, r, rules, siemMessage(r.Context(), a.catalog(r), err), siemStatus(err))
+		if errors.Is(err, siem.ErrRule) || errors.Is(err, siem.ErrConfig) {
+			// The operator can correct these, so the form comes back with
+			// their text in it and the reason above it.
+			a.siemProblem(w, r, rules,
+				siemMessage(r.Context(), a.catalog(r), err), http.StatusUnprocessableEntity)
+			return
+		}
+
+		// Everything else is the panel host's own fault: the file could not be
+		// replaced, or the daemon could not be restarted. It answers as a
+		// server error so a log alert that counts them sees it, and the toast
+		// carries the message because a 500 swaps nothing.
+		SetToast(w, ToastError, a.catalog(r).T("error.generic"))
+		a.internalError(w, r, "cannot save the syslog configuration", err)
 		return
 	}
 
@@ -201,11 +214,4 @@ func siemMessage(ctx context.Context, catalog *i18n.Catalog, err error) string {
 	default:
 		return userMessage(ctx, catalog, err)
 	}
-}
-
-func siemStatus(err error) int {
-	if errors.Is(err, siem.ErrRule) {
-		return http.StatusUnprocessableEntity
-	}
-	return http.StatusBadRequest
 }

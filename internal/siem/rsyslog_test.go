@@ -338,8 +338,10 @@ func TestAWriteThatStopsPartWayLeavesThePreviousConfiguration(t *testing.T) {
 	}
 
 	err := m.Save(context.Background(), "local6.*    @@second.example.net:514")
-	if !errors.Is(err, ErrConfig) {
-		t.Fatalf("got %v, want ErrConfig", err)
+	// A write that failed is the host's own fault rather than a rule to
+	// correct, and the panel answers the two differently.
+	if !errors.Is(err, ErrWrite) {
+		t.Fatalf("got %v, want ErrWrite", err)
 	}
 	if !strings.Contains(err.Error(), "no space left on device") {
 		t.Errorf("the reason was lost: %v", err)
@@ -364,8 +366,8 @@ func TestAFailedRestoreIsReportedNextToTheFailureThatCausedIt(t *testing.T) {
 	}
 
 	err := m.Save(context.Background(), "local6.*    @@second.example.net:514")
-	if !errors.Is(err, ErrConfig) {
-		t.Fatalf("got %v, want ErrConfig", err)
+	if !errors.Is(err, ErrWrite) {
+		t.Fatalf("got %v, want ErrWrite", err)
 	}
 	if !strings.Contains(err.Error(), "could not be restored") {
 		t.Errorf("the message does not say the file is still broken: %v", err)

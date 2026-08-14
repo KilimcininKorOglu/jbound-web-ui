@@ -16,7 +16,17 @@ import (
 var ErrRule = errors.New("invalid forwarding rule")
 
 // ErrConfig marks a configuration rsyslog itself rejected.
+//
+// It is about the content the operator submitted, so the panel sends the form
+// back with the reason and their text still in it.
 var ErrConfig = errors.New("rsyslog rejected the configuration")
+
+// ErrWrite marks a configuration file the panel could not replace.
+//
+// It says nothing about what the operator typed. The file is unwritable, the
+// disk is full or the mode is wrong, and every one of those is the panel host's
+// own fault rather than a form to correct.
+var ErrWrite = errors.New("cannot write the forwarding configuration")
 
 // rulePattern is what a forwarding rule may look like.
 //
@@ -175,9 +185,9 @@ func (m *Manager) Save(ctx context.Context, rules string) error {
 	if err := m.write(render(rules, m.logPath)); err != nil {
 		if restoreErr := m.write(previous); restoreErr != nil {
 			return fmt.Errorf("%w: %v (the previous configuration could not be "+
-				"restored either: %v)", ErrConfig, err, restoreErr)
+				"restored either: %v)", ErrWrite, err, restoreErr)
 		}
-		return fmt.Errorf("%w: %v", ErrConfig, err)
+		return fmt.Errorf("%w: %v", ErrWrite, err)
 	}
 
 	if output, err := m.run(ctx, m.validate); err != nil {

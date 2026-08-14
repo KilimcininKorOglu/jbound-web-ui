@@ -51,7 +51,13 @@ RUN printf '%s\n' \
     && visudo -c -f /etc/sudoers.d/unbound-web
 
 # Hot reload for the Go binary. Installed as root, used by the service account.
-RUN go install github.com/air-verse/air@latest \
+#
+# Pinned like every analyser in the Makefile. This is the process the panel
+# runs under, in a container that bind mounts the host source tree read write,
+# holds the development SSH key and carries two NOPASSWD sudoers rules, so an
+# unpinned reference would let whatever the proxy serves that day reach all
+# three.
+RUN go install github.com/air-verse/air@v1.67.4 \
     && install -m 0755 /go/bin/air /usr/local/bin/air
 
 # Shared Go caches so the unprivileged account can build.

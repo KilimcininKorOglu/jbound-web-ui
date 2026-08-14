@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -79,11 +80,36 @@ func dial(cfg Config, callback ssh.HostKeyCallback) (*ssh.Client, error) {
 	}
 
 	address := net.JoinHostPort(cfg.Host, fmt.Sprint(cfg.Port))
-	client, err := ssh.Dial("tcp", address, clientConfig)
+	conn, err := net.DialTimeout("tcp", address, cfg.ConnectTimeout)
 	if err != nil {
 		return nil, classifyDialError(address, err)
 	}
-	return client, nil
+
+	// ClientConfig.Timeout bounds the transport connect and nothing else, so
+	// the version exchange, the key exchange and the authentication would run
+	// with no bound. A peer that accepts the connection and then goes quiet
+	// would hold this call, and the per-server mutex above it, for good.
+	if cfg.ConnectTimeout > 0 {
+		if err := conn.SetDeadline(time.Now().Add(cfg.ConnectTimeout)); err != nil {
+			conn.Close()
+			return nil, classifyDialError(address, err)
+		}
+	}
+
+	sshConn, channels, requests, err := ssh.NewClientConn(conn, address, clientConfig)
+	if err != nil {
+		conn.Close()
+		return nil, classifyDialError(address, err)
+	}
+
+	// The deadline covered the handshake. Leaving it in place would fail every
+	// command that runs on this connection later.
+	if err := conn.SetDeadline(time.Time{}); err != nil {
+		sshConn.Close()
+		return nil, classifyDialError(address, err)
+	}
+
+	return ssh.NewClient(sshConn, channels, requests), nil
 }
 
 // classifyDialError turns a dial failure into one of the failure classes.

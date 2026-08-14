@@ -185,4 +185,3 @@ func TestTheAuditPageIsBounded(t *testing.T) {
 		t.Errorf("the second page holds %d rows, want 2", len(page.Rows))
 	}
 }
-

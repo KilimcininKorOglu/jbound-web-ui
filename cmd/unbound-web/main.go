@@ -124,8 +124,9 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	// The pool closes with the process, which is what releases every SSH
-	// connection on shutdown.
+	// The deferred close runs after the HTTP server has drained, so a fleet
+	// operation that started before the signal can still reach its servers
+	// during the shutdown grace.
 	pool := transport.NewPool(ctx, options.DurationOf(settings.SSHIdleTimeout))
 	defer pool.Close()
 

@@ -39,7 +39,8 @@ type poolEntry struct {
 
 // NewPool builds the pool and starts its maintenance loop.
 //
-// The loop ends with the context, which closes every connection.
+// The loop ends with the context. Closing the connections is the caller's
+// call, so a shutdown can drain its requests before the pool goes away.
 func NewPool(ctx context.Context, idleTimeout func() time.Duration) *Pool {
 	pool := &Pool{
 		entries:     map[int64]*poolEntry{},
@@ -121,7 +122,10 @@ func (p *Pool) maintain(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			p.Close()
+			// Only the maintenance stops here. The signal that cancels this
+			// context also starts the shutdown grace of the HTTP server, and a
+			// request inside that grace still has a fleet operation to finish.
+			// The owner closes the pool once the server has drained.
 			return
 		case <-ticker.C:
 			p.sweep()

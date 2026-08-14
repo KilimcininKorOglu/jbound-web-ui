@@ -6,7 +6,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{{t .Title}} - {{t "layout.panel_name"}}</title>
+  <title>{{t .Title}} - {{.PanelName}}</title>
   <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
 
   <link rel="stylesheet" href="/static/css/publicsans.css">
@@ -40,7 +40,7 @@
            aria-label="{{t "nav.main"}}">
       <div class="app-brand demo">
         <a href="/dns" class="app-brand-link">
-          <span class="app-brand-text demo menu-text fw-bolder ms-2">{{t "layout.brand"}}</span>
+          <span class="app-brand-text demo menu-text fw-bolder ms-2">{{.PanelName}}</span>
         </a>
         {{/* A button rather than a fragment link: it runs a script and
              navigates nowhere, and a link that goes nowhere is announced as
@@ -79,7 +79,7 @@
 
     <div class="layout-page">
       <nav class="layout-navbar container-xxl navbar navbar-expand-xl navbar-detached align-items-center bg-navbar-theme"
-           id="layout-navbar" aria-label="{{t "layout.panel_name"}}">
+           id="layout-navbar" aria-label="{{.PanelName}}">
         <div class="navbar-nav-right d-flex align-items-center" id="navbar-collapse">
           <div class="d-flex align-items-center">
             <div class="nav-item d-flex align-items-center me-3">
@@ -122,20 +122,10 @@
               </select>
             </li>
             <li class="nav-item me-2">
-              {{/* The wordmark is drawn in a dark ink, which disappears on a
-                   dark field. An explicit theme picks the file, and the system
-                   theme leaves the choice to the browser. */}}
-              {{if eq .Theme "dark"}}
-              <img src="/static/img/janbound-wordmark-dark.svg" alt="{{t "layout.panel_name"}}" class="navbar-logo">
-              {{else if eq .Theme "light"}}
-              <img src="/static/img/janbound-wordmark.svg" alt="{{t "layout.panel_name"}}" class="navbar-logo">
-              {{else}}
-              <picture>
-                <source media="(prefers-color-scheme: dark)"
-                        srcset="/static/img/janbound-wordmark-dark.svg">
-                <img src="/static/img/janbound-wordmark.svg" alt="{{t "layout.panel_name"}}" class="navbar-logo">
-              </picture>
-              {{end}}
+              {{/* The name is a setting, so a drawn wordmark would contradict
+                   whatever the operator typed. Text follows the name and the
+                   theme without a second asset to keep in step. */}}
+              <span class="navbar-wordmark fw-bold" data-field="panel-name">{{.PanelName}}</span>
             </li>
           </ul>
         </div>
@@ -149,7 +139,7 @@
 
         <footer class="content-footer footer bg-footer-theme">
           <div class="container-xxl d-flex flex-wrap justify-content-between py-2 flex-md-row flex-column">
-            <div class="mb-2 mb-md-0">{{tf "layout.copyright" .Year}}</div>
+            <div class="mb-2 mb-md-0">{{tf "layout.copyright" .Year .PanelName}}</div>
           </div>
         </footer>
 

@@ -210,6 +210,14 @@ button.layout-menu-toggle {
   width: auto;
 }
 
+/* The name is a setting, so the navbar carries text rather than a drawn
+   wordmark that would contradict whatever the operator typed. */
+.navbar-wordmark {
+  font-size: 1.1rem;
+  line-height: 36px;
+  white-space: nowrap;
+}
+
 .brand-title {
   font-size: 1.25rem;
 }

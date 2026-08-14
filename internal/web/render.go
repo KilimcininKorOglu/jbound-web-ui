@@ -189,6 +189,10 @@ type PageData struct {
 	// every render, so the first paint is already in the chosen theme and
 	// nothing flashes.
 	Theme string
+
+	// PanelName is what the installation calls itself. It is a setting rather
+	// than a catalogue text, so an operator can name their own panel.
+	PanelName string
 	// Data carries whatever the page itself needs.
 	Data any
 }
@@ -226,6 +230,7 @@ func (a *App) Render(w http.ResponseWriter, r *http.Request, status int,
 	data.Theme = a.theme(r)
 	data.Language = language
 	data.Languages = a.Catalogs.Languages()
+	data.PanelName = a.Settings.String(settings.PanelName)
 
 	var buf bytes.Buffer
 	if err := tmpl.ExecuteTemplate(&buf, "layout", data); err != nil {

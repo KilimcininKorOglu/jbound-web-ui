@@ -373,3 +373,41 @@ func TestTheChosenSourceServerIsStored(t *testing.T) {
 		t.Errorf("stored source = %d, want 2", got)
 	}
 }
+
+func TestThePanelNameReachesEveryBrandSurface(t *testing.T) {
+	// The name used to live in three catalogue keys and a drawn wordmark. An
+	// operator who renames the panel has to see the new name everywhere, or
+	// the two sources contradict each other.
+	env := newFleetEnv(t)
+
+	const name = "Şirket DNS Paneli"
+	body := env.settingsForm(t, map[string]string{settings.PanelName: name})
+	if recorder := env.do(t, postForm("/settings", body), env.adminCookie(t)); recorder.Code != http.StatusOK {
+		t.Fatalf("cannot save the name: %d\n%s", recorder.Code, recorder.Body.String())
+	}
+
+	page := env.do(t, httptest.NewRequest(http.MethodGet, "/dns", nil), env.cookie).Body.String()
+	if strings.Contains(page, "JanBound") {
+		t.Errorf("the old name survived the rename:\n%s", page)
+	}
+	if !strings.Contains(page, `data-field="panel-name"`) {
+		t.Errorf("the navbar carries no name:\n%s", page)
+	}
+	if strings.Count(page, name) < 3 {
+		t.Errorf("the new name reaches too few surfaces:\n%s", page)
+	}
+}
+
+func TestAnEmptyPanelNameIsRefused(t *testing.T) {
+	env := newFleetEnv(t)
+
+	body := env.settingsForm(t, map[string]string{settings.PanelName: " "})
+	recorder := env.do(t, postForm("/settings", body), env.adminCookie(t))
+
+	if recorder.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422", recorder.Code)
+	}
+	if env.app.Settings.String(settings.PanelName) == "" {
+		t.Error("the panel lost its name to a refused submission")
+	}
+}

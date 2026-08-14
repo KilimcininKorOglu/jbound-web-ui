@@ -1,14 +1,17 @@
 package audit
 
-import "time"
+import (
+	"time"
 
-// Pagination bounds. The source panel offered 50 rows by default and the log
-// reads the same way here.
-const (
-	DefaultPerPage = 50
-	MinPerPage     = 10
-	MaxPerPage     = 100
+	"unbound-web/internal/paging"
 )
+
+// DefaultPerPage is what a request that names no page size gets. The source
+// panel offered 50 rows and the log reads the same way here.
+//
+// The bounds around it are shared with every other listing, in the paging
+// package.
+const DefaultPerPage = 50
 
 // Query asks for a page of audit rows.
 type Query struct {
@@ -28,11 +31,7 @@ type Query struct {
 
 // Normalise clamps the paging fields.
 func (q *Query) Normalise() {
-	if q.PerPage == 0 {
-		q.PerPage = DefaultPerPage
-	}
-	q.PerPage = max(MinPerPage, min(MaxPerPage, q.PerPage))
-	q.Page = max(1, q.Page)
+	q.Page, q.PerPage = paging.Clamp(q.Page, q.PerPage, DefaultPerPage)
 }
 
 // Row is one audit entry as it is listed.
@@ -55,28 +54,14 @@ type Row struct {
 
 // Page is one page of the audit log.
 type Page struct {
-	Rows       []Row
-	Total      int
-	Page       int
-	PerPage    int
-	TotalPages int
+	Rows []Row
+	paging.Window
 }
 
-// NewPage clamps the requested page against the total, because a page number
-// out of range comes from a stale link rather than from a missing page.
+// NewPage places the requested page against the total.
 func NewPage(query Query, total int) Page {
-	totalPages := max(1, (total+query.PerPage-1)/query.PerPage)
-
-	return Page{
-		Total:      total,
-		Page:       max(1, min(query.Page, totalPages)),
-		PerPage:    query.PerPage,
-		TotalPages: totalPages,
-	}
+	return Page{Window: paging.Of(query.Page, query.PerPage, total)}
 }
-
-// Offset is where the page starts in the result set.
-func (p Page) Offset() int { return (p.Page - 1) * p.PerPage }
 
 // Actions lists every action the panel writes, in the order the filter offers
 // them. A filter built from this list cannot miss an action the panel records.

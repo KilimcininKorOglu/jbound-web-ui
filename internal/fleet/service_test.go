@@ -11,6 +11,7 @@ import (
 
 	"unbound-web/internal/audit"
 	"unbound-web/internal/dnsfile"
+	"unbound-web/internal/paging"
 	"unbound-web/internal/server"
 	"unbound-web/internal/settings"
 )
@@ -459,9 +460,9 @@ func TestTheQueryBoundsAreClamped(t *testing.T) {
 		{name: "an empty query covers the fleet",
 			scope: ScopeAll, perPage: DefaultPerPage, page: 1},
 		{name: "a page of one is raised to the minimum",
-			query: Query{PerPage: 1}, scope: ScopeAll, perPage: MinPerPage, page: 1},
+			query: Query{PerPage: 1}, scope: ScopeAll, perPage: paging.Min, page: 1},
 		{name: "a page of a thousand is cut to the maximum",
-			query: Query{PerPage: 1000}, scope: ScopeAll, perPage: MaxPerPage, page: 1},
+			query: Query{PerPage: 1000}, scope: ScopeAll, perPage: paging.Max, page: 1},
 		{name: "a scope that was chosen is kept",
 			query: Query{Scope: ScopeGroup, GroupID: 1, Page: -2},
 			scope: ScopeGroup, perPage: DefaultPerPage, page: 1},

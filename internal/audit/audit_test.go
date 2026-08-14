@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"unbound-web/internal/paging"
 )
 
 // fakeRepo records what the logger stored.
@@ -207,7 +209,7 @@ func TestAPanelWithoutASIEMStillWrites(t *testing.T) {
 }
 
 func TestTheListingIsHandedToTheRepository(t *testing.T) {
-	repo := &fakeRepo{page: Page{Total: 3}}
+	repo := &fakeRepo{page: Page{Window: paging.Window{Total: 3}}}
 	logger := NewLogger(repo, nil)
 
 	page, err := logger.List(context.Background(), Query{Action: ActionDNSAdd, PerPage: 25})
@@ -231,9 +233,9 @@ func TestThePageBoundsAreClamped(t *testing.T) {
 	}{
 		{name: "an empty query takes the default", perPage: DefaultPerPage, page: 1},
 		{name: "a page of five is raised to the minimum",
-			query: Query{PerPage: 5}, perPage: MinPerPage, page: 1},
+			query: Query{PerPage: 5}, perPage: paging.Min, page: 1},
 		{name: "a page of a thousand is cut to the maximum",
-			query: Query{PerPage: 1000}, perPage: MaxPerPage, page: 1},
+			query: Query{PerPage: 1000}, perPage: paging.Max, page: 1},
 		{name: "page zero is the first page",
 			query: Query{Page: 0}, perPage: DefaultPerPage, page: 1},
 		{name: "a negative page is the first page",

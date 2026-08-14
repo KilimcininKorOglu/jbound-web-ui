@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"unbound-web/internal/dnsfile"
+	"unbound-web/internal/paging"
 )
 
 // State is what the panel knows about one server's file.
@@ -58,12 +59,10 @@ const (
 	ScopeAll    = "all"
 )
 
-// Pagination bounds.
-const (
-	DefaultPerPage = 25
-	MinPerPage     = 10
-	MaxPerPage     = 100
-)
+// DefaultPerPage is what a listing that names no page size falls back to when
+// the operator has configured none. The bounds around it are shared with every
+// other listing, in the paging package.
+const DefaultPerPage = 25
 
 // Query asks for a page of cached records.
 type Query struct {
@@ -82,19 +81,12 @@ type Query struct {
 	PerPage int
 }
 
-// Normalise clamps the paging fields.
-//
-// The page itself cannot be clamped yet, because the total is only known once
-// the query has run. Page does that afterwards.
+// Normalise fills in the scope and clamps the paging fields.
 func (q *Query) Normalise() {
 	if q.Scope == "" {
 		q.Scope = ScopeAll
 	}
-	if q.PerPage == 0 {
-		q.PerPage = DefaultPerPage
-	}
-	q.PerPage = max(MinPerPage, min(MaxPerPage, q.PerPage))
-	q.Page = max(1, q.Page)
+	q.Page, q.PerPage = paging.Clamp(q.Page, q.PerPage, DefaultPerPage)
 }
 
 // Row is one record as the target holds it.
@@ -124,29 +116,15 @@ func (r Row) Complete(target int) bool { return target > 0 && len(r.Holders) >= 
 
 // Page is one page of a listing.
 type Page struct {
-	Rows       []Row
-	Total      int
-	Page       int
-	PerPage    int
-	TotalPages int
+	Rows []Row
+	paging.Window
 
 	// TargetServers is how many servers the listing covers, which is the
 	// denominator of every row's holder count.
 	TargetServers int
 }
 
-// NewPage clamps the requested page against the total, because a page number
-// out of range comes from a stale link rather than from a missing page.
+// NewPage places the requested page against the total.
 func NewPage(query Query, total int) Page {
-	totalPages := max(1, (total+query.PerPage-1)/query.PerPage)
-
-	return Page{
-		Total:      total,
-		Page:       max(1, min(query.Page, totalPages)),
-		PerPage:    query.PerPage,
-		TotalPages: totalPages,
-	}
+	return Page{Window: paging.Of(query.Page, query.PerPage, total)}
 }
-
-// Offset is where the page starts in the result set.
-func (p Page) Offset() int { return (p.Page - 1) * p.PerPage }

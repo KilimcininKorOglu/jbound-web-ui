@@ -21,6 +21,7 @@ import (
 	"unbound-web/internal/database"
 	"unbound-web/internal/dnsquery"
 	"unbound-web/internal/fleet"
+	"unbound-web/internal/paging"
 	"unbound-web/internal/server"
 	"unbound-web/internal/settings"
 	"unbound-web/internal/store"
@@ -122,7 +123,7 @@ func newHarness(t *testing.T) *harness {
 func (h *harness) cached(t *testing.T) fleet.Page {
 	t.Helper()
 
-	page, err := h.records.List(context.Background(), fleet.Query{PerPage: fleet.MaxPerPage})
+	page, err := h.records.List(context.Background(), fleet.Query{PerPage: paging.Max})
 	if err != nil {
 		t.Fatalf("cannot read the cached records: %v", err)
 	}

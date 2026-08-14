@@ -10,7 +10,11 @@
 // the next use rather than on the next restart.
 package settings
 
-import "time"
+import (
+	"time"
+
+	"unbound-web/internal/paging"
+)
 
 // Kinds of setting. The kind decides how a value is parsed, how it is
 // validated and which control the settings page renders for it.
@@ -156,8 +160,10 @@ var registry = []Definition{
 		Default: "4", MinInt: 1, MaxInt: 64,
 	},
 	{
+		// The bounds are the ones every listing clamps to anyway, so a value
+		// the operator saves outside them would be stored and then ignored.
 		Key: RecordsPerPage, Group: GroupLimits, Kind: KindInt,
-		Default: "25", MinInt: 10, MaxInt: 100,
+		Default: "25", MinInt: paging.Min, MaxInt: paging.Max,
 	},
 
 	{

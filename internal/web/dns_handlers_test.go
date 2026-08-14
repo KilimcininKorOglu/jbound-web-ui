@@ -634,7 +634,7 @@ func TestApplyRulesIsAuditedPerServer(t *testing.T) {
 		if serverID == nil {
 			t.Error("the row names no server")
 		}
-		if !strings.HasPrefix(details, "Unbound service reloaded. Output: ") {
+		if !strings.HasPrefix(details, "Unbound service reloaded through the reload. Output: ") {
 			t.Errorf("details = %q", details)
 		}
 	}

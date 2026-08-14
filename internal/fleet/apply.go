@@ -193,6 +193,11 @@ type Writer struct {
 	timeouts func() server.Timeouts
 
 	concurrent func() int
+
+	// restartSettle is how long a restarted resolver is given to come back.
+	// It is a field rather than a constant so the tests do not have to wait
+	// out a real one.
+	restartSettle time.Duration
 }
 
 // GroupSource resolves a group into its members.
@@ -219,6 +224,8 @@ func NewWriter(servers ServerSource, groups GroupSource, pool Connector,
 		dataDir:    dataDir,
 		timeouts:   timeouts,
 		concurrent: concurrent,
+
+		restartSettle: restartAttempts * restartWait,
 	}
 }
 

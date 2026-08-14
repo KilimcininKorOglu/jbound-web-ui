@@ -419,8 +419,18 @@ func (s *stubTransport) failReload(err error) {
 	s.reloadErr = err
 }
 
-func (s *stubTransport) ReloadFallback(context.Context) (string, error)      { return "", nil }
-func (s *stubTransport) Restart(context.Context) (string, error)             { return "", nil }
+// The second and third rungs of the reload answer the same way the first one
+// does. failReload means the resolver could not be brought back at all, so a
+// stub that only failed the first rung would be reporting a reload that the
+// escalation then quietly rescued.
+func (s *stubTransport) ReloadFallback(ctx context.Context) (string, error) {
+	return s.Reload(ctx)
+}
+
+func (s *stubTransport) Restart(ctx context.Context) (string, error) {
+	return s.Reload(ctx)
+}
+
 func (s *stubTransport) CheckConfig(context.Context) (string, error)         { return "", nil }
 func (s *stubTransport) ServiceStatus(context.Context) (bool, string, error) { return true, "", nil }
 func (s *stubTransport) Probe(context.Context) error                         { return s.probeErr }

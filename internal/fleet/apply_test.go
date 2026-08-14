@@ -191,6 +191,15 @@ func (t *writableTarget) ServiceStatus(context.Context) (bool, string, error) {
 	return t.active, "state", nil
 }
 
+// failEveryRung makes the whole ladder fail, which is what "the reload did not
+// work" means now that a failed step escalates to the next one.
+func (t *writableTarget) failEveryRung(err error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	t.reloadErr, t.fallbackErr, t.restartErr = err, err, err
+}
+
 func (t *writableTarget) file() string {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -275,6 +284,11 @@ func newWriteHarness(t *testing.T, count int) *writeHarness {
 	harness.writer = NewWriter(servers, groups, pool, refresher,
 		audit.NewLogger(auditRepo, nil), harness.backups, "/data",
 		settings.Fixed(timeouts), settings.Fixed(2))
+
+	// A real restart is given half a minute to bring the resolver back. The
+	// fakes answer at once, so waiting that out would only make the suite
+	// slow enough that nobody runs it.
+	harness.writer.restartSettle = 20 * time.Millisecond
 
 	return harness
 }

@@ -34,6 +34,59 @@ func TestTheHealthEndpointNeedsNoSession(t *testing.T) {
 	}
 }
 
+func TestTheHealthEndpointReadsTheDatabase(t *testing.T) {
+	// A process that is up and a panel that works are two different things. An
+	// unreadable database leaves every page failing while the process itself
+	// answers perfectly well.
+	env := newTestEnv(t)
+
+	var asked bool
+	env.health.check = func(ctx context.Context) error {
+		asked = true
+		if _, ok := ctx.Deadline(); !ok {
+			t.Error("the probe runs with no deadline")
+		}
+		return nil
+	}
+
+	if recorder := env.do(t, httptest.NewRequest(http.MethodGet, "/healthz", nil)); recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+	if !asked {
+		t.Error("the health route answered without asking the database")
+	}
+}
+
+func TestTheHealthEndpointReportsADatabaseThatStoppedAnswering(t *testing.T) {
+	env := newTestEnv(t)
+	env.health.check = func(context.Context) error {
+		return errors.New("attempt to write a readonly database")
+	}
+
+	recorder := env.do(t, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", recorder.Code)
+	}
+
+	body := recorder.Body.String()
+	if strings.TrimSpace(body) != "unavailable" {
+		t.Errorf("body = %q, want unavailable", body)
+	}
+	// The route is the one status surface open without a session, so it says
+	// whether the panel serves and nothing about why it does not.
+	if strings.Contains(body, "readonly") {
+		t.Errorf("the body carries the reason: %q", body)
+	}
+}
+
+func TestThePanelRefusesToStartWithNoHealthProbe(t *testing.T) {
+	// Without a probe the route can only report that a process answered, which
+	// is what a monitor reads as a working panel.
+	if _, err := NewApp(Deps{}); err == nil {
+		t.Fatal("an application with no health probe was built")
+	}
+}
+
 func TestTheDiffPageCarriesItsControls(t *testing.T) {
 	env := newFleetEnv(t)
 

@@ -19,6 +19,38 @@ func openTestDB(t *testing.T) *DB {
 	return db
 }
 
+func TestTheProbeAnswersForAWorkingDatabase(t *testing.T) {
+	db := openTestDB(t)
+
+	if err := db.Probe(context.Background()); err != nil {
+		t.Fatalf("Probe returned an error on a working database: %v", err)
+	}
+}
+
+func TestTheProbeReportsADatabaseItCannotRead(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.Close(); err != nil {
+		t.Fatalf("cannot close the database: %v", err)
+	}
+
+	if err := db.Probe(context.Background()); err == nil {
+		t.Fatal("Probe reported a closed database as healthy")
+	}
+}
+
+func TestTheProbeReportsADatabaseWithNoAppliedMigration(t *testing.T) {
+	// An empty file opens and answers queries, so the row count is what tells
+	// it apart from the database this binary was started against.
+	db := openTestDB(t)
+
+	if _, err := db.Exec("DELETE FROM schema_migrations"); err != nil {
+		t.Fatalf("cannot clear the applied migrations: %v", err)
+	}
+	if err := db.Probe(context.Background()); err == nil {
+		t.Fatal("Probe reported a database with no schema as healthy")
+	}
+}
+
 func TestOpenCreatesEverySchemaObject(t *testing.T) {
 	db := openTestDB(t)
 

@@ -9,6 +9,7 @@ import (
 	"context"
 	"database/sql"
 	"embed"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -96,6 +97,29 @@ func connect(ctx context.Context, path string) (*DB, error) {
 
 // Path reports the database file location.
 func (db *DB) Path() string { return db.path }
+
+// Probe reports whether the database can still answer.
+//
+// A real query rather than a handle check. The pool holds one connection and
+// keeps it for the life of the process, so a database that has become
+// unreadable is still an open handle: the file may be gone, the disk full or
+// the data directory unmounted, and none of that shows until something asks
+// for a row.
+//
+// The applied migrations are what it asks for. The table is small, every
+// working panel has rows in it, and a file that answers with none is not the
+// database this binary was started against.
+func (db *DB) Probe(ctx context.Context) error {
+	var applied int
+	if err := db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM schema_migrations").Scan(&applied); err != nil {
+		return fmt.Errorf("cannot read the database: %w", err)
+	}
+	if applied == 0 {
+		return errors.New("the database carries no applied migration")
+	}
+	return nil
+}
 
 // migrate applies every embedded migration in name order.
 //

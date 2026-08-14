@@ -250,6 +250,7 @@ func run() error {
 		Records:   recordService,
 		SIEM:      rsyslog,
 		Forwarder: forwarder,
+		Health:    db.Probe,
 		Hostname:  panelHost,
 		Started:   time.Now(),
 	})

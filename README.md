@@ -86,6 +86,12 @@ The panel listens on `127.0.0.1:8080` and expects TLS to be terminated in front
 of it. The session cookie carries the `Secure` flag by default, so a panel
 reached over plain HTTP needs `COOKIE_SECURE=false` and a network you trust.
 
+`GET /healthz` needs no session and answers `200 ok` only when the database
+still answers a query. A panel whose database has become unreadable, whose disk
+is full or whose data directory has been unmounted returns `503 unavailable`,
+so a monitor built on it reports the outage rather than the process. The reason
+goes to the log, because the route is open to anybody who can reach the port.
+
 ## Prepare a DNS server
 
 Run the setup script as root on every resolver:

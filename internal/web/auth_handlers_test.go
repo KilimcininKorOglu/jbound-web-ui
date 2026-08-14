@@ -70,7 +70,16 @@ type testEnv struct {
 	settingsStore *store.Settings
 	// settingsCookie caches the administrator session of the settings tests.
 	settingsCookie *http.Cookie
+	// health is what the public status route asks. A test replaces the check
+	// to stand in for a database that has stopped answering.
+	health *healthProbe
 }
+
+// healthProbe holds the check the status route runs, so a test can change it
+// after the application has been built.
+type healthProbe struct{ check func(context.Context) error }
+
+func (p *healthProbe) run(ctx context.Context) error { return p.check(ctx) }
 
 func newTestEnv(t *testing.T) *testEnv {
 	t.Helper()
@@ -145,6 +154,10 @@ func newTestEnv(t *testing.T) *testEnv {
 		filepath.Join(siemDir, "60-panel.conf"), filepath.Join(siemDir, "panel.log"),
 		[]string{"true"}, []string{"true"}, []string{"true"})
 
+	// The probe is held rather than passed straight through, so a test can
+	// decide what the health route finds without a second application.
+	probe := &healthProbe{check: db.Probe}
+
 	app, err := NewApp(Deps{
 		Config: cfg,
 		Auth: auth.NewService(authenticator, auth.Policy{
@@ -162,6 +175,7 @@ func newTestEnv(t *testing.T) *testEnv {
 		Records:   records,
 		SIEM:      rsyslog,
 		Forwarder: forwarder,
+		Health:    probe.run,
 	})
 	if err != nil {
 		t.Fatalf("cannot build the application: %v", err)
@@ -183,6 +197,7 @@ func newTestEnv(t *testing.T) *testEnv {
 		queries:   queries,
 		forwarder: forwarder,
 		siemDir:   siemDir,
+		health:    probe,
 
 		settingsStore: settingsStore,
 	}

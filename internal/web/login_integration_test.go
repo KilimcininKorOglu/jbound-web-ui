@@ -169,6 +169,7 @@ func newLiveApp(t *testing.T) *App {
 		SIEM: siem.NewManager(cfg.RsyslogConfPath, cfg.SyslogLogPath,
 			cfg.RsyslogValidateCmd, cfg.RsyslogRestartCmd, cfg.RsyslogStatusCmd),
 		Forwarder: forwarder,
+		Health:    db.Probe,
 	})
 	if err != nil {
 		t.Fatalf("cannot build the application: %v", err)

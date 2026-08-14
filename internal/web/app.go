@@ -2,7 +2,9 @@
 package web
 
 import (
+	"context"
 	"embed"
+	"errors"
 	"net/http"
 	"os"
 	"strings"
@@ -13,6 +15,7 @@ import (
 	"unbound-web/internal/config"
 	"unbound-web/internal/fleet"
 	"unbound-web/internal/i18n"
+	"unbound-web/internal/logging"
 	"unbound-web/internal/server"
 	"unbound-web/internal/settings"
 	"unbound-web/internal/siem"
@@ -40,6 +43,11 @@ type Deps struct {
 	SIEM      *siem.Manager
 	Forwarder audit.Forwarder
 
+	// Health answers whether the process can still serve. It is what the
+	// public status route reports, so it has to reach the database rather than
+	// describe the goroutine that answers the request.
+	Health func(ctx context.Context) error
+
 	// Hostname is the panel host as the system page reports it. NewApp reads
 	// it when the caller leaves it empty.
 	Hostname string
@@ -61,6 +69,14 @@ type App struct {
 
 // NewApp parses the templates and returns the application.
 func NewApp(deps Deps) (*App, error) {
+	if deps.Health == nil {
+		// Without a probe the status route can only report that a process
+		// answered, which is what it used to do and what a monitor reads as a
+		// working panel. A missing probe is a wiring mistake, so it stops the
+		// panel here rather than at the first outage nobody was told about.
+		return nil, errors.New("the health check needs a probe")
+	}
+
 	catalogs, err := i18n.Load()
 	if err != nil {
 		return nil, err
@@ -196,8 +212,37 @@ func (a *App) Router() http.Handler {
 	return requestLog(recoverPanic(securityHeaders(mux)))
 }
 
-func (a *App) handleHealth(w http.ResponseWriter, _ *http.Request) {
+// healthTimeout bounds the probe behind the status route.
+//
+// A database that has stopped answering is exactly the state the route exists
+// to report, so the probe must come back with an answer rather than wait for
+// one until the monitor gives up.
+const healthTimeout = 5 * time.Second
+
+// handleHealth reports whether the panel can still serve.
+//
+// The probe reaches the database, because a process that is running and a panel
+// that works are two different things: an unreadable database, a full disk or an
+// unmounted data directory leaves every page failing while the process itself is
+// perfectly alive.
+//
+// The reason stays in the log. The route is the one status surface open without
+// a session, so the body says whether the panel serves and nothing about why it
+// does not.
+func (a *App) handleHealth(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), healthTimeout)
+	defer cancel()
+
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+
+	if err := a.Health(ctx); err != nil {
+		logging.From(r.Context()).Error("the health check failed", "error", err)
+
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte("unavailable\n"))
+		return
+	}
+
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }

@@ -5,12 +5,13 @@ once. One record is written to every server of a group in one action, the
 servers are compared against each other, and every change is recorded in an
 audit trail that can be mirrored to a SIEM.
 
-The panel holds no DNS service of its own. It reaches each resolver over SSH,
-writes one include file, and reloads the resolver.
+The panel holds no DNS service of its own. It reaches each resolver, writes one
+include file, and reloads the resolver. A server is reached over SSH or through
+an agent that runs on it, and the choice is made per server.
 
 ## What it does
 
-- Reads and writes `local_records.conf` on every managed server over SSH.
+- Reads and writes `local_records.conf` on every managed server.
 - Adds, edits and deletes A, AAAA, CNAME, MX and TXT records on a single server
   or on a whole group, one record at a time or several in one pass.
 - Compares the servers of a group and repairs a record that is missing or
@@ -37,13 +38,21 @@ Panel host:
 - `dig` for the query page.
 - A reverse proxy for TLS. The panel listens on the loopback address.
 
-Managed DNS server:
+Managed DNS server, over SSH:
 
-- Unbound with an `include:` line for the records file.
+- Unbound with an `include:` line for the records file. The setup script adds
+  the line when it is missing.
 - An SSH account, `sudo`, and seven exact sudoers rules created by
   `deploy/setup-target.sh`.
 - `unbound-control` for the reload that keeps the cache. A resolver without it
   still works: the panel falls back to a plain reload, and to a restart.
+
+Managed DNS server, through the agent:
+
+- Unbound, and the `jbound-agent` binary installed by `deploy/setup-agent.sh`.
+- A port the panel can reach, `8443` by default.
+- No account, no `sudo` and no sudoers rule. The panel sends no command text and
+  names no file, so there is nothing for a login shell to run.
 
 ## Install
 
@@ -63,7 +72,7 @@ environment file, and it reads back the two modes the whole design rests on:
 | Path | Mode | Why |
 | --- | --- | --- |
 | `/usr/local/libexec/jbound-authhelper` | `4750 root:jbound` | setuid root so PAM can read the shadow database, group-only so no other account can use it as a password oracle |
-| `/var/lib/jbound` | `0700 jbound` | the SSH private keys live under it |
+| `/var/lib/jbound` | `0700 jbound` | the SSH private keys and the agent tokens live under it |
 
 Then review `/etc/jbound/jbound.env` and start the service:
 
@@ -99,6 +108,11 @@ so a monitor built on it reports the outage rather than the process. The reason
 goes to the log, because the route is open to anybody who can reach the port.
 
 ## Prepare a DNS server
+
+A resolver is prepared one way or the other, never both. The panel does the same
+work either way, and the difference is what has to exist on the resolver for it.
+
+### Over SSH
 
 Run the setup script as root on every resolver:
 
@@ -137,17 +151,51 @@ five rules are newer than the first two. Without them **Test** reports the
 configuration check as failed, and a record written to that server is rolled
 back rather than applied.
 
+### Through the agent
+
+The agent is the alternative to the account and the seven rules. The panel asks
+it to write, to check and to reload, and the agent runs the commands its own
+configuration names. No command text crosses the network, so there is nothing
+for a login shell to run and nothing for `sudo` to allow.
+
+Build it, copy it onto the resolver and run the setup script as root:
+
+```
+make build-agent
+scp dist/jbound-agent root@dns1:/usr/local/bin/jbound-agent
+scp deploy/jbound-agent.service root@dns1:/etc/systemd/system/
+sudo ./deploy/setup-agent.sh -t "<the token the panel showed>"
+```
+
+It writes `/etc/jbound-agent/token` with mode `600`, generates a self signed
+certificate, writes the environment file naming the two files and the five
+commands, and starts the service. It creates no account and installs no sudoers
+rule.
+
+The certificate is self signed on purpose. The panel pins the fingerprint an
+operator approves, the same way it pins an SSH host key, so a public issuer
+would add a step and prove nothing the pin does not already prove. The script
+prints the fingerprint to approve and the port to enter.
+
+`-f` and `-c` name the records file and the main configuration, and both go into
+the environment file rather than into the panel. The panel asks the agent which
+file holds the records and is never in a position to name one, because an agent
+that took a path from a request would be a way to write any file on that host.
+
 ### What the panel does to a resolver
 
 A change is one confirmation, one write, one check and one reload.
 
-The confirmation comes first. `jbound-ensure-include` puts the clause header at
-the top of the records file and appends the include line to the main
-configuration when it is missing. Without it a resolver takes every write,
-accepts every configuration check, reloads without complaint and answers none
-of the records, and nothing anywhere reports a problem. The script takes no
-arguments: both paths were written into it when the target was prepared, so the
-panel never names a file a managed server then writes.
+The confirmation comes first. It puts the clause header at the top of the
+records file and appends the include line to the main configuration when it is
+missing. Without it a resolver takes every write, accepts every configuration
+check, reloads without complaint and answers none of the records, and nothing
+anywhere reports a problem. An SSH server does it with
+`jbound-ensure-include`, which takes no arguments because both paths were
+written into it when the target was prepared; an agent server does it in the
+process, from the two paths its environment file names. Either way the panel
+never names a file a managed server then writes, and an include the panel had to
+add reaches the audit trail.
 
 The write goes to a temporary file in the same directory and is moved over the
 records file, so the resolver never reads a half written file. The panel
@@ -156,8 +204,8 @@ anything.
 
 Then `unbound-checkconf` runs. If it refuses the result, the panel writes the
 previous content back and reports the failure with what the checker said. The
-same happens when the rule for it is missing, because a check that cannot run
-proves nothing.
+same happens when the sudoers rule for it is missing, or when the agent has no
+command configured for it, because a check that cannot run proves nothing.
 
 The reload is a ladder of three rungs, and the panel stops at the first one that
 leaves the resolver running:
@@ -179,15 +227,23 @@ still hold records the panel did not write.
 ## Add a server
 
 1. Sign in as an administrator and open **Servers**.
-2. Add the server with its address, the SSH account and the paths the setup
-   script printed. The panel generates an SSH key pair for it and stores the
-   private half under `<DATA_DIR>/keys` with mode `0600`.
-3. Open the key panel and copy the public key onto the server, or hand it to
-   `setup-target.sh -k`.
-4. Press **Test**. The first connection reports the host key of the server and
-   nothing is written until it is approved.
-5. Approve the host key. It is stored with the server record, and a server that
-   later offers a different key is refused rather than trusted again.
+2. Choose how the panel reaches it. The form shows the fields that transport
+   uses and hides the rest. The choice is fixed once the server is added,
+   because the secret behind it is a private key on one path and a token on the
+   other, and a record that switched would point at a file of the wrong kind.
+3. Add the server with its address and, over SSH, the account and the paths the
+   setup script printed. An agent server takes a port and nothing else: it
+   reports its own records file, and its commands stay on the resolver.
+4. Open the key panel. Over SSH it shows the public key to copy onto the server,
+   or to hand to `setup-target.sh -k`, and the private half stays under
+   `<DATA_DIR>/keys` with mode `0600`. On an agent server it shows the token
+   once, to hand to `setup-agent.sh -t`. Nothing shows it a second time, and it
+   appears in no listing.
+5. Press **Test**. The first connection reports the host key of the server, or
+   the certificate fingerprint of its agent, and nothing is written until it is
+   approved.
+6. Approve it. It is stored with the server record, and a server that later
+   offers a different one is refused rather than trusted again.
 
 **Test** walks the whole path rather than only the connection: it signs in,
 reads the file, writes the current content back over itself, runs the
@@ -295,7 +351,7 @@ The target directory must not exist yet. The command writes:
 
 - `jbound.db`, a consistent snapshot of the server records, the groups, the
   host key pins and the audit trail.
-- `keys/`, the SSH private keys.
+- `keys/`, the SSH private keys and the agent tokens.
 
 Do not copy `/var/lib/jbound` with `cp` or `tar` while the panel runs. The
 database is open in WAL mode, so its state is spread across `jbound.db` and
@@ -379,9 +435,11 @@ host.
 
 ## Development
 
-The development stack runs the panel and three Unbound targets in containers.
-The panel container carries its own rsyslog, so the SIEM page works there as
-well. No part of it touches the host.
+The development stack runs the panel and six Unbound targets in containers.
+Three are reached over SSH and three through the agent, so one record written to
+the group proves both transports rather than proving each on its own. The panel
+container carries its own rsyslog, so the SIEM page works there as well. No part
+of it touches the host.
 
 ```
 make dev-up        # build and start the stack
@@ -402,17 +460,24 @@ The panel is served on `http://127.0.0.1:8330`. `make dev-env` creates
 `CHANGEME` value is replaced. The test accounts are created inside the container
 by `docker/testusers.sh`.
 
-The first start also fills the panel: the three targets, their approved host
-keys and a group named `resolvers` over all of them, written by
-`docker/devseed`. It goes through the same service an operator goes through,
+The first start also fills the panel: the six targets, their approved host keys
+and agent fingerprints, and a group named `resolvers` over all of them, written
+by `docker/devseed`. It goes through the same service an operator goes through,
 and it leaves a panel that already holds a server alone, so anything you change
 afterwards stays changed.
 
-The group carries a fourth member, `dns-down`, pointed at the unrouted
-`192.0.2.1`. Every fleet action therefore reaches three servers and times out on
+The group carries a seventh member, `dns-down`, pointed at the unrouted
+`192.0.2.1`. Every fleet action therefore reaches six servers and times out on
 one, which is the partial result an operator has to be able to read: HTTP 207, a
 row per server, and a toast that does not claim success. Disable it on the
 servers page when you want a clean run.
+
+The agent targets carry no sshd, no `sudo`, no account and no sudoers file, so
+the absence the transport is built on stays true rather than merely described.
+One of them, `dns5`, starts with the include line taken out of its resolver
+configuration: the failure is invisible everywhere else, and reproducing it on
+every start is what keeps the repair proven. They answer DNS on `8360`, `8361`
+and `8362`, next to `8331`, `8332` and `8333` for the SSH three.
 
 ### Checks
 
@@ -448,17 +513,19 @@ lands against source that did not change.
 
 ```
 cmd/jbound           the service
+cmd/jbound-agent     the agent a managed resolver runs
 authhelper           the setuid PAM helper, the only privileged component
 internal/auth        sessions, CSRF, rate limiting, PAM
-internal/server      server and group records, SSH keys
-internal/transport   the SSH connection pool
+internal/server      server and group records, SSH keys and agent tokens
+internal/transport   the connection pool, over SSH and through an agent
+internal/agentapi    the protocol both ends of the agent speak
 internal/dnsfile     the records format
 internal/fleet       actions that touch more than one server
 internal/audit       the audit trail and the CEF mirror
 internal/settings    the settings registry and their storage
 internal/i18n        the language catalogues
 internal/web         handlers, templates and static assets
-deploy               install script, systemd unit, PAM file, target setup
+deploy               install script, systemd units, PAM file, target setup
 deploy/licenses      the licences of the assets the binary serves
 docker               the development stack
 ```

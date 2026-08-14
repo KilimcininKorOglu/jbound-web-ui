@@ -175,7 +175,10 @@ func TestARepairAddsTheRecordWhereItIsMissing(t *testing.T) {
 	}
 }
 
-func TestARepairCorrectsAValueThatDrifted(t *testing.T) {
+func TestARepairKeepsEveryOtherValueOfTheSameName(t *testing.T) {
+	// The row names one exact record. A second value of the same name is a row
+	// of its own, so a repair that rewrote it would destroy a live record the
+	// operator never named.
 	h := newWriteHarness(t, 2)
 	h.targets["dns2"].content = []byte(
 		"local-data: \"www.example.net. A 192.0.2.99\"\n")
@@ -186,8 +189,34 @@ func TestARepairCorrectsAValueThatDrifted(t *testing.T) {
 	}
 
 	file := h.targets["dns2"].file()
-	if strings.Contains(file, "192.0.2.99") || !strings.Contains(file, "192.0.2.10") {
-		t.Errorf("the value was not corrected:\n%s", file)
+	if !strings.Contains(file, "192.0.2.99") {
+		t.Errorf("the other value of the name was lost:\n%s", file)
+	}
+	if !strings.Contains(file, "192.0.2.10") {
+		t.Errorf("the missing record was not added:\n%s", file)
+	}
+}
+
+func TestARepairSkipsAServerThatHoldsTheRecordBehindAnotherValue(t *testing.T) {
+	// The wanted record is the second line. A search that stops at the first
+	// name and type match would call it missing and rewrite the first line.
+	h := newWriteHarness(t, 1)
+	h.targets["dns1"].content = []byte(
+		"local-data: \"www.example.net. A 192.0.2.99\"\n" +
+			"local-data: \"www.example.net. A 192.0.2.10\"\n")
+
+	want := record("www.example.net", "A", "192.0.2.10")
+	report, err := h.writer.Repair(context.Background(), testActor(), groupTarget(), want)
+	if err != nil {
+		t.Fatalf("Repair returned an error: %v", err)
+	}
+
+	if report.Results[0].Status != StatusSkipped {
+		t.Fatalf("got %+v, want the server left alone", report.Results[0])
+	}
+	if len(h.targets["dns1"].expectations) != 0 {
+		t.Errorf("a server that already held the record was written to:\n%s",
+			h.targets["dns1"].file())
 	}
 }
 
@@ -211,17 +240,21 @@ func TestARepairDecidesFromTheFileRatherThanTheCache(t *testing.T) {
 	// The cache is what showed the operator the difference. By the time they
 	// press repair it may be older than the server it describes.
 	h := newWriteHarness(t, 1)
-	h.targets["dns1"].content = []byte(
-		"local-data: \"www.example.net. A 192.0.2.55\"\n")
 
+	// The cache holds nothing for this server while the file already holds the
+	// record, so a repair that trusted the cache would write it a second time.
 	want := record("www.example.net", "A", "192.0.2.10")
-	if _, err := h.writer.Repair(context.Background(), testActor(), groupTarget(), want); err != nil {
+	report, err := h.writer.Repair(context.Background(), testActor(), groupTarget(), want)
+	if err != nil {
 		t.Fatalf("Repair returned an error: %v", err)
 	}
 
+	if report.Results[0].Status != StatusSkipped {
+		t.Fatalf("got %+v, want the server left alone", report.Results[0])
+	}
 	file := h.targets["dns1"].file()
-	if strings.Count(file, "www.example.net") != 1 {
-		t.Errorf("the repair added a second entry instead of correcting one:\n%s", file)
+	if strings.Count(file, "192.0.2.10") != 1 {
+		t.Errorf("the repair wrote a record the file already held:\n%s", file)
 	}
 }
 

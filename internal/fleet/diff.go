@@ -317,11 +317,7 @@ func (w *Writer) repairOne(ctx context.Context, actor server.Actor,
 	}
 
 	result.Status = StatusSuccess
-	if op.Kind == OpAdd {
-		result.Message = "Record added"
-	} else {
-		result.Message = "Value corrected"
-	}
+	result.Message = "Record added"
 	if _, refreshErr := w.refresh.One(ctx, record.ID); refreshErr != nil {
 		result.Message += ", but the cache could not be refreshed"
 	}
@@ -331,15 +327,19 @@ func (w *Writer) repairOne(ctx context.Context, actor server.Actor,
 }
 
 // repairOperation works out what a server needs to hold the record.
+//
+// A server either holds the exact record or it does not, and the whole file is
+// searched before it is called missing. No edit is produced: one name may
+// legitimately hold several values, and an edit keyed on the name and the type
+// would rewrite one of the others into this one and lose it.
+//
+// A value the row does not name is left alone. It is a row of its own in the
+// same diff, with its own button, and the operator decides what happens to it.
 func repairOperation(current []dnsfile.Record, want dnsfile.Record) (Operation, bool) {
 	for _, record := range current {
-		if record.FQDN != want.FQDN || record.Type != want.Type {
-			continue
-		}
-		if record.Value == want.Value && record.Priority == want.Priority {
+		if keyOf(record) == keyOf(want) {
 			return Operation{}, false
 		}
-		return Operation{Kind: OpEdit, Old: record, Record: want}, true
 	}
 	return Operation{Kind: OpAdd, Record: want}, true
 }

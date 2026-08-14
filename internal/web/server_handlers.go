@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"unbound-web/internal/auth"
 	"unbound-web/internal/i18n"
 	"unbound-web/internal/server"
+	"unbound-web/internal/settings"
 	"unbound-web/internal/store"
 	"unbound-web/internal/transport"
 )
@@ -227,6 +229,9 @@ func (a *App) handleServerUpdate(w http.ResponseWriter, r *http.Request) {
 			serverFormData{Server: record, Problem: userMessage(a.catalog(r), err)})
 		return
 	}
+	if !record.Enabled {
+		a.releaseSourceServer(r.Context(), id)
+	}
 
 	SetToast(w, ToastSuccess, a.catalog(r).Tf("toast.server_updated", record.Name))
 	a.closePanel(w)
@@ -242,9 +247,27 @@ func (a *App) handleServerDelete(w http.ResponseWriter, r *http.Request) {
 		a.notFoundOrError(w, "cannot delete the server", err)
 		return
 	}
+	a.releaseSourceServer(r.Context(), id)
 
 	SetToast(w, ToastSuccess, a.catalog(r).T("toast.server_deleted"))
 	a.closePanel(w)
+}
+
+// releaseSourceServer clears the source setting when it names this server.
+//
+// A server that is gone or disabled cannot be the reference of a comparison,
+// and a dangling identifier would leave the drift page pointing at nothing.
+func (a *App) releaseSourceServer(ctx context.Context, id int64) {
+	if a.Settings.Values().Int64(settings.SourceServerID) != id {
+		return
+	}
+
+	if err := a.Settings.Save(ctx, map[string]string{settings.SourceServerID: ""}); err != nil {
+		// The server change already happened. The stale identifier is worth
+		// reporting but not worth failing the request over, and the drift page
+		// treats a source it cannot resolve as no source at all.
+		slog.Error("cannot clear the source server setting", "server", id, "error", err)
+	}
 }
 
 func (a *App) handleServerKey(w http.ResponseWriter, r *http.Request) {

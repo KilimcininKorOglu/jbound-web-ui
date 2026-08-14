@@ -11,6 +11,7 @@ import (
 
 	"unbound-web/internal/auth"
 	"unbound-web/internal/server"
+	"unbound-web/internal/settings"
 	"unbound-web/internal/transport"
 )
 
@@ -526,5 +527,51 @@ func TestTheServerTableMarksUnappliedChanges(t *testing.T) {
 		env.cookie).Body.String()
 	if strings.Contains(body, `data-field="pending"`) {
 		t.Errorf("the marker survived a reload:\n%s", body)
+	}
+}
+
+func TestDeletingTheSourceServerClearsTheSetting(t *testing.T) {
+	// A dangling identifier would leave the drift page pointing at a machine
+	// that is no longer there.
+	env := newFleetEnv(t)
+
+	body := env.settingsForm(t, map[string]string{settings.SourceServerID: "2"})
+	if recorder := env.do(t, postForm("/settings", body), env.adminCookie(t)); recorder.Code != http.StatusOK {
+		t.Fatalf("cannot choose the source: %d", recorder.Code)
+	}
+
+	recorder := env.adminForm(t, http.MethodDelete, "/servers/2", env.cookie, url.Values{})
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("DELETE /servers/2 = %d", recorder.Code)
+	}
+
+	if got := env.app.Settings.String(settings.SourceServerID); got != "" {
+		t.Errorf("the source setting still reads %q", got)
+	}
+}
+
+func TestDisablingTheSourceServerClearsTheSetting(t *testing.T) {
+	// A disabled server joins no operation, so it cannot be the reference of
+	// one either.
+	env := newFleetEnv(t)
+
+	body := env.settingsForm(t, map[string]string{settings.SourceServerID: "3"})
+	if recorder := env.do(t, postForm("/settings", body), env.adminCookie(t)); recorder.Code != http.StatusOK {
+		t.Fatalf("cannot choose the source: %d", recorder.Code)
+	}
+
+	// An unchecked switch sends nothing at all, which is how the handler reads
+	// a disabled server.
+	form := url.Values{
+		"name":     {"dns3"},
+		"host":     {"dns3.example"},
+		"ssh_user": {"dnsops"},
+	}
+	if recorder := env.adminForm(t, http.MethodPost, "/servers/3", env.cookie, form); recorder.Code != http.StatusOK {
+		t.Fatalf("PUT /servers/3 = %d: %s", recorder.Code, recorder.Body.String())
+	}
+
+	if got := env.app.Settings.String(settings.SourceServerID); got != "" {
+		t.Errorf("the source setting still reads %q", got)
 	}
 }

@@ -411,3 +411,62 @@ func TestAnEmptyPanelNameIsRefused(t *testing.T) {
 		t.Error("the panel lost its name to a refused submission")
 	}
 }
+
+func TestTheSettingsEntryNamesWhatChanged(t *testing.T) {
+	// The page is a second way into controls that have their own audited
+	// handlers. An entry that says only that something changed cannot tell
+	// the mirror switch from a new theme.
+	env := newTestEnv(t)
+	cookie := env.adminCookie(t)
+
+	body := env.settingsForm(t, map[string]string{
+		settings.LoginRateMaxAttempts:  "50",
+		settings.SIEMForwardingEnabled: "",
+	})
+	if recorder := env.do(t, postForm("/settings", body), cookie); recorder.Code != http.StatusOK {
+		t.Fatalf("POST /settings = %d, want 200", recorder.Code)
+	}
+
+	details := env.lastSettingsDetails(t)
+	for _, want := range []string{
+		settings.LoginRateMaxAttempts + " 10 -> 50",
+		settings.SIEMForwardingEnabled + " true -> false",
+	} {
+		if !strings.Contains(details, want) {
+			t.Errorf("the entry does not carry %q:\n%s", want, details)
+		}
+	}
+	// Everything the operator left alone stays out of the line, or the one
+	// that moved is lost among fifteen that did not.
+	if strings.Contains(details, settings.RecordsPerPage) {
+		t.Errorf("the entry lists a setting nobody changed:\n%s", details)
+	}
+}
+
+func TestASaveThatChangesNothingSaysSo(t *testing.T) {
+	env := newTestEnv(t)
+	cookie := env.adminCookie(t)
+
+	body := env.settingsForm(t, nil)
+	if recorder := env.do(t, postForm("/settings", body), cookie); recorder.Code != http.StatusOK {
+		t.Fatalf("POST /settings = %d, want 200", recorder.Code)
+	}
+
+	if details := env.lastSettingsDetails(t); !strings.Contains(details, "no value changed") {
+		t.Errorf("details = %q, want it to say nothing moved", details)
+	}
+}
+
+// lastSettingsDetails returns the details of the newest settings entry.
+func (e *testEnv) lastSettingsDetails(t *testing.T) string {
+	t.Helper()
+
+	var details string
+	err := e.db.QueryRow(
+		`SELECT details FROM audit_logs WHERE action = ? ORDER BY id DESC LIMIT 1`,
+		"settings_update").Scan(&details)
+	if err != nil {
+		t.Fatalf("cannot read the audit table: %v", err)
+	}
+	return details
+}

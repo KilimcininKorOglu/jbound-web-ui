@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -109,6 +110,9 @@ func (a *App) handleSettingsSave(w http.ResponseWriter, r *http.Request) {
 
 	// Save swaps the snapshot before it returns, so a submission that turns the
 	// SIEM mirror off has to be judged against the state that is still here.
+	// The same goes for the audit entry: what changed is only knowable against
+	// the values this save is about to replace.
+	before := a.Settings.Values().All()
 	silencing := a.Settings.Bool(settings.SIEMForwardingEnabled) &&
 		submitted[settings.SIEMForwardingEnabled] == boolValue(false)
 
@@ -122,7 +126,7 @@ func (a *App) handleSettingsSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.auditSettings(r, silencing)
+	a.auditSettings(r, settingsChanges(before, submitted), silencing)
 	SetToast(w, ToastSuccess, a.catalog(r).T("toast.settings_saved"))
 	a.RenderPartial(w, r, http.StatusOK, "settings-panel", a.settingsPageData(r.Context(), a.catalog(r), nil, nil))
 }
@@ -232,21 +236,45 @@ func sourceRefusal(code string, args ...any) *settings.Refusal {
 	}}
 }
 
-// auditSettings records that the configuration changed.
+// settingsChanges lists what one save actually changed, in registry order.
 //
-// The values are not listed. Reading them back is one page load, and a details
-// column carrying fifteen keys is a line nobody reads.
+// Old and new travel together, because the current value is one page load away
+// but the value it replaced is gone. Only the keys that moved are listed, so
+// the line stays readable even though the page carries every setting.
+func settingsChanges(before, submitted map[string]string) []string {
+	var changes []string
+	for _, definition := range settings.Definitions() {
+		value, ok := submitted[definition.Key]
+		if !ok || value == before[definition.Key] {
+			continue
+		}
+		changes = append(changes,
+			fmt.Sprintf("%s %s -> %s", definition.Key, before[definition.Key], value))
+	}
+	return changes
+}
+
+// auditSettings records which settings changed.
+//
+// The page is a second way into controls that have their own audited handlers,
+// among them the mirror switch and the login rate limit. An entry that says
+// only that something changed cannot tell those apart from a new theme.
 //
 // mirrored asks for the entry to reach the receiver even though the switch
 // this save turned off already answers false.
-func (a *App) auditSettings(r *http.Request, mirrored bool) {
+func (a *App) auditSettings(r *http.Request, changes []string, mirrored bool) {
 	actor := a.actor(r)
+
+	details := "Panel settings updated: " + strings.Join(changes, ", ")
+	if len(changes) == 0 {
+		details = "Panel settings saved with no value changed"
+	}
 
 	entry := audit.Entry{
 		UID:       actor.UID,
 		Username:  actor.Username,
 		Action:    audit.ActionSettingsUpdate,
-		Details:   "Panel settings updated",
+		Details:   details,
 		IPAddress: actor.IPAddress,
 	}
 

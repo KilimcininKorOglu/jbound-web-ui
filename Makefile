@@ -120,6 +120,10 @@ dev-itest: ## Run the integration tests inside the panel container
 build: ## Build the static panel binary
 	CGO_ENABLED=0 go build -trimpath -o dist/jbound ./cmd/jbound
 
+.PHONY: build-agent
+build-agent: ## Build the static agent binary for a managed resolver
+	CGO_ENABLED=0 go build -trimpath -o dist/jbound-agent ./cmd/jbound-agent
+
 .PHONY: build-helper
 build-helper: ## Build the setuid PAM helper
 	$(MAKE) -C authhelper

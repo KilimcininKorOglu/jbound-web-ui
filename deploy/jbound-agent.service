@@ -1,0 +1,60 @@
+[Unit]
+Description=JBound agent for the local Unbound resolver
+Documentation=file:/usr/local/share/doc/jbound/README.md
+After=network-online.target unbound.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+# Root, deliberately. The agent writes the records file, repairs the main
+# configuration and reloads the resolver, and all three need it. Running
+# unprivileged with sudoers rules would put back exactly the surface this
+# binary exists to remove.
+#
+# What it gets in exchange is a fixed surface. No request carries a path, no
+# request carries a command, and there is no shell anywhere in the process.
+User=root
+Group=root
+
+EnvironmentFile=/etc/jbound-agent/jbound-agent.env
+ExecStart=/usr/local/bin/jbound-agent
+
+Restart=on-failure
+RestartSec=5
+
+# Nothing it runs needs a privilege it does not already hold, unlike the panel,
+# so this can be on.
+NoNewPrivileges=yes
+
+# Binding 8443 needs no capability, and neither does anything else here.
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectHostname=yes
+ProtectClock=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+# The resolver configuration directory and nothing else. The agent writes two
+# files in it: the records file and the main configuration it has to include
+# that file from.
+ReadWritePaths=/etc/unbound
+
+# The agent writes its own diagnostics. The audit trail lives in the panel.
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

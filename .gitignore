@@ -7,6 +7,9 @@ docker/keys/
 # Build output
 dist/
 tmp/
+# A single package build drops the binary in the working directory.
+/jbound
+/jbound-agent
 *.test
 coverage.out
 coverage-int.out

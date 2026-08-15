@@ -80,6 +80,13 @@ func Parse(content []byte) []Record {
 			continue
 		}
 
+		if strings.HasPrefix(line, "local-zone:") {
+			if record, ok := parseZone(line, number+1); ok {
+				records = append(records, record)
+			}
+			continue
+		}
+
 		match := localData.FindStringSubmatch(line)
 		if match == nil {
 			continue

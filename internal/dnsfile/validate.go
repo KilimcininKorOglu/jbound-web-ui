@@ -20,8 +20,11 @@ const (
 	TypeTXT   = "TXT"
 )
 
-// Types lists the managed record types in the order the form offers them.
-var Types = []string{TypeA, TypeAAAA, TypeMX, TypeCNAME, TypeTXT}
+// Types lists what the form offers, in the order it offers it.
+//
+// The two behaviours come last, because they are not records and an operator
+// reaching for A should not have to pass them.
+var Types = []string{TypeA, TypeAAAA, TypeMX, TypeCNAME, TypeTXT, TypeNXDOMAIN, TypeREFUSED}
 
 // DefaultMXPriority is what an MX record gets when nobody chose a preference.
 const DefaultMXPriority = 10
@@ -125,6 +128,16 @@ func (r Record) validate(family bool) error {
 	}
 
 	switch {
+	case IsPolicy(r.Type):
+		// A behaviour answers on its own. A value that reached the panel here
+		// would reach nothing in the file, and accepting it silently would let
+		// the operator believe an address they typed is being served.
+		if r.Value != "" {
+			problems = append(problems, "a blocked name takes no value")
+		}
+		if r.Priority != 0 {
+			problems = append(problems, "a blocked name takes no preference")
+		}
 	case r.Type == TypeTXT:
 		if err := validateText(r.Value); err != nil {
 			problems = append(problems, message(err))

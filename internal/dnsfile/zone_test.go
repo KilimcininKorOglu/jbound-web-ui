@@ -83,8 +83,9 @@ func TestANameWithOneLabelDeclaresNoZone(t *testing.T) {
 }
 
 func TestAZoneLineIsNotAReadableRecord(t *testing.T) {
-	// The listing is built from local-data lines. A zone line that showed up
-	// as a record would offer the operator an edit button on it.
+	// The transparent zone is plumbing the panel writes for itself. A block
+	// carries a zone line the listing does show, but this one would offer the
+	// operator a delete button on the line their own record depends on.
 	content := dnsfile.EnsureZone(nil, "www.example.local")
 
 	if records := dnsfile.Parse(content); len(records) != 0 {

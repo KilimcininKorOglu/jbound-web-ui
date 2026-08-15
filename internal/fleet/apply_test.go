@@ -1122,3 +1122,141 @@ func (t *writableTarget) callOrder() []string {
 	defer t.mu.Unlock()
 	return append([]string(nil), t.calls...)
 }
+
+// --- Blocked names ---------------------------------------------------------
+
+// blockOperation blocks one name across the target.
+func blockOperation(fqdn, behaviour string) Operation {
+	return Operation{Kind: OpAdd, Record: dnsfile.Record{FQDN: fqdn, Type: behaviour}}
+}
+
+func TestBlockingANameReachesEveryServer(t *testing.T) {
+	h := newWriteHarness(t, 3)
+
+	report, err := h.writer.Apply(context.Background(), testActor(), groupTarget(),
+		blockOperation("ads.example.net", dnsfile.TypeNXDOMAIN))
+	if err != nil {
+		t.Fatalf("Apply returned an error: %v", err)
+	}
+	if !report.OK() {
+		t.Fatalf("got %+v", report.Results)
+	}
+
+	for name, target := range h.targets {
+		if !strings.Contains(target.file(), `local-zone: "ads.example.net." always_nxdomain`) {
+			t.Errorf("%s did not receive the block:\n%s", name, target.file())
+		}
+	}
+}
+
+func TestBlockingANameDeclaresNoParentZone(t *testing.T) {
+	// The block is already a zone line. A transparent parent beside it would
+	// be a decision about every other name under example.net, which is not
+	// what blocking one name asks for.
+	h := newWriteHarness(t, 1)
+
+	if _, err := h.writer.Apply(context.Background(), testActor(), groupTarget(),
+		blockOperation("ads.example.net", dnsfile.TypeREFUSED)); err != nil {
+		t.Fatalf("Apply returned an error: %v", err)
+	}
+
+	file := h.targets["dns1"].file()
+	if strings.Contains(file, `local-zone: "example.net." transparent`) {
+		t.Errorf("a parent zone was declared for a block:\n%s", file)
+	}
+}
+
+func TestARecordUnderABlockedNameNeverReachesAServer(t *testing.T) {
+	// The record would be written, pass the configuration check, survive the
+	// reload and answer nothing, while the panel reported it applied.
+	h := newWriteHarness(t, 3)
+
+	if _, err := h.writer.Apply(context.Background(), testActor(), groupTarget(),
+		blockOperation("ads.example.net", dnsfile.TypeNXDOMAIN)); err != nil {
+		t.Fatalf("cannot block the name: %v", err)
+	}
+
+	report, err := h.writer.Apply(context.Background(), testActor(), groupTarget(),
+		Operation{Kind: OpAdd, Record: dnsfile.Record{
+			FQDN: "www.ads.example.net", Type: "A", Value: "192.0.2.30"}})
+	if err != nil {
+		t.Fatalf("Apply returned an error: %v", err)
+	}
+	if report.OK() {
+		t.Fatalf("the record was accepted: %+v", report.Results)
+	}
+
+	for _, result := range report.Results {
+		if !strings.Contains(result.Message, "ads.example.net") {
+			t.Errorf("%s does not name the block: %q", result.ServerName, result.Message)
+		}
+	}
+	for name, target := range h.targets {
+		if strings.Contains(target.file(), "www.ads.example.net") {
+			t.Errorf("%s took the record anyway:\n%s", name, target.file())
+		}
+	}
+}
+
+func TestBlockingANameThatAlreadyHasRecordsIsRefused(t *testing.T) {
+	// The records would stay in the listing while the resolver answered
+	// nothing for them, which is the same contradiction from the other side.
+	h := newWriteHarness(t, 1)
+
+	report, err := h.writer.Apply(context.Background(), testActor(), groupTarget(),
+		blockOperation("example.net", dnsfile.TypeNXDOMAIN))
+	if err != nil {
+		t.Fatalf("Apply returned an error: %v", err)
+	}
+	if report.OK() {
+		t.Fatalf("the block was accepted: %+v", report.Results)
+	}
+	if !strings.Contains(report.Results[0].Message, "www.example.net") {
+		t.Errorf("the message does not name the record in the way: %q",
+			report.Results[0].Message)
+	}
+}
+
+func TestARemovedBlockLetsTheNameBeUsedAgain(t *testing.T) {
+	h := newWriteHarness(t, 1)
+
+	if _, err := h.writer.Apply(context.Background(), testActor(), groupTarget(),
+		blockOperation("ads.example.net", dnsfile.TypeNXDOMAIN)); err != nil {
+		t.Fatalf("cannot block the name: %v", err)
+	}
+	if _, err := h.writer.Apply(context.Background(), testActor(), groupTarget(),
+		Operation{Kind: OpDelete, Record: dnsfile.Record{
+			FQDN: "ads.example.net", Type: dnsfile.TypeNXDOMAIN}}); err != nil {
+		t.Fatalf("cannot remove the block: %v", err)
+	}
+
+	report, err := h.writer.Apply(context.Background(), testActor(), groupTarget(),
+		Operation{Kind: OpAdd, Record: dnsfile.Record{
+			FQDN: "ads.example.net", Type: "A", Value: "192.0.2.30"}})
+	if err != nil {
+		t.Fatalf("Apply returned an error: %v", err)
+	}
+	if !report.OK() {
+		t.Fatalf("the record was still refused: %+v", report.Results)
+	}
+}
+
+func TestTheTrailReadsAsABlockRatherThanARecord(t *testing.T) {
+	// A row saying a record was added with an empty value reads as an address
+	// that went missing.
+	h := newWriteHarness(t, 1)
+
+	if _, err := h.writer.Apply(context.Background(), testActor(), groupTarget(),
+		blockOperation("ads.example.net", dnsfile.TypeNXDOMAIN)); err != nil {
+		t.Fatalf("Apply returned an error: %v", err)
+	}
+
+	entries := h.audit.all()
+	if len(entries) == 0 {
+		t.Fatal("no audit row was written")
+	}
+	details := entries[len(entries)-1].Details
+	if !strings.Contains(details, "Blocked ads.example.net with NXDOMAIN") {
+		t.Errorf("details = %q", details)
+	}
+}

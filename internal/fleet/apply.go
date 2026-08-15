@@ -123,7 +123,7 @@ func (o Operation) apply(content []byte) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		return dnsfile.EnsureZone(updated, o.Record.FQDN), nil
+		return checked(declareZone(updated, o.Record))
 	case OpAddMany:
 		// Every record goes into the content before anything is written, so a
 		// row the file refuses leaves the server as it was rather than half
@@ -134,9 +134,9 @@ func (o Operation) apply(content []byte) ([]byte, error) {
 			if err != nil {
 				return nil, fmt.Errorf("row %d: %w", i+1, err)
 			}
-			updated = dnsfile.EnsureZone(next, record.FQDN)
+			updated = declareZone(next, record)
 		}
-		return updated, nil
+		return checked(updated)
 	case OpEdit:
 		updated, err := dnsfile.Edit(content, o.Old, o.Record)
 		if err != nil {
@@ -144,7 +144,7 @@ func (o Operation) apply(content []byte) ([]byte, error) {
 		}
 		// An edit may move the record to another name, and the new name may
 		// sit under a zone the file does not declare yet.
-		return dnsfile.EnsureZone(updated, o.Record.FQDN), nil
+		return checked(declareZone(updated, o.Record))
 	case OpDelete:
 		// The zone line stays. A transparent zone with no local data of its
 		// own changes no answer, and removing it would reach every other name
@@ -153,6 +153,31 @@ func (o Operation) apply(content []byte) ([]byte, error) {
 	default:
 		return nil, fmt.Errorf("%w: unknown operation %q", dnsfile.ErrInvalid, o.Kind)
 	}
+}
+
+// declareZone adds the parent zone a record needs.
+//
+// A blocked name brings its own zone line, so there is nothing to declare for
+// it. Declaring the parent anyway would be a second decision about every other
+// name under that parent, which is not what blocking one name asks for.
+func declareZone(content []byte, record dnsfile.Record) []byte {
+	if dnsfile.IsPolicy(record.Type) {
+		return content
+	}
+	return dnsfile.EnsureZone(content, record.FQDN)
+}
+
+// checked refuses a result the resolver would answer differently from the file.
+//
+// It reads the content rather than the change, so an addition, a batch, an
+// edit, a repair and a mirror are all covered by the one rule. The restore path
+// does not come through here, the same way it skips the configuration check:
+// it puts back a file the resolver was already running.
+func checked(content []byte) ([]byte, error) {
+	if err := dnsfile.CheckConsistency(content); err != nil {
+		return nil, err
+	}
+	return content, nil
 }
 
 // auditAction names the action written for one server.
@@ -169,6 +194,20 @@ func (o Operation) auditAction() string {
 
 // auditDetails describes the change for a person reading the log.
 func (o Operation) auditDetails() string {
+	// A block is not a record, and a trail that called it one would read as
+	// though a name had been given an address.
+	if dnsfile.IsPolicy(o.Record.Type) && o.Kind != OpAddMany {
+		switch o.Kind {
+		case OpAdd:
+			return fmt.Sprintf("Blocked %s with %s", o.Record.FQDN, o.Record.Type)
+		case OpEdit:
+			return fmt.Sprintf("Changed the block on %s: %s -> %s",
+				o.Old.FQDN, o.Old.Type, o.Record.Type)
+		case OpDelete:
+			return fmt.Sprintf("Removed the %s block on %s", o.Record.Type, o.Record.FQDN)
+		}
+	}
+
 	switch o.Kind {
 	case OpAdd:
 		return fmt.Sprintf("Added %s record: %s -> %s",
@@ -188,6 +227,17 @@ func (o Operation) auditDetails() string {
 
 // message describes the change for the result table.
 func (o Operation) message() string {
+	if dnsfile.IsPolicy(o.Record.Type) && o.Kind != OpAddMany {
+		switch o.Kind {
+		case OpAdd:
+			return "Name blocked"
+		case OpEdit:
+			return "Block changed"
+		case OpDelete:
+			return "Block removed"
+		}
+	}
+
 	switch o.Kind {
 	case OpAdd:
 		return "Record added"
@@ -208,6 +258,12 @@ const maxBatchDetails = 400
 func recordList(records []dnsfile.Record) string {
 	names := make([]string, 0, len(records))
 	for _, record := range records {
+		// A block has no value, and an arrow pointing at nothing reads as a
+		// record whose address went missing.
+		if dnsfile.IsPolicy(record.Type) {
+			names = append(names, record.Type+" "+record.FQDN)
+			continue
+		}
 		names = append(names, record.Type+" "+record.FQDN+" -> "+record.Value)
 	}
 	return strings.Join(names, ", ")

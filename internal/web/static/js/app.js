@@ -287,6 +287,16 @@
       priority.hidden = select.value !== 'MX';
     }
 
+    /* The preference is a hidden field carrying the form's own default. It
+       reaches nothing on a blocked name, so it goes back to zero rather than
+       riding along at ten. */
+    const priorityInput = priority
+      ? (priority.tagName === 'INPUT' ? priority : priority.querySelector('input'))
+      : null;
+    if (priorityInput && blocks) {
+      priorityInput.value = '0';
+    }
+
     const help = scope.querySelector('[data-field="policy-help"]');
     if (help) {
       help.hidden = !blocks;

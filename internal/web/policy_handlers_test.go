@@ -103,6 +103,21 @@ func TestABlockedNameCarriesNoValueIntoTheForm(t *testing.T) {
 	}
 }
 
+func TestABlockIsAcceptedWithTheFormsOwnDefaults(t *testing.T) {
+	// The preference is a hidden field and the add form fills it with ten
+	// before anybody chooses a type. Refusing the block over it would be the
+	// panel rejecting a number it wrote itself, which no operator can see or
+	// correct.
+	env := newFleetEnv(t)
+
+	recorder := env.adminForm(t, http.MethodPost, "/dns/records", env.cookie, groupForm(url.Values{
+		"fqdn": {"ads.example.local"}, "type": {"NXDOMAIN"}, "priority": {"10"},
+	}))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200:\n%s", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestTheTableShowsABlockAsADecision(t *testing.T) {
 	// A row with an empty value column reads as a record whose address went
 	// missing.

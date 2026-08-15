@@ -132,11 +132,12 @@ func (r Record) validate(family bool) error {
 		// A behaviour answers on its own. A value that reached the panel here
 		// would reach nothing in the file, and accepting it silently would let
 		// the operator believe an address they typed is being served.
+		//
+		// The preference is not checked, the way it is not checked for any
+		// other type that has no use for it. It is a hidden field carrying the
+		// form's own default rather than something anybody typed.
 		if r.Value != "" {
 			problems = append(problems, "a blocked name takes no value")
-		}
-		if r.Priority != 0 {
-			problems = append(problems, "a blocked name takes no preference")
 		}
 	case r.Type == TypeTXT:
 		if err := validateText(r.Value); err != nil {

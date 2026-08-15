@@ -14,6 +14,8 @@ an agent that runs on it, and the choice is made per server.
 - Reads and writes `local_records.conf` on every managed server.
 - Adds, edits and deletes A, AAAA, CNAME, MX and TXT records on a single server
   or on a whole group, one record at a time or several in one pass.
+- Blocks a name, so every resolver of the target answers NXDOMAIN or REFUSED for
+  it and for everything under it.
 - Compares the servers of a group and repairs a record that is missing or
   different on some of them.
 - Keeps the file each server carried before the last change, and puts it back
@@ -229,6 +231,25 @@ Adding the first record of a domain also writes a `local-zone` line for the
 parent, since Unbound answers nothing for a name whose zone is not local.
 Deleting the last record of a zone leaves that line alone, because the zone may
 still hold records the panel did not write.
+
+### Blocking a name
+
+NXDOMAIN and REFUSED are in the same type list as A and MX, and they are chosen
+the same way. Neither is a value a record can hold: in Unbound a name that
+answers either is a zone with a behaviour rather than a name with data, so the
+panel writes `local-zone: "<name>." always_nxdomain` or `always_refuse` instead
+of a `local-data:` line. The value and the preference disappear from the form
+with the choice, because a blocked name answers on its own.
+
+A block covers that name **and every name under it**. `ads.example.net` blocked
+this way takes `www.ads.example.net` with it.
+
+That is also why the panel refuses the two ways of contradicting it. A record
+under a blocked name would reach the file, pass the configuration check, survive
+the reload and answer nothing, while the panel went on listing it; and a block
+over a name that already has records would do the same to those. Either
+submission is refused with both sides named, and the way out is to remove
+whichever of the two is no longer wanted.
 
 ## Add a server
 

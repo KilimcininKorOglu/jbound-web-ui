@@ -186,6 +186,12 @@ that took a path from a request would be a way to write any file on that host.
 
 A change is one confirmation, one write, one check and one reload.
 
+The reload is its own action. Adding, editing or deleting a record writes the
+file and leaves the server marked unapplied, and **Apply Rules** on the records
+page is what walks the reload ladder and clears the marker. A record therefore
+sits in the file until it is applied, which is what lets several changes reach a
+fleet on one reload.
+
 The confirmation comes first. It puts the clause header at the top of the
 records file and appends the include line to the main configuration when it is
 missing. Without it a resolver takes every write, accepts every configuration

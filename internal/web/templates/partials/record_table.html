@@ -39,8 +39,12 @@
           {{end}}
           <td><strong>{{.FQDN}}</strong></td>
           <td>{{template "record-type" .Type}}</td>
+          {{/* A blocked name holds no value. The cell says what the resolver
+               will answer instead, so the row reads as a decision rather than
+               as a record whose address went missing. */}}
           <td class="text-muted">
-            {{if eq .Type "MX"}}<span class="text-body-secondary">{{.Priority}}</span> {{end}}{{.Value}}
+            {{if policy .Type}}<span data-field="blocked">{{t "dns.blocked"}}</span>
+            {{else}}{{if eq .Type "MX"}}<span class="text-body-secondary">{{.Priority}}</span> {{end}}{{.Value}}{{end}}
           </td>
           <td class="text-end">
             <button class="btn btn-sm btn-outline-primary" type="button"
@@ -108,5 +112,7 @@
 {{else if eq . "MX"}}<span class="badge bg-label-warning">MX</span>
 {{else if eq . "CNAME"}}<span class="badge bg-label-success">CNAME</span>
 {{else if eq . "TXT"}}<span class="badge bg-label-secondary">TXT</span>
+{{else if eq . "NXDOMAIN"}}<span class="badge bg-label-danger">NXDOMAIN</span>
+{{else if eq . "REFUSED"}}<span class="badge bg-label-danger">REFUSED</span>
 {{else}}<span class="badge bg-label-dark">{{.}}</span>{{end}}
 {{end}}

@@ -259,7 +259,13 @@
     });
   });
 
-  /* The preference belongs to MX alone, so the field appears with it. */
+  /* The types that name a behaviour rather than data. A blocked name answers
+     NXDOMAIN or REFUSED on its own, so it takes neither a value nor a
+     preference. */
+  const BLOCK_TYPES = ['NXDOMAIN', 'REFUSED'];
+
+  /* The preference belongs to MX alone, so the field appears with it. The
+     value belongs to every type except the two that block a name. */
   document.addEventListener('change', function (event) {
     const select = event.target.closest('[data-action="record-type"]');
     if (!select) {
@@ -270,9 +276,41 @@
        rows, and hiding the preference of every one of them because one row
        stopped being an MX is not what the operator asked for. */
     const scope = select.closest('[data-field="record-row"]') || select.form;
-    const priority = scope ? scope.querySelector('[data-field="priority"]') : null;
+    if (!scope) {
+      return;
+    }
+
+    const blocks = BLOCK_TYPES.indexOf(select.value) !== -1;
+
+    const priority = scope.querySelector('[data-field="priority"]');
     if (priority) {
       priority.hidden = select.value !== 'MX';
+    }
+
+    const help = scope.querySelector('[data-field="policy-help"]');
+    if (help) {
+      help.hidden = !blocks;
+    }
+
+    const value = scope.querySelector('[data-field="value"]');
+    if (!value) {
+      return;
+    }
+    value.hidden = blocks;
+
+    /* The input is the block itself in a row and sits inside it in the edit
+       form, so the required flag and the text are looked up either way. */
+    const input = value.tagName === 'INPUT' ? value : value.querySelector('input');
+    if (!input) {
+      return;
+    }
+    input.required = !blocks;
+
+    /* Cleared rather than left behind. A hidden field still posts, the server
+       refuses a blocked name that carries a value, and the operator would be
+       reading a complaint about a field they cannot see. */
+    if (blocks) {
+      input.value = '';
     }
   });
 

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"jbound/internal/auth"
+	"jbound/internal/dnsfile"
 	"jbound/internal/i18n"
 	"jbound/internal/logging"
 	"jbound/internal/settings"
@@ -92,6 +93,11 @@ var funcs = template.FuncMap{
 	// duration writes a bound the way an operator types it. The settings package
 	// writes the same durations into its refusals, so both read alike.
 	"duration": settings.Human,
+	// policy reports whether a type names a behaviour rather than data, so the
+	// form can hide the fields a blocked name has no use for. The answer comes
+	// from the package that writes the file rather than from a list repeated
+	// in the markup.
+	"policy": dnsfile.IsPolicy,
 }
 
 // parseTemplates builds one set per language.

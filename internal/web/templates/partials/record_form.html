@@ -63,11 +63,22 @@
           <div class="form-text">{{t "record.preference_help"}}</div>
         </div>
 
-        <div class="col-12">
+        {{/* A blocked name answers on its own, so there is nothing to fill in
+             for it. The block is rendered rather than removed, because the
+             selector switches between the two without a round trip and the
+             content security policy allows no inline script to do it. */}}
+        <div class="col-12" data-field="value"
+             {{if policy .Record.Type}}hidden{{end}}>
           <label class="form-label" for="value">{{t "common.value"}}</label>
           <input class="form-control" id="value" name="value" value="{{.Record.Value}}"
-                 placeholder="192.0.2.10" autocapitalize="none" spellcheck="false" required>
+                 placeholder="192.0.2.10" autocapitalize="none" spellcheck="false"
+                 {{if not (policy .Record.Type)}}required{{end}}>
           <div class="form-text">{{t "record.value_help"}}</div>
+        </div>
+
+        <div class="col-12" data-field="policy-help"
+             {{if not (policy .Record.Type)}}hidden{{end}}>
+          <div class="form-text">{{t "record.policy_help"}}</div>
         </div>
       </div>
       {{end}}
@@ -155,7 +166,8 @@
   <div class="col-md-3">
     <input class="form-control" name="value" value="{{.Record.Value}}"
            aria-label="{{t "common.value"}}" placeholder="192.0.2.10"
-           autocapitalize="none" spellcheck="false" required>
+           autocapitalize="none" spellcheck="false" data-field="value"
+           {{if policy .Record.Type}}hidden{{else}}required{{end}}>
   </div>
 
   <div class="col-md-1">

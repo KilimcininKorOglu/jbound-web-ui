@@ -60,6 +60,21 @@
     { code: '[45]..', swap: false, error: true }
   ];
 
+  /* A rendered fragment goes on the page whatever the status says.
+
+     A fleet operation where every server failed answers 500, and the body is
+     the per-server table naming what each of them said. Thrown away, it left
+     the operator with a toast that vanishes and no way to find out which
+     server refused the change or why. A bare error carries no header and is
+     still handled as an error, so a panel that cannot answer at all does not
+     write its plumbing onto the page. */
+  document.body.addEventListener('htmx:beforeSwap', function (event) {
+    const xhr = event.detail.xhr;
+    if (xhr && xhr.getResponseHeader('HX-Fragment')) {
+      event.detail.shouldSwap = true;
+    }
+  });
+
   const Toast = Swal.mixin({
     toast: true,
     position: 'bottom-end',

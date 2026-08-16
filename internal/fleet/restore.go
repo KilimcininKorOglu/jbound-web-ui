@@ -89,8 +89,7 @@ func (w *Writer) RestoreFile(ctx context.Context, actor server.Actor,
 
 	client, err := w.pool.Get(w.transportConfig(record))
 	if err != nil {
-		result.Status = StatusFailed
-		result.Message = failureMessage(err)
+		result.fail(err)
 		return result, nil
 	}
 
@@ -98,8 +97,7 @@ func (w *Writer) RestoreFile(ctx context.Context, actor server.Actor,
 
 	current, digest, err := client.ReadRecords(ctx)
 	if err != nil {
-		result.Status = StatusFailed
-		result.Message = failureMessage(err)
+		result.fail(err)
 		return result, nil
 	}
 
@@ -121,8 +119,7 @@ func (w *Writer) RestoreFile(ctx context.Context, actor server.Actor,
 		logging.From(ctx).Error("cannot restore the previous records file",
 			"server", record.Name, "error", err)
 
-		result.Status = StatusFailed
-		result.Message = failureMessage(err)
+		result.fail(err)
 		return result, nil
 	}
 

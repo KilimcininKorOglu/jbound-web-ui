@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+
+	"jbound/internal/transport"
 )
 
 func TestTheFormOffersTheTwoBlockingBehaviours(t *testing.T) {
@@ -162,5 +164,100 @@ func TestABlockIsRemovedThroughTheSameTable(t *testing.T) {
 		if strings.Contains(env.target(id).file(), "always_nxdomain") {
 			t.Errorf("server %d still holds the block", id)
 		}
+	}
+}
+
+// --- Reporting a failure ---------------------------------------------------
+
+func TestAReportReachesThePageEvenWhenEveryServerFailed(t *testing.T) {
+	// htmx swaps no error response by default, and a fleet operation where
+	// every server failed answers 500. Without the marker the body reaches the
+	// browser and is thrown away, leaving the operator with a toast that
+	// vanishes and no way to find out which server said what.
+	env := newFleetEnv(t)
+
+	if recorder := env.adminForm(t, http.MethodPost, "/dns/records", env.cookie,
+		groupForm(url.Values{"fqdn": {"ads.example.local"}, "type": {"NXDOMAIN"}})); recorder.Code != http.StatusOK {
+		t.Fatalf("cannot block the name: %d", recorder.Code)
+	}
+
+	recorder := env.adminForm(t, http.MethodPost, "/dns/records", env.cookie, groupForm(url.Values{
+		"fqdn": {"www.ads.example.local"}, "type": {"A"}, "value": {"10.0.0.50"},
+	}))
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", recorder.Code)
+	}
+	if recorder.Header().Get(FragmentHeader) == "" {
+		t.Errorf("the body is not marked as one the page should show")
+	}
+
+	body := recorder.Body.String()
+	for _, want := range []string{"dns1", "dns2", "dns3", `data-field="status">failed<`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the report does not carry %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestEveryFailureSaysWhoRefused(t *testing.T) {
+	// A change the panel refused is the operator's to correct, and a server
+	// the panel could not reach is a matter for that host. The message says
+	// what happened, and this says where to look.
+	env := newFleetEnv(t)
+	env.target(3).writeErr = transport.ErrCommandFailed
+
+	recorder := env.adminForm(t, http.MethodPost, "/dns/records", env.cookie, groupForm(url.Values{
+		"fqdn": {"new.example.local"}, "type": {"A"}, "value": {"10.0.0.50"},
+	}))
+	if recorder.Code != http.StatusMultiStatus {
+		t.Fatalf("status = %d, want 207:\n%s", recorder.Code, recorder.Body.String())
+	}
+
+	body := recorder.Body.String()
+	if !strings.Contains(body, `data-field="source"`) {
+		t.Errorf("the report names no source:\n%s", body)
+	}
+	if !strings.Contains(body, "resolver") {
+		t.Errorf("a command the resolver refused is not reported as its own:\n%s", body)
+	}
+}
+
+func TestARefusedChangeIsReportedAsThePanelsOwn(t *testing.T) {
+	// It would fail the same way on every server, so sending the operator to
+	// look at one of them would be sending them to the wrong place.
+	env := newFleetEnv(t)
+
+	if recorder := env.adminForm(t, http.MethodPost, "/dns/records", env.cookie,
+		groupForm(url.Values{"fqdn": {"ads.example.local"}, "type": {"NXDOMAIN"}})); recorder.Code != http.StatusOK {
+		t.Fatalf("cannot block the name: %d", recorder.Code)
+	}
+
+	recorder := env.adminForm(t, http.MethodPost, "/dns/records", env.cookie, groupForm(url.Values{
+		"fqdn": {"www.ads.example.local"}, "type": {"A"}, "value": {"10.0.0.50"},
+	}))
+
+	source := between(t, recorder.Body.String(), `data-field="source">`, "</span>")
+	if source != "panel" {
+		t.Errorf("the source reads %q, want the panel's own", source)
+	}
+}
+
+func TestTheReportCountsWhatHappened(t *testing.T) {
+	// The rows say which server did what. The line above them says how many,
+	// which is the first thing an operator reads on a fleet of seven.
+	env := newFleetEnv(t)
+	env.target(3).writeErr = transport.ErrCommandFailed
+
+	recorder := env.adminForm(t, http.MethodPost, "/dns/records", env.cookie, groupForm(url.Values{
+		"fqdn": {"new.example.local"}, "type": {"A"}, "value": {"10.0.0.50"},
+	}))
+
+	body := recorder.Body.String()
+	if !strings.Contains(body, `data-field="counts"`) {
+		t.Fatalf("the report carries no summary:\n%s", body)
+	}
+	counts := between(t, body, `data-field="counts">`, "</p>")
+	if !strings.Contains(counts, "2 succeeded") || !strings.Contains(counts, "1 failed") {
+		t.Errorf("the summary reads %q", counts)
 	}
 }

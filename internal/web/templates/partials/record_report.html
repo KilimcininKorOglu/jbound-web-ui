@@ -17,6 +17,10 @@
         {{template "alert" (alert "error" (t .Kind.None))}}
       {{end}}
 
+      <p class="text-muted small" data-field="counts">
+        {{tf "report.counts" .Report.SuccessCount .Report.FailedCount .Report.SkippedCount}}
+      </p>
+
       <div class="table-responsive">
         <table class="table table-sm">
           <caption class="visually-hidden">{{t "report.caption"}}</caption>
@@ -24,6 +28,7 @@
             <tr>
               <th scope="col">{{t "common.server"}}</th>
               <th scope="col">{{t "report.status"}}</th>
+              <th scope="col">{{t "report.source"}}</th>
               <th scope="col">{{t "report.message"}}</th>
             </tr>
           </thead>
@@ -38,6 +43,17 @@
                 <span class="badge bg-label-secondary" data-field="status">{{t "report.skipped"}}</span>
                 {{else}}
                 <span class="badge bg-label-danger" data-field="status">{{t "report.failed"}}</span>
+                {{end}}
+              </td>
+              {{/* Who refused, rather than what was said. A change the panel
+                   refused is the operator's to correct, a server that could
+                   not be reached is a matter for that host, and a resolver
+                   that read the file and said no is a third thing again. */}}
+              <td>
+                {{if .Source}}
+                <span class="badge bg-label-secondary" data-field="source">
+                  {{t (printf "report.source_%s" .Source)}}
+                </span>
                 {{end}}
               </td>
               <td class="text-muted">{{.Message}}</td>

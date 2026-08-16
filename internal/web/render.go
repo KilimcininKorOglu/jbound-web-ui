@@ -252,6 +252,14 @@ func (a *App) Render(w http.ResponseWriter, r *http.Request, status int,
 	writeHTML(w, r, status, buf.Bytes(), false)
 }
 
+// FragmentHeader marks a body the browser should put on the page.
+//
+// The panel answers a failure two ways. A rendered fragment says what went
+// wrong where the operator was working, and a bare error says only that the
+// panel could not answer at all. The header tells the two apart, so the client
+// can swap the first and leave the second to a toast.
+const FragmentHeader = "HX-Fragment"
+
 // RenderPartial writes one fragment, which is what an htmx swap expects.
 //
 // It takes the request because the language does, and a fragment carries no
@@ -266,6 +274,12 @@ func (a *App) RenderPartial(w http.ResponseWriter, r *http.Request, status int,
 		serverError(w, r)
 		return
 	}
+	// Says the body is meant for the page even when the status is a failure.
+	// htmx swaps no error response by default, so a report where every server
+	// failed used to reach the browser and be thrown away, leaving the
+	// operator with a toast and no idea which server said what.
+	w.Header().Set(FragmentHeader, "1")
+
 	// A fragment carries no token, and the record table is the largest thing
 	// the panel sends after the stylesheets: a hundred rows of markup, each
 	// naming the servers that hold the record.

@@ -285,8 +285,7 @@ func (w *Writer) repairOne(ctx context.Context, actor server.Actor,
 
 	client, err := w.pool.Get(w.transportConfig(record))
 	if err != nil {
-		result.Status = StatusFailed
-		result.Message = failureMessage(err)
+		result.fail(err)
 		return result
 	}
 
@@ -294,8 +293,7 @@ func (w *Writer) repairOne(ctx context.Context, actor server.Actor,
 
 	content, digest, err := client.ReadRecords(ctx)
 	if err != nil {
-		result.Status = StatusFailed
-		result.Message = failureMessage(err)
+		result.fail(err)
 		return result
 	}
 
@@ -308,21 +306,18 @@ func (w *Writer) repairOne(ctx context.Context, actor server.Actor,
 
 	updated, err := op.apply(content)
 	if err != nil {
-		result.Status = StatusFailed
-		result.Message = failureMessage(err)
+		result.fail(err)
 		return result
 	}
 	w.keepPrevious(ctx, record.ID, content, digest)
 
 	if err := writeRecords(ctx, client, updated, digest); err != nil {
-		result.Status = StatusFailed
-		result.Message = failureMessage(err)
+		result.fail(err)
 		return result
 	}
 
 	if err := w.checkConfig(ctx, client, record, content); err != nil {
-		result.Status = StatusFailed
-		result.Message = failureMessage(err)
+		result.fail(err)
 		return result
 	}
 
@@ -473,8 +468,7 @@ func (w *Writer) mirrorOne(ctx context.Context, actor server.Actor,
 
 	client, err := w.pool.Get(w.transportConfig(record))
 	if err != nil {
-		result.Status = StatusFailed
-		result.Message = failureMessage(err)
+		result.fail(err)
 		return result
 	}
 
@@ -482,8 +476,7 @@ func (w *Writer) mirrorOne(ctx context.Context, actor server.Actor,
 
 	content, digest, err := client.ReadRecords(ctx)
 	if err != nil {
-		result.Status = StatusFailed
-		result.Message = failureMessage(err)
+		result.fail(err)
 		return result
 	}
 
@@ -504,8 +497,7 @@ func (w *Writer) mirrorOne(ctx context.Context, actor server.Actor,
 				"server", record.Name, "source", source.Name,
 				"operation", op.Kind, "fqdn", op.Record.FQDN, "error", err)
 
-			result.Status = StatusFailed
-			result.Message = failureMessage(err)
+			result.fail(err)
 			return result
 		}
 	}
@@ -519,14 +511,12 @@ func (w *Writer) mirrorOne(ctx context.Context, actor server.Actor,
 		logging.From(ctx).Error("cannot write a mirrored file",
 			"server", record.Name, "source", source.Name, "error", err)
 
-		result.Status = StatusFailed
-		result.Message = failureMessage(err)
+		result.fail(err)
 		return result
 	}
 
 	if err := w.checkConfig(ctx, client, record, content); err != nil {
-		result.Status = StatusFailed
-		result.Message = failureMessage(err)
+		result.fail(err)
 		return result
 	}
 

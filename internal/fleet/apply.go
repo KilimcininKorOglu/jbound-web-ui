@@ -269,12 +269,34 @@ func recordList(records []dnsfile.Record) string {
 	return strings.Join(names, ", ")
 }
 
+// Where a failure came from.
+//
+// The same table shows a change the panel refused, a server it could not
+// reach and a resolver that said no, and the three call for three different
+// moves from the operator. The message says what happened; this says who said
+// it.
+const (
+	SourcePanel      = "panel"
+	SourceConnection = "connection"
+	SourceResolver   = "resolver"
+)
+
 // ServerResult is what one server did.
 type ServerResult struct {
 	ServerID   int64
 	ServerName string
 	Status     string
 	Message    string
+
+	// Source stays empty unless the server failed.
+	Source string
+}
+
+// fail marks a result with what went wrong and who said it.
+func (r *ServerResult) fail(err error) {
+	r.Status = StatusFailed
+	r.Message = failureMessage(err)
+	r.Source = failureSource(err)
 }
 
 // Report is the outcome of one fleet operation.
@@ -300,6 +322,12 @@ func (r Report) Counts() (success, failed, skipped int) {
 	}
 	return success, failed, skipped
 }
+
+// SuccessCount, FailedCount and SkippedCount feed the summary line of the
+// report, so a reader sees the shape of the outcome before reading the rows.
+func (r Report) SuccessCount() int { success, _, _ := r.Counts(); return success }
+func (r Report) FailedCount() int  { _, failed, _ := r.Counts(); return failed }
+func (r Report) SkippedCount() int { _, _, skipped := r.Counts(); return skipped }
 
 // OK reports whether every server that was reached succeeded.
 func (r Report) OK() bool {
@@ -500,8 +528,7 @@ func (w *Writer) applyOne(ctx context.Context, actor server.Actor,
 			"server", record.Name, "operation", op.Kind,
 			"fqdn", op.Record.FQDN, "type", op.Record.Type, "error", err)
 
-		result.Status = StatusFailed
-		result.Message = failureMessage(err)
+		result.fail(err)
 		return result
 	}
 
@@ -558,6 +585,9 @@ func refuse(record server.Server) (ServerResult, bool) {
 	case !record.Trusted():
 		result.Status = StatusFailed
 		result.Message = "The host key has not been approved yet"
+		// Nothing was dialled, and what is missing is the approval that would
+		// let the panel dial at all.
+		result.Source = SourceConnection
 	default:
 		return ServerResult{}, false
 	}
@@ -577,6 +607,28 @@ func failureMessage(err error) string {
 		return "The operation was stopped before this server was finished"
 	default:
 		return err.Error()
+	}
+}
+
+// failureSource names who refused, so the row says where to look.
+//
+// A change the panel refused is the operator's to correct and would fail the
+// same way on every server. A server the panel could not reach is a matter for
+// that host. A resolver that read the file and said no is a third thing again,
+// and the previous file is already back on it.
+func failureSource(err error) string {
+	switch {
+	case errors.Is(err, dnsfile.ErrInvalid), errors.Is(err, dnsfile.ErrDuplicate),
+		errors.Is(err, dnsfile.ErrNotFound), errors.Is(err, context.DeadlineExceeded),
+		errors.Is(err, context.Canceled):
+		return SourcePanel
+	case errors.Is(err, ErrConfigRefused), errors.Is(err, transport.ErrCommandFailed),
+		errors.Is(err, transport.ErrConflict), errors.Is(err, transport.ErrRemoteOutput):
+		return SourceResolver
+	default:
+		// Everything the transport raises before a command runs: unreachable,
+		// an unknown or changed host key, a refused credential.
+		return SourceConnection
 	}
 }
 

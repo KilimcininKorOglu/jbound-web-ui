@@ -73,15 +73,13 @@ func (w *Writer) reloadOne(ctx context.Context, actor server.Actor,
 
 	client, err := w.pool.Get(w.transportConfig(record))
 	if err != nil {
-		result.Status = StatusFailed
-		result.Message = failureMessage(err)
+		result.fail(err)
 		return result
 	}
 
 	step, output, err := w.climb(ctx, client, record)
 	if err != nil {
-		result.Status = StatusFailed
-		result.Message = failureMessage(err)
+		result.fail(err)
 
 		// No audit row and no applied digest. The trail records what the
 		// resolver took, and it took nothing; the operator sees work still to

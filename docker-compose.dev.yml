@@ -58,6 +58,9 @@ services:
       # reads the private key, so mounting the directory would put the
       # credential that opens the other two targets inside each one.
       - ./docker/keys/dev_ed25519.pub:/keys/dev_ed25519.pub:ro
+      # The SSH host keys, so a recreated container keeps the identity
+      # the panel pinned. Without it every rebuild looks like an impostor.
+      - dns1-identity:/var/lib/target-identity
     ports:
       - "127.0.0.1:8331:53/tcp"
       - "127.0.0.1:8331:53/udp"
@@ -78,6 +81,9 @@ services:
     volumes:
       - ./docker/seed:/seed:ro
       - ./docker/keys/dev_ed25519.pub:/keys/dev_ed25519.pub:ro
+      # The SSH host keys, so a recreated container keeps the identity
+      # the panel pinned. Without it every rebuild looks like an impostor.
+      - dns2-identity:/var/lib/target-identity
     ports:
       - "127.0.0.1:8332:53/tcp"
       - "127.0.0.1:8332:53/udp"
@@ -103,6 +109,9 @@ services:
     volumes:
       - ./docker/seed:/seed:ro
       - ./docker/keys/dev_ed25519.pub:/keys/dev_ed25519.pub:ro
+      # The SSH host keys, so a recreated container keeps the identity
+      # the panel pinned. Without it every rebuild looks like an impostor.
+      - dns3-identity:/var/lib/target-identity
     ports:
       - "127.0.0.1:8333:53/tcp"
       - "127.0.0.1:8333:53/udp"
@@ -124,6 +133,9 @@ services:
       SEED_FILE: /seed/dns1.conf
     volumes:
       - ./docker/seed:/seed:ro
+      # The certificate the panel pinned. Nothing from the image lives
+      # here, so the volume carries the identity and nothing else.
+      - dns4-identity:/etc/jbound-agent
     ports:
       - "127.0.0.1:8360:53/tcp"
       - "127.0.0.1:8360:53/udp"
@@ -146,6 +158,9 @@ services:
       MAIN_INCLUDE: "0"
     volumes:
       - ./docker/seed:/seed:ro
+      # The certificate the panel pinned. Nothing from the image lives
+      # here, so the volume carries the identity and nothing else.
+      - dns5-identity:/etc/jbound-agent
     ports:
       - "127.0.0.1:8361:53/tcp"
       - "127.0.0.1:8361:53/udp"
@@ -163,6 +178,9 @@ services:
       SEED_FILE: /seed/dns3.conf
     volumes:
       - ./docker/seed:/seed:ro
+      # The certificate the panel pinned. Nothing from the image lives
+      # here, so the volume carries the identity and nothing else.
+      - dns6-identity:/etc/jbound-agent
     ports:
       - "127.0.0.1:8362:53/tcp"
       - "127.0.0.1:8362:53/udp"
@@ -188,3 +206,11 @@ volumes:
   jbound-data:
   jbound-gocache:
   jbound-gomod:
+  # One per target. They outlive a recreate, which is what keeps the host key
+  # and the agent certificate the panel approved from changing underneath it.
+  dns1-identity:
+  dns2-identity:
+  dns3-identity:
+  dns4-identity:
+  dns5-identity:
+  dns6-identity:

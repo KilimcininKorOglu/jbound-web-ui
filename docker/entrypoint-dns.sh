@@ -20,9 +20,25 @@ REMOTE_CONTROL=${REMOTE_CONTROL:-1}
 log() { printf '[entrypoint-dns] %s\n' "$*"; }
 
 # --- SSH host keys -----------------------------------------------------------
-# Generated on first start so every container gets a distinct host key. The
-# panel pins whatever it sees on first connection.
+# Generated once per target, then kept on a volume so a recreated container
+# offers the same identity. The panel pins what it saw on first connection and
+# refuses a host that later offers something else, which is the whole point of
+# the pin and is exactly what a rebuilt container used to trip.
+#
+# The keys are restored into /etc/ssh rather than mounted there, because a
+# volume over /etc/ssh would freeze the sshd configuration this image writes at
+# build time.
+IDENTITY_DIR=${IDENTITY_DIR:-/var/lib/target-identity}
+install -d -m 700 "$IDENTITY_DIR"
+
+if ls "$IDENTITY_DIR"/ssh_host_*_key > /dev/null 2>&1; then
+    cp -a "$IDENTITY_DIR"/ssh_host_* /etc/ssh/
+    log "restored the host keys from $IDENTITY_DIR"
+fi
+
+# Fills in only what is missing, so a restored key is never replaced.
 ssh-keygen -A
+cp -a /etc/ssh/ssh_host_* "$IDENTITY_DIR"/
 
 # --- Seed records ------------------------------------------------------------
 # Only on first start. Later runs keep whatever the panel wrote.

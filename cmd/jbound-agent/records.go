@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
 
 // clauseHeader opens the Unbound clause the records belong to.
@@ -57,7 +58,7 @@ func (a *Agent) writeRecords(data []byte, expect string) error {
 	if expect != "" && expect != digest {
 		return errConflict
 	}
-	return replaceFile(a.cfg.RecordsPath, data)
+	return replaceFile(a.cfg.RecordsPath, data, true)
 }
 
 // replaceFile writes the content beside the target and moves it into place.
@@ -66,9 +67,20 @@ func (a *Agent) writeRecords(data []byte, expect string) error {
 // sees half of one. The temporary name is fixed rather than random for the
 // same reason the ssh path fixes it: a leftover from a killed process is one
 // file to find rather than a directory that fills up.
-func replaceFile(path string, data []byte) error {
+//
+// A rename replaces the inode, so the owner, the group and the mode of the
+// file that was there are gone unless they are carried over. They are carried
+// over here: a file this agent rewrote should look to every other tool exactly
+// like the file it replaced.
+//
+// keepReadable is for the records file, which a resolver that dropped
+// privileges still has to open. The main configuration is not this agent's
+// file to normalise, so it keeps whatever mode it had.
+func replaceFile(path string, data []byte, keepReadable bool) error {
 	dir, name := filepath.Split(path)
 	staging := filepath.Join(dir, "."+name+".tmp")
+
+	mode, uid, gid := previousOwnership(path, keepReadable)
 
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("cannot create %s: %w", dir, err)
@@ -99,15 +111,59 @@ func replaceFile(path string, data []byte) error {
 	// The mode is set explicitly rather than left to the umask, because the
 	// umask of whatever started this process is not something to inherit for a
 	// file a resolver has to open.
-	if err := os.Chmod(staging, recordsMode); err != nil {
+	if err := os.Chmod(staging, mode); err != nil {
 		os.Remove(staging)
 		return fmt.Errorf("cannot set the mode on %s: %w", staging, err)
 	}
+	restoreOwnership(staging, uid, gid)
+
 	if err := os.Rename(staging, path); err != nil {
 		os.Remove(staging)
 		return fmt.Errorf("cannot move %s into place: %w", path, err)
 	}
 	return nil
+}
+
+// previousOwnership reports what the file being replaced looked like.
+//
+// A file that is not there yet has no previous anything, and the records mode
+// is what a new one gets.
+func previousOwnership(path string, keepReadable bool) (os.FileMode, int, int) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return recordsMode, -1, -1
+	}
+
+	mode := info.Mode().Perm()
+	if keepReadable && mode&0o044 == 0 {
+		// Somebody tightened it to where the resolver cannot open it. Carrying
+		// that over would keep a file nothing can read, so the guarantee wins
+		// over the preservation here.
+		mode = recordsMode
+	}
+
+	uid, gid := -1, -1
+	if stat, ok := info.Sys().(*syscall.Stat_t); ok {
+		uid, gid = int(stat.Uid), int(stat.Gid)
+	}
+	return mode, uid, gid
+}
+
+// restoreOwnership puts the replacement under the account that owned the file.
+//
+// Best effort, and deliberately quiet about failing. A process that is not root
+// cannot give a file away, so an agent running under its own account cannot
+// take one back to root however much it would like to. The group is what is
+// left to carry over there, and setup-agent.sh makes the two files it manages
+// the agent's own so that nothing drifts on the first write.
+func restoreOwnership(path string, uid, gid int) {
+	if uid < 0 && gid < 0 {
+		return
+	}
+	if os.Chown(path, uid, gid) == nil {
+		return
+	}
+	_ = os.Chown(path, -1, gid)
 }
 
 // ensureInclude makes the resolver read the records file, and says what it had
@@ -144,7 +200,7 @@ func (a *Agent) ensureInclude() (string, error) {
 	}
 	main = append(main, []byte("include: "+a.cfg.RecordsPath+"\n")...)
 
-	if err := replaceFile(a.cfg.MainConfig, main); err != nil {
+	if err := replaceFile(a.cfg.MainConfig, main, false); err != nil {
 		return "", err
 	}
 	return "added", nil
@@ -163,7 +219,7 @@ func (a *Agent) ensureHeader() error {
 			return nil
 		}
 	}
-	return replaceFile(a.cfg.RecordsPath, append([]byte(clauseHeader+"\n"), data...))
+	return replaceFile(a.cfg.RecordsPath, append([]byte(clauseHeader+"\n"), data...), true)
 }
 
 // includesRecords reports whether the main configuration reads the file.

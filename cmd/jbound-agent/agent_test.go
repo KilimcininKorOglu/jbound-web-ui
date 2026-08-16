@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -675,4 +676,123 @@ func TestAFileThatAlreadyHoldsSomethingElseCanStillBeRead(t *testing.T) {
 	if !strings.Contains(string(data), "module-config") {
 		t.Errorf("the read did not carry the file as it is:\n%s", data)
 	}
+}
+
+// --- What a rewrite leaves behind ------------------------------------------
+
+func TestTheMainConfigurationKeepsItsMode(t *testing.T) {
+	// A rename replaces the inode, so a file this agent rewrites would come
+	// back with whatever mode the agent felt like. The main configuration is
+	// not the agent's file to normalise: 0640 stays 0640.
+	h := newHarness(t, "server:\n", "server:\n")
+	if err := os.Chmod(h.mainPath, 0o640); err != nil {
+		t.Fatalf("cannot set the mode: %v", err)
+	}
+
+	response := h.call(t, http.MethodPost, agentapi.PathEnsureInclude, nil)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", response.StatusCode)
+	}
+	if !strings.Contains(h.main(t), "include:") {
+		t.Fatalf("the include line was not added:\n%s", h.main(t))
+	}
+
+	info, err := os.Stat(h.mainPath)
+	if err != nil {
+		t.Fatalf("cannot stat the main configuration: %v", err)
+	}
+	if info.Mode().Perm() != 0o640 {
+		t.Errorf("mode = %o, want 640", info.Mode().Perm())
+	}
+}
+
+func TestARecordsFileNobodyCouldReadIsMadeReadableAgain(t *testing.T) {
+	// The other direction. The resolver drops privileges and still has to open
+	// this one, so a mode that would keep it shut is not carried over.
+	h := newHarness(t, "server:\n", "server:\n")
+	if err := os.Chmod(h.recordsPath, 0o600); err != nil {
+		t.Fatalf("cannot set the mode: %v", err)
+	}
+
+	content := "server:\nlocal-data: \"www.example.net. A 192.0.2.10\"\n"
+	response := h.call(t, http.MethodPut, agentapi.PathRecords,
+		agentapi.WriteRequest{Content: base64.StdEncoding.EncodeToString([]byte(content))})
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", response.StatusCode)
+	}
+
+	info, err := os.Stat(h.recordsPath)
+	if err != nil {
+		t.Fatalf("cannot stat the records file: %v", err)
+	}
+	if info.Mode().Perm() != 0o644 {
+		t.Errorf("mode = %o, want 644", info.Mode().Perm())
+	}
+}
+
+func TestARecordsFileKeepsAModeTheResolverCanRead(t *testing.T) {
+	// A mode somebody chose on purpose survives, as long as the resolver can
+	// still open the file.
+	h := newHarness(t, "server:\n", "server:\n")
+	if err := os.Chmod(h.recordsPath, 0o664); err != nil {
+		t.Fatalf("cannot set the mode: %v", err)
+	}
+
+	content := "server:\nlocal-data: \"www.example.net. A 192.0.2.10\"\n"
+	h.call(t, http.MethodPut, agentapi.PathRecords,
+		agentapi.WriteRequest{Content: base64.StdEncoding.EncodeToString([]byte(content))})
+
+	info, err := os.Stat(h.recordsPath)
+	if err != nil {
+		t.Fatalf("cannot stat the records file: %v", err)
+	}
+	if info.Mode().Perm() != 0o664 {
+		t.Errorf("mode = %o, want 664", info.Mode().Perm())
+	}
+}
+
+func TestARewrittenFileKeepsItsGroup(t *testing.T) {
+	// The owner cannot be carried over by a process that is not root, and the
+	// group is what is left. A group this account belongs to but does not write
+	// files under is one the rewrite has to put back deliberately.
+	other := aSecondaryGroup(t)
+	h := newHarness(t, "server:\n", "server:\n")
+	if err := os.Chown(h.recordsPath, -1, other); err != nil {
+		t.Skipf("cannot set the group: %v", err)
+	}
+
+	content := "server:\nlocal-data: \"www.example.net. A 192.0.2.10\"\n"
+	response := h.call(t, http.MethodPut, agentapi.PathRecords,
+		agentapi.WriteRequest{Content: base64.StdEncoding.EncodeToString([]byte(content))})
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", response.StatusCode)
+	}
+
+	info, err := os.Stat(h.recordsPath)
+	if err != nil {
+		t.Fatalf("cannot stat the records file: %v", err)
+	}
+	if gid := int(info.Sys().(*syscall.Stat_t).Gid); gid != other {
+		t.Errorf("gid = %d, want %d", gid, other)
+	}
+}
+
+// aSecondaryGroup names a group this account is in that a file it creates would
+// not land in by itself. Without one there is nothing to observe, so the test
+// asking for it has no run.
+func aSecondaryGroup(t *testing.T) int {
+	t.Helper()
+
+	groups, err := os.Getgroups()
+	if err != nil {
+		t.Skipf("cannot read the groups: %v", err)
+	}
+	own := os.Getegid()
+	for _, gid := range groups {
+		if gid != own {
+			return gid
+		}
+	}
+	t.Skip("this account is in one group only")
+	return -1
 }

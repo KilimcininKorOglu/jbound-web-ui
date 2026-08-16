@@ -17,7 +17,7 @@ an agent that runs on it, and the choice is made per server.
 - Blocks a name, so every resolver of the target answers NXDOMAIN or REFUSED for
   it and for everything under it.
 - Compares the servers of a group and repairs a record that is missing or
-  different on some of them.
+  different on some of them, one row at a time or the whole comparison at once.
 - Keeps the file each server carried before the last change, and puts it back
   from the servers page when a change turns out to be wrong.
 - Checks the configuration of a resolver before a change goes live, and puts the
@@ -292,6 +292,16 @@ folds the servers together: one line per record, with a badge saying how many of
 the targeted servers hold it. A badge below the target count links to **Record
 Diff**, where the servers are compared side by side and a missing or different
 record can be repaired.
+
+The comparison closes in three ways. Each row carries a button that writes that
+one record to the servers that lack it. Above the table, **Repair every
+difference** writes what each server lacks in a single pass: every server ends
+up holding every record any of them held, and nothing is deleted, so a server
+whose extra record was the one worth keeping keeps it. Beside it,
+**Synchronise** copies the source server over the others, which does delete: the
+target ends up holding exactly what the source holds. The first needs no source
+and is open to anyone who may write a record. The second names a source in the
+settings and is admin only, because it removes records nobody named.
 
 ## Audit trail and SIEM
 

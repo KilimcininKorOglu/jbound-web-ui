@@ -128,6 +128,40 @@ asks for it instead.
 No account is created. No sudoers rule is installed. Nothing under `/etc/unbound`
 changes permissions.
 
+## Which account it runs as
+
+Root, deliberately. The agent writes the records file, repairs the main
+configuration and reloads the resolver, and all three need it. Running it
+unprivileged with sudoers rules would put back exactly the surface this binary
+exists to remove.
+
+The panel is the opposite: it runs as the unprivileged `jbound` user and refuses
+to start as root, because it holds the SSH private key of every managed server.
+The agent holds no such thing. It has one token, one file to write and one
+service to reload.
+
+What root is traded against is a fixed surface and a tight unit:
+
+| Setting | What it gives up |
+| --- | --- |
+| `NoNewPrivileges=yes` | cannot gain a privilege it does not start with |
+| `CapabilityBoundingSet=` | no capabilities at all |
+| `ProtectSystem=strict` | the whole filesystem is read only |
+| `ReadWritePaths=/etc/unbound` | the one directory it may write |
+| `RestrictSUIDSGID=yes` | cannot create a setuid file |
+| `MemoryDenyWriteExecute=yes` | cannot write executable memory |
+| `ProtectHome`, `PrivateTmp`, `PrivateDevices` | no home directories, no shared tmp, no devices |
+
+So it is root that can write one directory and run the five commands its own
+configuration names, with no shell anywhere in the process.
+
+If you give it a records file or a main configuration outside `/etc/unbound`,
+the script writes a drop-in at
+`/etc/systemd/system/jbound-agent.service.d/paths.conf` that allows those
+directories, because the unit alone would leave the agent unable to write the
+file it was told to manage. Moving the paths back under `/etc/unbound` removes
+the drop-in again.
+
 ## The commands the agent runs
 
 The agent runs what its environment file names, and nothing else. The setup

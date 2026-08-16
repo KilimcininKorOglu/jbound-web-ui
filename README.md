@@ -61,6 +61,12 @@ Managed DNS server, through the agent:
 
 ## Install
 
+On a server with nothing on it, `deploy/bootstrap.sh` does all of this in one
+run: dependencies, source, build, install, environment file, firewall and
+service. [INSTALL.md](INSTALL.md) covers it, along with the reverse proxy it
+deliberately leaves to you. The rest of this section is the same install one
+step at a time.
+
 Build and install:
 
 ```

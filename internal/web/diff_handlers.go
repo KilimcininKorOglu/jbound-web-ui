@@ -47,6 +47,10 @@ type diffPageData struct {
 	// reach. The page compares the whole fleet by default, and no write may
 	// target that.
 	Writable bool
+
+	// HasDifferences reports whether there is anything to repair, so the batch
+	// button is absent on a target that already agrees.
+	HasDifferences bool
 }
 
 func (a *App) handleDiffPage(w http.ResponseWriter, r *http.Request) {
@@ -107,6 +111,7 @@ func (a *App) diffPageData(r *http.Request) (diffPageData, error) {
 		SourceName:     sourceName,
 		IsAdmin:        session.IsAdmin(),
 		Writable:       query.Scope == fleet.ScopeServer || query.Scope == fleet.ScopeGroup,
+		HasDifferences: diff.Mismatches() > 0,
 		Diff:           diff,
 		Query:          query,
 		Groups:         groups,
@@ -237,6 +242,43 @@ func (a *App) handleDiffRepair(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a.renderReport(w, r, report, repairReport)
+}
+
+// handleDiffRepairAll closes every difference of the target in one pass.
+//
+// It adds and never removes, so it sits with the per record repair rather than
+// with the synchronisation: an operator who may write a record may write the
+// records their fleet already holds.
+func (a *App) handleDiffRepairAll(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		a.reportProblem(w, r, a.catalog(r).T("error.form_unreadable"), http.StatusBadRequest)
+		return
+	}
+
+	target, err := targetFromValues(r.Form)
+	if err != nil {
+		a.reportProblem(w, r, recordMessage(r.Context(), a.catalog(r), err), http.StatusBadRequest)
+		return
+	}
+
+	report, err := a.Records.RepairAll(r.Context(), a.actor(r), target)
+	if err != nil {
+		a.reportProblem(w, r, recordMessage(r.Context(), a.catalog(r), err), dnsStatus(err))
+		return
+	}
+
+	a.renderReport(w, r, report, repairAllReport)
+}
+
+var repairAllReport = reportKind{
+	Title:   "report.repair_all.title",
+	OK:      "report.repair_all.ok",
+	Partial: "report.repair_all.partial",
+	None:    "report.repair_all.none",
+
+	ToastOK:      "report.repair_all.toast_ok",
+	ToastPartial: "report.repair_all.toast_partial",
+	ToastNone:    "report.repair_all.toast_none",
 }
 
 var repairReport = reportKind{

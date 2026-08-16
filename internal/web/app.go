@@ -144,9 +144,10 @@ func (a *App) Router() http.Handler {
 		"GET /dns/query":      a.handleQueryForm,
 		"POST /dns/query":     a.withFleetDeadline(a.handleQuery),
 
-		"GET /diff":         a.handleDiffPage,
-		"GET /diff/table":   a.handleDiffTable,
-		"POST /diff/repair": a.withFleetDeadline(a.handleDiffRepair),
+		"GET /diff":             a.handleDiffPage,
+		"GET /diff/table":       a.handleDiffTable,
+		"POST /diff/repair":     a.withFleetDeadline(a.handleDiffRepair),
+		"POST /diff/repair-all": a.withFleetDeadline(a.handleDiffRepairAll),
 	}
 	for pattern, handler := range records {
 		if strings.HasPrefix(pattern, "GET ") {

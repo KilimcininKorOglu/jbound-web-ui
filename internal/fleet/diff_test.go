@@ -8,6 +8,7 @@ import (
 
 	"jbound/internal/audit"
 	"jbound/internal/dnsfile"
+	"jbound/internal/transport"
 )
 
 func record(fqdn, kind, value string) dnsfile.Record {
@@ -475,5 +476,126 @@ func TestAMirrorIsAudited(t *testing.T) {
 		if !strings.Contains(entry.Details, "dns1") {
 			t.Errorf("the entry does not name the source: %q", entry.Details)
 		}
+	}
+}
+
+// --- Repairing every difference at once ------------------------------------
+
+func TestRepairAllGivesEveryServerWhatTheOthersHold(t *testing.T) {
+	// The batch of the per record repair. An operator with forty differing
+	// rows presses one button rather than forty.
+	h := newWriteHarness(t, 3)
+	h.targets["dns2"].content = []byte(`server:
+local-data: "only-on-dns2.example.net. A 192.0.2.50"
+`)
+	h.targets["dns3"].content = []byte(`server:
+local-data: "only-on-dns3.example.net. A 192.0.2.51"
+`)
+
+	report, err := h.writer.RepairAll(context.Background(), testActor(), groupTarget())
+	if err != nil {
+		t.Fatalf("RepairAll returned an error: %v", err)
+	}
+	if !report.OK() {
+		t.Fatalf("got %+v", report.Results)
+	}
+
+	for name, target := range h.targets {
+		for _, want := range []string{
+			"www.example.net", "only-on-dns2.example.net", "only-on-dns3.example.net",
+		} {
+			if !strings.Contains(target.file(), want) {
+				t.Errorf("%s does not hold %s:\n%s", name, want, target.file())
+			}
+		}
+	}
+}
+
+func TestRepairAllDeletesNothing(t *testing.T) {
+	// This is the whole difference between it and a synchronisation.
+	//
+	// While every server answers, the union is a superset of all of them and
+	// nothing could be dropped whatever the rule. The case that can drop a
+	// record is a server the panel failed to read while the union was
+	// collected and reached a moment later: its records are missing from the
+	// union, and a mirror would take them away on the write that follows.
+	h := newWriteHarness(t, 2)
+	h.targets["dns2"].content = []byte(`server:
+local-data: "kept.example.net. A 192.0.2.60"
+`)
+	h.targets["dns2"].firstReadErr = transport.ErrUnreachable
+
+	if _, err := h.writer.RepairAll(context.Background(), testActor(), groupTarget()); err != nil {
+		t.Fatalf("RepairAll returned an error: %v", err)
+	}
+
+	held := h.targets["dns2"].file()
+	if !strings.Contains(held, "kept.example.net") {
+		t.Errorf("the record dns2 held outside the union was removed:\n%s", held)
+	}
+	if !strings.Contains(held, "www.example.net") {
+		t.Errorf("dns2 was not repaired:\n%s", held)
+	}
+}
+
+func TestRepairAllWritesEachServerOnce(t *testing.T) {
+	// One write per server whatever the number of differing rows, so a large
+	// diff costs one reload rather than one per row.
+	h := newWriteHarness(t, 2)
+	h.targets["dns2"].content = []byte(`server:
+local-data: "one.example.net. A 192.0.2.71"
+local-data: "two.example.net. A 192.0.2.72"
+local-data: "three.example.net. A 192.0.2.73"
+`)
+
+	if _, err := h.writer.RepairAll(context.Background(), testActor(), groupTarget()); err != nil {
+		t.Fatalf("RepairAll returned an error: %v", err)
+	}
+
+	writes := 0
+	for _, call := range h.targets["dns1"].callOrder() {
+		if call == "write" {
+			writes++
+		}
+	}
+	if writes != 1 {
+		t.Errorf("dns1 was written %d times, want one", writes)
+	}
+}
+
+func TestRepairAllSkipsAServerThatLacksNothing(t *testing.T) {
+	h := newWriteHarness(t, 2)
+
+	report, err := h.writer.RepairAll(context.Background(), testActor(), groupTarget())
+	if err != nil {
+		t.Fatalf("RepairAll returned an error: %v", err)
+	}
+
+	for _, result := range report.Results {
+		if result.Status != StatusSkipped {
+			t.Errorf("%s = %q %q, want a skip", result.ServerName, result.Status, result.Message)
+		}
+	}
+}
+
+func TestAnUnreadableServerDoesNotStopTheRepair(t *testing.T) {
+	// Nothing is deleted, so a server left out of the union loses nothing by
+	// it, and a fleet with one host down can still be brought into line.
+	h := newWriteHarness(t, 3)
+	h.targets["dns2"].content = []byte(`server:
+local-data: "only-on-dns2.example.net. A 192.0.2.50"
+`)
+	h.targets["dns3"].readErr = transport.ErrUnreachable
+
+	report, err := h.writer.RepairAll(context.Background(), testActor(), groupTarget())
+	if err != nil {
+		t.Fatalf("RepairAll returned an error: %v", err)
+	}
+	if report.OK() {
+		t.Fatalf("the unreachable server was reported as fine: %+v", report.Results)
+	}
+
+	if !strings.Contains(h.targets["dns1"].file(), "only-on-dns2.example.net") {
+		t.Errorf("dns1 was not repaired while dns3 was down:\n%s", h.targets["dns1"].file())
 	}
 }

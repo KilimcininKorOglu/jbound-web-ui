@@ -72,6 +72,11 @@ type writableTarget struct {
 	writeErr error
 	readErr  error
 
+	// firstReadErr fails the first read and no other, which is how a server
+	// that was unreachable while a batch collected its records can still be
+	// read by the write that follows.
+	firstReadErr error
+
 	reloadOut string
 	reloadErr error
 	reloads   int
@@ -129,6 +134,11 @@ func (t *writableTarget) ReadRecords(context.Context) ([]byte, string, error) {
 	defer t.mu.Unlock()
 
 	t.calls = append(t.calls, "read")
+	if t.firstReadErr != nil {
+		err := t.firstReadErr
+		t.firstReadErr = nil
+		return nil, "", err
+	}
 	if t.readErr != nil {
 		return nil, "", t.readErr
 	}

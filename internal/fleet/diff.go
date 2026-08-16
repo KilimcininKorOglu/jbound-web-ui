@@ -374,6 +374,179 @@ func (w *Writer) writeRepairAudit(ctx context.Context, actor server.Actor,
 	})
 }
 
+// RepairAll gives every server of the target every record any of them holds.
+func (s *Service) RepairAll(ctx context.Context, actor server.Actor,
+	target Target) (Report, error) {
+
+	return s.writer.RepairAll(ctx, actor, target)
+}
+
+// RepairAll closes every difference of the target in one pass.
+//
+// It is the batch of the per record repair rather than a small mirror: it adds
+// and never removes, so it needs no source server and it can take nothing away
+// from a server whose extra record was the one worth keeping. A target ends up
+// holding the union of what its servers held.
+//
+// The union is read from the files rather than from the cache, for the reason
+// a repair and a mirror are: the cache is what showed the operator the
+// difference and by now it may be older than the servers it describes.
+//
+// A server the panel cannot read contributes nothing and fails on its own row.
+// Nothing is deleted, so a server left out of the union loses nothing by it.
+func (w *Writer) RepairAll(ctx context.Context, actor server.Actor,
+	target Target) (Report, error) {
+
+	targets, groupName, err := w.Targets(ctx, target)
+	if err != nil {
+		return Report{}, err
+	}
+
+	want := w.union(ctx, targets)
+
+	results := w.fanOut(ctx, targets, func(ctx context.Context, record server.Server) ServerResult {
+		return w.repairAllOne(ctx, actor, record, want, groupName)
+	})
+
+	return Report{Results: results, GroupName: groupName}, nil
+}
+
+// union reads every server of the target and folds their records into one set.
+//
+// The files are read again in the write pass rather than kept from here, so
+// every write carries a digest taken a moment before it. Holding the first
+// read would age it by however long the rest of the fleet took to answer, and
+// the write would be refused for a change nobody made.
+func (w *Writer) union(ctx context.Context, targets []server.Server) []dnsfile.Record {
+	seen := map[recordKey]bool{}
+	var want []dnsfile.Record
+
+	for _, record := range targets {
+		if _, refused := refuse(record); refused {
+			continue
+		}
+
+		records, err := w.readSource(ctx, record)
+		if err != nil {
+			// The row of that server reports it. Reading the others is what
+			// makes a repair possible while one host is down.
+			logging.From(ctx).Warn("cannot read a server while collecting the records to repair",
+				"server", record.Name, "error", err)
+			continue
+		}
+
+		for _, held := range records {
+			key := keyOf(held)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			want = append(want, held)
+		}
+	}
+	return want
+}
+
+// repairAllOne writes what one server lacks, in one write.
+func (w *Writer) repairAllOne(ctx context.Context, actor server.Actor,
+	record server.Server, want []dnsfile.Record, groupName string) ServerResult {
+
+	if refusal, ok := refuse(record); ok {
+		return refusal
+	}
+	result := ServerResult{ServerID: record.ID, ServerName: record.Name}
+
+	lock := w.lockFor(record.ID)
+	lock.Lock()
+	defer lock.Unlock()
+
+	client, err := w.pool.Get(w.transportConfig(record))
+	if err != nil {
+		result.fail(err)
+		return result
+	}
+
+	w.ensureInclude(ctx, client, actor, record)
+
+	content, digest, err := client.ReadRecords(ctx)
+	if err != nil {
+		result.fail(err)
+		return result
+	}
+
+	// The removals of the same comparison are dropped. That is the whole
+	// difference between this and a synchronisation.
+	added, _ := mirrorOperations(dnsfile.Parse(content), want)
+	if len(added) == 0 {
+		result.Status = StatusSkipped
+		result.Message = "Nothing missing"
+		return result
+	}
+
+	// Every addition is applied in memory first, so a server whose file the
+	// panel cannot rewrite completely is left exactly as it was.
+	updated := content
+	for _, op := range added {
+		updated, err = op.apply(updated)
+		if err != nil {
+			logging.From(ctx).Error("cannot repair a record",
+				"server", record.Name, "fqdn", op.Record.FQDN, "error", err)
+
+			result.fail(err)
+			return result
+		}
+	}
+
+	w.keepPrevious(ctx, record.ID, content, digest)
+
+	if err := writeRecords(ctx, client, updated, digest); err != nil {
+		logging.From(ctx).Error("cannot write a repaired file",
+			"server", record.Name, "error", err)
+
+		result.fail(err)
+		return result
+	}
+
+	if err := w.checkConfig(ctx, client, record, content); err != nil {
+		result.fail(err)
+		return result
+	}
+
+	result.Status = StatusSuccess
+	result.Message = fmt.Sprintf("%d added", len(added))
+	refillCtx, cancelRefill := afterChange(ctx)
+	defer cancelRefill()
+
+	if _, refreshErr := w.refresh.oneHeld(refillCtx, record.ID); refreshErr != nil {
+		logging.From(ctx).Error("cannot refresh the cache after a repair",
+			"server", record.Name, "error", refreshErr)
+		result.Message += ", but the cache could not be refreshed"
+	}
+
+	w.writeRepairAllAudit(ctx, actor, record, len(added), groupName)
+	return result
+}
+
+// writeRepairAllAudit records one server's share of a batch repair.
+func (w *Writer) writeRepairAllAudit(ctx context.Context, actor server.Actor,
+	record server.Server, added int, groupName string) {
+
+	details := fmt.Sprintf("Repaired every difference: %d added", added)
+	if groupName != "" {
+		details += " (group " + groupName + ")"
+	}
+
+	_ = w.audit.Write(ctx, audit.Entry{
+		UID:        actor.UID,
+		Username:   actor.Username,
+		Action:     audit.ActionDiffRepair,
+		ServerID:   &record.ID,
+		ServerName: record.Name,
+		Details:    details,
+		IPAddress:  actor.IPAddress,
+	})
+}
+
 // ErrNoSource marks a synchronisation with no usable source server.
 var ErrNoSource = errors.New("no source server is chosen")
 

@@ -305,8 +305,47 @@ if command -v systemctl > /dev/null 2>&1 && [ -d /run/systemd/system ]; then
     HAVE_SYSTEMD=yes
     install -m 0644 -o root -g root deploy/jbound-agent.service \
         /etc/systemd/system/jbound-agent.service
-    systemctl daemon-reload
     say "  installed /etc/systemd/system/jbound-agent.service"
+
+    # The unit runs with ProtectSystem=strict and names /etc/unbound as the one
+    # writable path. A resolver that keeps its files somewhere else would fail
+    # at the first write with a read only filesystem, long after the operator
+    # chose the path here, so the directories are added now.
+    DROPIN_DIR=/etc/systemd/system/jbound-agent.service.d
+    EXTRA_PATHS=
+    for path in "$RECORDS_PATH" "$MAIN_CONFIG_PATH"; do
+        dir=$(dirname "$path")
+        case "$dir" in
+            /etc/unbound | /etc/unbound/*) continue ;;
+        esac
+        case " $EXTRA_PATHS " in
+            *" $dir "*) continue ;;
+        esac
+        EXTRA_PATHS="$EXTRA_PATHS $dir"
+    done
+
+    if [ -n "$EXTRA_PATHS" ]; then
+        install -d -m 0755 "$DROPIN_DIR"
+        {
+            echo "# Written by deploy/bootstrap-agent.sh."
+            echo "# The unit allows /etc/unbound only, and this agent was given"
+            echo "# paths outside it."
+            echo "[Service]"
+            for dir in $EXTRA_PATHS; do
+                echo "ReadWritePaths=$dir"
+            done
+        } > "$DROPIN_DIR/paths.conf"
+        chmod 0644 "$DROPIN_DIR/paths.conf"
+        say "  allowed the agent to write:$EXTRA_PATHS"
+    elif [ -f "$DROPIN_DIR/paths.conf" ]; then
+        # The paths moved back under /etc/unbound. Leaving the old drop in
+        # would keep a directory writable that nothing writes to.
+        rm -f "$DROPIN_DIR/paths.conf"
+        rmdir "$DROPIN_DIR" 2>/dev/null || true
+        say "  removed an old writable path override"
+    fi
+
+    systemctl daemon-reload
 else
     say "  no systemd on this host, so the unit was not installed"
 fi

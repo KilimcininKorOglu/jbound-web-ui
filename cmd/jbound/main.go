@@ -45,7 +45,7 @@ const (
 )
 
 // usage is printed for an argument the command does not know.
-const usage = `jbound manages several Unbound resolvers over SSH.
+const usage = `jbound manages several Unbound resolvers, over SSH or through an agent.
 
   jbound                        run the panel
   jbound backup <dir>           write a consistent copy of the data directory

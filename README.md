@@ -174,6 +174,11 @@ it to write, to check and to reload, and the agent runs the commands its own
 configuration names. No command text crosses the network, so there is nothing
 for a login shell to run and nothing for `sudo` to allow.
 
+On a resolver with nothing on it, `deploy/bootstrap-agent.sh` does all of the
+below in one run: dependencies, source, build, binary, unit, configuration and
+firewall. [INSTALL-AGENT.md](INSTALL-AGENT.md) covers it. The steps below are
+the same install by hand.
+
 Build it, copy it onto the resolver and run the setup script as root:
 
 ```

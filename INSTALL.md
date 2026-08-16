@@ -241,7 +241,11 @@ sudo ./deploy/setup-agent.sh -t "<the token the panel showed once>"
 ```
 
 The panel generates the key pair or the token when you add the server, and shows
-you the half the setup script needs. The README covers both paths in full.
+you the half the setup script needs.
+
+For the agent path there is a bootstrap of its own, which builds and installs the
+agent on a bare resolver the way this one did the panel:
+[INSTALL-AGENT.md](INSTALL-AGENT.md). The README covers both paths by hand.
 
 ## Upgrading
 

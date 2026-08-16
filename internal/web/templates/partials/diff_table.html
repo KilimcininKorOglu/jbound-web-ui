@@ -13,20 +13,37 @@
     <div class="text-muted small" data-field="stale-note">{{.StaleNote}}</div>
     {{end}}
 
-    {{/* The synchronisation deletes as well as adds, so it says so before it
-         is started and it is offered only when a source is chosen. */}}
-    {{if .SourceName}}
+    {{/* One button for the whole target, above the per record ones, because
+         repairing forty rows by hand is the thing an operator opens this page
+         wanting to avoid.
+
+         It deletes as well as adds, so it says so before it is started, it is
+         offered only when a source is chosen, and only to an account that may
+         press it. A button everybody can see and only some can use answers 403
+         to the rest. */}}
+    {{if and .SourceName .IsAdmin .Writable}}
     <div class="dns-toolbar mt-3 mb-0">
-      <button class="btn btn-outline-primary btn-sm" type="button" data-field="sync-from-source"
+      <button class="btn btn-primary" type="button" data-field="sync-from-source"
               hx-post="/diff/sync" hx-include="#diff-controls"
               hx-target="#record-panel" hx-swap="innerHTML"
               hx-confirm="{{tf "diff.sync_question" .SourceName}}"
               data-confirm-title="{{t "diff.sync_title"}}">
         {{tf "diff.sync" .SourceName}}
       </button>
+      <span class="form-text ms-1">{{t "diff.sync_help"}}</span>
     </div>
-    {{else}}
-    <div class="text-muted small mt-3" data-field="no-source">{{t "diff.no_source"}}</div>
+    {{else if and .SourceName .IsAdmin}}
+    {{/* The page compares the whole fleet by default and a change may not
+         target it, so the button would answer a refusal to everyone who
+         pressed it before narrowing the comparison. */}}
+    <div class="text-muted small mt-3" data-field="whole-fleet">{{t "dns.apply_note"}}</div>
+    {{else if .IsAdmin}}
+    {{/* The note used to name the settings page and leave the reader to find
+         it. The link lands on the control itself. */}}
+    <div class="text-muted small mt-3" data-field="no-source">
+      {{t "diff.no_source"}}
+      <a href="/settings#source_server_id">{{t "diff.choose_source"}}</a>
+    </div>
     {{end}}
   </div>
 

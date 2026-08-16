@@ -38,6 +38,15 @@ type diffPageData struct {
 	// instead of offering a button that cannot do anything.
 	SourceID   int64
 	SourceName string
+
+	// IsAdmin gates the synchronisation, which is an admin route. A button
+	// everybody can see and only some can press answers 403 to the rest.
+	IsAdmin bool
+
+	// Writable reports whether the comparison names a target a change may
+	// reach. The page compares the whole fleet by default, and no write may
+	// target that.
+	Writable bool
 }
 
 func (a *App) handleDiffPage(w http.ResponseWriter, r *http.Request) {
@@ -91,10 +100,13 @@ func (a *App) diffPageData(r *http.Request) (diffPageData, error) {
 	}
 
 	sourceID, sourceName := a.sourceServer(r.Context())
+	session, _ := SessionFrom(r.Context())
 
 	return diffPageData{
 		SourceID:       sourceID,
 		SourceName:     sourceName,
+		IsAdmin:        session.IsAdmin(),
+		Writable:       query.Scope == fleet.ScopeServer || query.Scope == fleet.ScopeGroup,
 		Diff:           diff,
 		Query:          query,
 		Groups:         groups,

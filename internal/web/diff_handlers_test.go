@@ -218,7 +218,63 @@ func TestTheDiffTableMarksTheSourceColumn(t *testing.T) {
 	if !strings.Contains(body, `data-field="source"`) {
 		t.Errorf("the source column carries no badge:\n%s", body)
 	}
+
+	// The comparison has to name a target a change may reach, which the whole
+	// fleet is not.
+	body = env.diffTable(t, "scope=group&group_id=1")
 	if !strings.Contains(body, `data-field="sync-from-source"`) {
 		t.Errorf("the table offers no synchronisation:\n%s", body)
+	}
+}
+
+func TestNoSynchronisationIsOfferedForTheWholeFleet(t *testing.T) {
+	// The page opens comparing every server, and no write may target that. The
+	// button would answer a refusal to everyone who pressed it before
+	// narrowing the comparison.
+	env := newFleetEnv(t)
+
+	form := env.settingsForm(t, map[string]string{settings.SourceServerID: "1"})
+	if recorder := env.do(t, postForm("/settings", form), env.adminCookie(t)); recorder.Code != http.StatusOK {
+		t.Fatalf("cannot choose the source: %d", recorder.Code)
+	}
+
+	body := env.diffTable(t, "scope=all")
+	if strings.Contains(body, `data-field="sync-from-source"`) {
+		t.Errorf("the table offers a synchronisation of the whole fleet:\n%s", body)
+	}
+	if !strings.Contains(body, `data-field="whole-fleet"`) {
+		t.Errorf("the table does not say what to narrow to:\n%s", body)
+	}
+}
+
+func TestOnlyAnAdminIsOfferedTheSynchronisation(t *testing.T) {
+	// The route is admin territory. A button everybody can see and only some
+	// can press answers 403 to the rest, which reads as a fault rather than as
+	// a permission.
+	env := newFleetEnv(t)
+
+	form := env.settingsForm(t, map[string]string{settings.SourceServerID: "1"})
+	if recorder := env.do(t, postForm("/settings", form), env.adminCookie(t)); recorder.Code != http.StatusOK {
+		t.Fatalf("cannot choose the source: %d", recorder.Code)
+	}
+
+	plain := env.login(t, "dnsuser")
+	recorder := env.do(t, httptest.NewRequest(http.MethodGet, "/diff/table", nil), plain)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("GET /diff/table as a plain user = %d", recorder.Code)
+	}
+	if strings.Contains(recorder.Body.String(), `data-field="sync-from-source"`) {
+		t.Errorf("a plain user is offered a button they cannot press:\n%s", recorder.Body.String())
+	}
+}
+
+func TestTheMissingSourceNoteLeadsToTheSetting(t *testing.T) {
+	// Naming the settings page and leaving the reader to find the control is
+	// the difference between a note and a way out.
+	env := newFleetEnv(t)
+
+	body := env.diffTable(t, "")
+	if !strings.Contains(body, `href="/settings#source_server_id"`) {
+		t.Errorf("the note does not lead anywhere:\n%s", body)
 	}
 }

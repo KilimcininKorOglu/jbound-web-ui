@@ -575,3 +575,104 @@ func TestAnEmptyTokenFileIsRefused(t *testing.T) {
 		t.Fatal("an empty token file was accepted")
 	}
 }
+
+// --- What may be written ---------------------------------------------------
+
+func TestARecordsFileOfRecordsIsTaken(t *testing.T) {
+	// Everything the panel and an operator legitimately put in this file: the
+	// clause header, comments, blank lines and the three record directives.
+	h := newHarness(t, "", "server:\n")
+
+	content := `# Seeded by hand.
+
+server:
+local-data: "www.example.net. A 192.0.2.10"
+local-data-ptr: "192.0.2.10 www.example.net."
+local-zone: "example.net." transparent
+local-zone: "ads.example.net." always_nxdomain
+`
+
+	response := h.call(t, http.MethodPut, agentapi.PathRecords,
+		agentapi.WriteRequest{Content: base64.StdEncoding.EncodeToString([]byte(content))})
+
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", response.StatusCode)
+	}
+	if h.records(t) != content {
+		t.Errorf("the file does not hold what was sent:\n%s", h.records(t))
+	}
+}
+
+func TestADirectiveThatIsNotARecordIsRefused(t *testing.T) {
+	// The reason this check exists. The file is included inside a server
+	// clause, unbound reads it as root, and the Debian build carries the
+	// python module, so one directive here is a way to run code on the host.
+	cases := map[string]string{
+		"a module that runs code": "server:\nmodule-config: \"python iterator\"\n",
+		"the account to run as":   "server:\nusername: root\n",
+		"another file to read":    "server:\ninclude: /tmp/anything.conf\n",
+		"a chroot":                "server:\nchroot: \"\"\n",
+	}
+
+	for name, content := range cases {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t, "server:\n", "server:\n")
+
+			response := h.call(t, http.MethodPut, agentapi.PathRecords,
+				agentapi.WriteRequest{Content: base64.StdEncoding.EncodeToString([]byte(content))})
+
+			if response.StatusCode != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400", response.StatusCode)
+			}
+			if h.records(t) != "server:\n" {
+				t.Errorf("the file was written anyway:\n%s", h.records(t))
+			}
+		})
+	}
+}
+
+func TestARefusedWriteNamesTheLineAndTheDirective(t *testing.T) {
+	// An operator has to be able to find it. The line number and the directive
+	// are enough for that, and the rest of the line is not something to copy
+	// into a log.
+	h := newHarness(t, "server:\n", "server:\n")
+
+	content := "server:\nlocal-data: \"www.example.net. A 192.0.2.10\"\nmodule-config: \"python iterator\"\n"
+	response := h.call(t, http.MethodPut, agentapi.PathRecords,
+		agentapi.WriteRequest{Content: base64.StdEncoding.EncodeToString([]byte(content))})
+
+	answer := decode[agentapi.Error](t, response)
+	if answer.Class != agentapi.ClassBadInput {
+		t.Errorf("class = %q, want %q", answer.Class, agentapi.ClassBadInput)
+	}
+	if !strings.Contains(answer.Message, "line 3") {
+		t.Errorf("the message does not name the line: %q", answer.Message)
+	}
+	if !strings.Contains(answer.Message, "module-config") {
+		t.Errorf("the message does not name the directive: %q", answer.Message)
+	}
+	if strings.Contains(answer.Message, "python iterator") {
+		t.Errorf("the message repeats what was sent: %q", answer.Message)
+	}
+}
+
+func TestAFileThatAlreadyHoldsSomethingElseCanStillBeRead(t *testing.T) {
+	// The check guards the write and not the read. A target prepared before
+	// this rule existed has to stay readable, or the panel could not show the
+	// operator what is on it.
+	h := newHarness(t, "server:\nmodule-config: \"python iterator\"\n", "server:\n")
+
+	response := h.call(t, http.MethodGet, agentapi.PathRecords, nil)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", response.StatusCode)
+	}
+
+	answer := decode[agentapi.Records](t, response)
+	data, err := base64.StdEncoding.DecodeString(answer.Content)
+	if err != nil {
+		t.Fatalf("the content is not base64: %v", err)
+	}
+	if !strings.Contains(string(data), "module-config") {
+		t.Errorf("the read did not carry the file as it is:\n%s", data)
+	}
+}

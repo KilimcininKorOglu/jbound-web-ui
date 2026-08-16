@@ -137,6 +137,14 @@ func (a *Agent) handleWriteRecords(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The file is read by the resolver as part of its own configuration, so
+	// what may be written into it is records and nothing else.
+	if err := validateContent(data); err != nil {
+		a.log.Warn("a write carried something that is not a record", "error", err)
+		a.fail(w, http.StatusBadRequest, agentapi.ClassBadInput, err.Error())
+		return
+	}
+
 	// Nothing in the request said where this goes. The file is the one the
 	// configuration on this host names, and there is no way to ask for
 	// another.

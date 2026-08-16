@@ -98,6 +98,49 @@ fi
 FINGERPRINT=$(openssl x509 -in "$CONF_DIR/agent.crt" -outform der |
     openssl dgst -sha256 -binary | openssl base64 | tr -d '=')
 
+# --- The commands this host has ----------------------------------------------
+# The paths differ between distributions, and a rung that names a command the
+# host does not have is a rung that fails at the moment it is needed. The RHEL
+# family carries no /usr/sbin/service at all, so both fallbacks there are
+# systemctl.
+resolve() {
+    command -v "$1" 2>/dev/null || true
+}
+
+CHECKCONF=$(resolve unbound-checkconf)
+CONTROL=$(resolve unbound-control)
+SERVICE=$(resolve service)
+SYSTEMCTL=$(resolve systemctl)
+
+CHECK_CONF_CMD=
+if [ -n "$CHECKCONF" ]; then
+    CHECK_CONF_CMD="$CHECKCONF $MAIN_CONFIG_PATH"
+fi
+
+RELOAD_CMD=
+if [ -n "$CONTROL" ]; then
+    RELOAD_CMD="$CONTROL reload_keep_cache"
+fi
+
+RELOAD_FALLBACK_CMD=
+RESTART_CMD=
+if [ -n "$SERVICE" ]; then
+    RELOAD_FALLBACK_CMD="$SERVICE unbound reload"
+    RESTART_CMD="$SERVICE unbound restart"
+elif [ -n "$SYSTEMCTL" ]; then
+    RELOAD_FALLBACK_CMD="$SYSTEMCTL reload unbound"
+    RESTART_CMD="$SYSTEMCTL restart unbound"
+fi
+
+# systemctl answers the status with one word the panel can read, so it is
+# preferred even on a host that also carries service.
+STATUS_CMD=
+if [ -n "$SYSTEMCTL" ]; then
+    STATUS_CMD="$SYSTEMCTL is-active unbound"
+elif [ -n "$SERVICE" ]; then
+    STATUS_CMD="$SERVICE unbound status"
+fi
+
 # --- Environment file --------------------------------------------------------
 cat > "$CONF_DIR/jbound-agent.env" <<EOF
 # Managed by jbound setup-agent.sh. Re-run the script after changing a path.
@@ -113,12 +156,13 @@ RECORDS_PATH=$RECORDS_PATH
 MAIN_CONFIG_PATH=$MAIN_CONFIG_PATH
 
 # Each step may be left empty, which is a resolver that does not have it. The
-# panel skips that rung rather than reporting a failure.
-CHECK_CONF_CMD=/usr/sbin/unbound-checkconf $MAIN_CONFIG_PATH
-RELOAD_CMD=/usr/sbin/unbound-control reload_keep_cache
-RELOAD_FALLBACK_CMD=/usr/sbin/service unbound reload
-RESTART_CMD=/usr/sbin/service unbound restart
-STATUS_CMD=systemctl is-active unbound
+# panel skips that rung rather than reporting a failure. These were resolved on
+# this host, so re-run the script after installing a command that was missing.
+CHECK_CONF_CMD=$CHECK_CONF_CMD
+RELOAD_CMD=$RELOAD_CMD
+RELOAD_FALLBACK_CMD=$RELOAD_FALLBACK_CMD
+RESTART_CMD=$RESTART_CMD
+STATUS_CMD=$STATUS_CMD
 EOF
 chmod 600 "$CONF_DIR/jbound-agent.env"
 echo "wrote $CONF_DIR/jbound-agent.env"

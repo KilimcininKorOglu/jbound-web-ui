@@ -17,7 +17,8 @@ an agent that runs on it, and the choice is made per server.
 - Blocks a name, so every resolver of the target answers NXDOMAIN or REFUSED for
   it and for everything under it.
 - Compares the servers of a group and repairs a record that is missing or
-  different on some of them, one row at a time or the whole comparison at once.
+  different on some of them, one row at a time or the whole comparison at once,
+  or makes them all match one chosen server.
 - Keeps the file each server carried before the last change, and puts it back
   from the servers page when a change turns out to be wrong.
 - Checks the configuration of a resolver before a change goes live, and puts the
@@ -27,6 +28,7 @@ an agent that runs on it, and the choice is made per server.
 - Asks each resolver what it answers for a name.
 - Records every action with the user, the address and the result, and can mirror
   the trail to syslog in CEF.
+- Writes a consistent backup of its own database and keys with one command.
 - Signs users in against the local accounts of the panel host through PAM.
 - Speaks English and Turkish, follows a light or dark theme or the one the
   operating system asks for.
@@ -36,7 +38,8 @@ an agent that runs on it, and the choice is made per server.
 Panel host:
 
 - Linux with systemd, PAM and rsyslog.
-- Go 1.26 and a C compiler to build.
+- Go 1.26 to build the panel, and a C compiler with the PAM development headers
+  (`libpam0g-dev` on Debian) to build the helper.
 - `dig` for the query page.
 - A reverse proxy for TLS. The panel listens on the loopback address.
 
@@ -66,10 +69,11 @@ sudo make install
 ```
 
 `deploy/install.sh` does the work and can be re-run at any time. It creates the
-`jbound` system account, the state directory, both binaries, the PAM
-service file, the environment file, the rsyslog file the panel owns, two sudoers
-rules, the third-party licences and the systemd unit. It never overwrites the
-environment file, and it reads back the two modes the whole design rests on:
+`jbound` system account, the state directory, the panel binary and the setuid
+helper, the PAM service file, the environment file, the rsyslog file the panel
+owns, two sudoers rules for restarting and validating rsyslog, the third-party
+licences and the systemd unit. It never overwrites the environment file, and it
+reads back the two modes the whole design rests on:
 
 | Path | Mode | Why |
 | --- | --- | --- |
@@ -81,6 +85,10 @@ Then review `/etc/jbound/jbound.env` and start the service:
 ```
 sudo systemctl enable --now jbound
 ```
+
+`install.sh -n` leaves out the systemd unit and the two sudoers rules, both of
+which drive rsyslog through `systemctl`. That is the way in for a host that has
+no systemd, and the SIEM page is the part that stops working there.
 
 ### Who may sign in
 
@@ -186,7 +194,8 @@ that took a path from a request would be a way to write any file on that host.
 
 ### What the panel does to a resolver
 
-A change is one confirmation, one write, one check and one reload.
+A change is one confirmation, one write and one check. The reload comes
+afterwards, on its own.
 
 The reload is its own action. Adding, editing or deleting a record writes the
 file and leaves the server marked unapplied, and **Apply Rules** on the records
@@ -303,6 +312,11 @@ target ends up holding exactly what the source holds. The first needs no source
 and is open to anyone who may write a record. The second names a source in the
 settings and is admin only, because it removes records nobody named.
 
+Both batch buttons need the comparison narrowed to a group or to one server
+first. The page opens on the whole fleet, which no write may target, so neither
+button is offered until the **Compare** control names something a change can
+reach.
+
 ## Audit trail and SIEM
 
 Every action is written to the database with the user, the uid, the address, the
@@ -330,10 +344,11 @@ usually the state an incident is about.
 ## Settings
 
 The **Settings** page stores its values in the database and every change takes
-effect on the next read, without a restart. It covers four groups: timings
-(session, cache, SSH and DNS timeouts), limits (login attempts, fleet
-concurrency, page size), the SIEM switch, and the interface defaults a browser
-gets before anybody picks a language or a theme.
+effect on the next read, without a restart. It covers five groups: timings
+(session, cache, SSH, DNS and fleet operation timeouts), limits (login attempts,
+fleet concurrency, page size), the SIEM switch, the fleet source server that a
+synchronisation copies from, and the interface defaults a browser gets before
+anybody picks a language or a theme.
 
 The language and the theme of one browser are its own choice and live in a
 cookie. Nothing about a reader is stored server side.
@@ -482,6 +497,7 @@ of it touches the host.
 make dev-up        # build and start the stack
 make dev-verify    # check the acceptance criteria
 make dev-logs      # follow the panel logs
+make dev-shell     # open a shell in the panel container
 make dev-stop      # stop it and keep the data
 make dev-start     # start it again
 make dev-down      # remove it and drop every volume
@@ -496,6 +512,13 @@ The panel is served on `http://127.0.0.1:8330`. `make dev-env` creates
 `.env.dev` from the example on the first run and refuses to start until every
 `CHANGEME` value is replaced. The test accounts are created inside the container
 by `docker/testusers.sh`.
+
+A `docker compose` command typed by hand needs that file named, because the
+agent targets refuse to start without the token in it:
+
+```
+docker compose -f docker-compose.dev.yml --env-file .env.dev ps
+```
 
 The first start also fills the panel: the six targets, their approved host keys
 and agent fingerprints, and a group named `resolvers` over all of them, written
@@ -521,11 +544,21 @@ and `8362`, next to `8331`, `8332` and `8333` for the SSH three.
 ```
 make check        # every check that needs no container
 make test         # unit tests only
+make lint         # go vet, staticcheck and modernize over both tag sets
+make vuln         # the vulnerability scan
+make dev-test     # unit tests inside the panel container
 make dev-itest    # integration tests against the containers
 make cppcheck     # the setuid helper, on top of -Wall -Wextra -Werror
 make shellcheck   # the install and setup scripts
 make coverage     # coverage without the integration tests
 make dev-coverage # coverage of both tag sets, inside the container
+```
+
+Every target runs the tests with `-count=1 -race`, so a run never reports a
+cached result. One test on its own is the usual Go command:
+
+```
+go test ./internal/fleet/ -run TestRepairAllDeletesNothing -count=1
 ```
 
 `coverage` leaves the integration tests out and therefore understates the
@@ -539,8 +572,9 @@ it covers the setuid helper and the scripts that run as root during install,
 which are the two highest risk artefacts here. Those two need `cppcheck` and
 `shellcheck` on the host, and say so rather than passing quietly when they are
 missing. `make dev-cppcheck` runs the helper analyser inside the panel
-container instead, for a workstation that has no `cppcheck`. The Go analysers are pinned and run through `go run`, so they need
-nothing installed beyond the Go toolchain.
+container instead, for a workstation that has no `cppcheck`. The Go analysers
+are pinned and run through `go run`, so they need nothing installed beyond the
+Go toolchain.
 
 `.github/workflows/check.yml` runs the same checks on every push and pull
 request, and the vulnerability scan again once a week, because an advisory
@@ -558,13 +592,19 @@ internal/transport   the connection pool, over SSH and through an agent
 internal/agentapi    the protocol both ends of the agent speak
 internal/dnsfile     the records format
 internal/fleet       actions that touch more than one server
+internal/dnsquery    the query page, which runs dig on the panel host
 internal/audit       the audit trail and the CEF mirror
+internal/siem        the rsyslog configuration the panel owns
 internal/settings    the settings registry and their storage
+internal/store       the SQL statements, with no business rules of their own
+internal/database    the connection, the pragmas and the migrations
+internal/preflight   the startup checks that must pass before it serves
 internal/i18n        the language catalogues
 internal/web         handlers, templates and static assets
 deploy               install script, systemd units, PAM file, target setup
 deploy/licenses      the licences of the assets the binary serves
 docker               the development stack
+scripts              the verification scripts the make targets run
 ```
 
 ## Licence of the assets it serves

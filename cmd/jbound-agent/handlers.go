@@ -232,8 +232,7 @@ func (a *Agent) read(w http.ResponseWriter, r *http.Request, into any) bool {
 	body := http.MaxBytesReader(w, r.Body, agentapi.MaxBodyBytes)
 
 	if err := json.NewDecoder(body).Decode(into); err != nil {
-		var tooLarge *http.MaxBytesError
-		if errors.As(err, &tooLarge) {
+		if _, tooLarge := errors.AsType[*http.MaxBytesError](err); tooLarge {
 			a.fail(w, http.StatusRequestEntityTooLarge, agentapi.ClassBadInput,
 				"the request is larger than this agent accepts")
 			return false

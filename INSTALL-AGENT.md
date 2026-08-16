@@ -79,6 +79,9 @@ sudo sh bootstrap-agent.sh
 | Panel address | empty | opens the port to that address alone rather than to the network |
 | Install Unbound | yes, when it is missing | |
 
+The account the agent runs as is not a question. It gets its own, unless the
+host cannot grant it what it needs, and then the script says so.
+
 Both tokens are typed without being echoed. Neither becomes a command argument
 or an environment variable, because `/proc` hands both of those to any account
 on the host. The GitHub token lives in a `600` file inside a directory only root
@@ -104,6 +107,7 @@ sudo sh bootstrap-agent.sh -y \
 | `-a ADDR` | address the agent listens on |
 | `-P ADDR` | panel address, so the firewall opens the port to it alone |
 | `-u` | install Unbound when it is missing |
+| `-R` | run the agent as root rather than under its own account |
 | `-n` | leave the firewall alone |
 | `-y` | ask nothing |
 
@@ -116,31 +120,44 @@ asks for it instead.
 | Path | Mode | What it is |
 | --- | --- | --- |
 | `/usr/local/bin/jbound-agent` | `0755 root:root` | the agent |
-| `/etc/jbound-agent` | `0700 root:root` | holds the token and the private key |
-| `/etc/jbound-agent/token` | `0600 root:root` | the credential the panel presents |
-| `/etc/jbound-agent/agent.crt` | `0644 root:root` | the self signed certificate the panel pins |
-| `/etc/jbound-agent/agent.key` | `0600 root:root` | its private half |
-| `/etc/jbound-agent/jbound-agent.env` | `0600 root:root` | the two paths and the five commands |
+| `/etc/jbound-agent` | `0700 jbound-agent` | holds the token and the private key |
+| `/etc/jbound-agent/token` | `0600 jbound-agent` | the credential the panel presents |
+| `/etc/jbound-agent/agent.crt` | `0644 jbound-agent` | the self signed certificate the panel pins |
+| `/etc/jbound-agent/agent.key` | `0600 jbound-agent` | its private half |
+| `/etc/jbound-agent/jbound-agent.env` | `0600 jbound-agent` | the two paths and the five commands |
 | `/etc/systemd/system/jbound-agent.service` | `0644 root:root` | the unit |
+| `/etc/polkit-1/rules.d/50-jbound-agent.rules` | `0644 root:root` | the one grant the restart needs |
 | `/usr/local/src/jbound` | | the checkout, kept so a re-run can update it |
 | `/usr/local/go` | | only when the host had no Go 1.26 or newer |
 
-No account is created. No sudoers rule is installed. Nothing under `/etc/unbound`
-changes permissions.
+No sudoers rule is installed and no login is created. The account it does create
+is described below. The group of `/etc/unbound` and of three files in it changes
+so that account can do its work; the modes of `/etc/unbound` itself are widened
+to `775` for the same reason.
 
 ## Which account it runs as
 
-Root, deliberately. The agent writes the records file, repairs the main
-configuration and reloads the resolver, and all three need it. Running it
-unprivileged with sudoers rules would put back exactly the surface this binary
-exists to remove.
+Its own: `jbound-agent`, a system account created by `setup-agent.sh`. It has no
+home directory, no shell and a locked password, so there is nowhere to put an
+`authorized_keys`, nothing to run if a key were accepted anyway, and nothing to
+guess. An account that can be logged into is a way back in after the process it
+belongs to has been closed.
 
-The panel is the opposite: it runs as the unprivileged `jbound` user and refuses
-to start as root, because it holds the SSH private key of every managed server.
-The agent holds no such thing. It has one token, one file to write and one
-service to reload.
+What that account is granted is exact:
 
-What root is traded against is a fixed surface and a tight unit:
+| Grant | Why |
+| --- | --- |
+| read on `unbound_control.key`, `unbound_control.pem`, `unbound_server.pem` | `unbound-control` refuses without all three |
+| read on the trust anchor, `/var/lib/unbound/root.key` by default | `unbound-checkconf` fails on a file it cannot open even when nothing is wrong |
+| write on the directories the records file and the main configuration sit in | both are replaced by a rename, so the write is on the directory |
+| a polkit rule for `restart` and `reload` on `unbound.service` | the only step that needs a privilege at all |
+
+Everything else still asks for a password. Measured on the account this script
+creates: `systemctl stop unbound`, `systemctl restart ssh`, `systemctl
+daemon-reload` and `systemctl restart jbound-agent` are all refused, `/etc/ssh`
+is not writable and `/etc/shadow` is not readable.
+
+The unit keeps the rest of its hardening either way:
 
 | Setting | What it gives up |
 | --- | --- |
@@ -150,10 +167,34 @@ What root is traded against is a fixed surface and a tight unit:
 | `ReadWritePaths=/etc/unbound` | the one directory it may write |
 | `RestrictSUIDSGID=yes` | cannot create a setuid file |
 | `MemoryDenyWriteExecute=yes` | cannot write executable memory |
-| `ProtectHome`, `PrivateTmp`, `PrivateDevices` | no home directories, no shared tmp, no devices |
 
-So it is root that can write one directory and run the five commands its own
-configuration names, with no shell anywhere in the process.
+### When it stays root
+
+A host with no polkit cannot grant the restart to anybody but root, and one with
+no systemd has no unit to grant it on. `setup-agent.sh` says so and leaves the
+agent as root, recording it in a drop-in at
+`/etc/systemd/system/jbound-agent.service.d/user.conf` so the state is on disk
+rather than only in the output of a script somebody ran once.
+
+`-R` forces root deliberately. Install polkit and re-run the script to narrow it
+again.
+
+### What this does not contain
+
+The agent repairs the main configuration when the include line is missing, so
+the account can write `unbound.conf`. Unbound reads that file as root before it
+drops to its own user, and the Debian build carries the python module. Anyone
+who gets code running **as the agent account** can therefore still reach root on
+that host through the resolver.
+
+What the account change contains is narrower and still worth having: the code
+that runs before a caller is authenticated, the TLS handshake, the HTTP parsing
+and the JSON decoding, no longer runs as root. A flaw there lands on an account
+with four grants rather than on the whole host.
+
+What contains the **token** is the write check: the agent refuses to write
+anything but records, so a stolen token manages DNS records and nothing else.
+That check is on by default and needs no account change at all.
 
 If you give it a records file or a main configuration outside `/etc/unbound`,
 the script writes a drop-in at
@@ -245,7 +286,9 @@ that step, not that it is too old.
 systemctl disable --now jbound-agent
 rm -f /etc/systemd/system/jbound-agent.service
 rm -f /usr/local/bin/jbound-agent
+rm -f /etc/polkit-1/rules.d/50-jbound-agent.rules
 rm -rf /etc/jbound-agent /usr/local/src/jbound
+userdel jbound-agent
 systemctl daemon-reload
 ```
 

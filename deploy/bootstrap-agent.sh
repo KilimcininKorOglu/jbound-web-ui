@@ -7,9 +7,9 @@
 #
 # This is the alternative to deploy/setup-target.sh, not an addition to it. A
 # resolver is reached over SSH or through an agent, never both. The agent path
-# creates no account, installs no sudoers rule and needs no sshd: the panel
-# sends no command text and names no file, so there is nothing here for a login
-# shell to run.
+# installs no sudoers rule and needs no sshd: the panel sends no command text
+# and names no file, so there is nothing here for a login shell to run. The
+# account it creates has no home, no shell and a locked password.
 #
 # It is safe to re-run. A second run pulls the chosen ref again, rebuilds and
 # restarts, which is how an upgrade is done. The certificate is kept, because
@@ -27,6 +27,7 @@
 #   -a ADDR   Address the agent listens on. Default: 0.0.0.0:8443
 #   -P ADDR   Panel address, so the firewall opens the port to it alone.
 #   -u        Install Unbound when it is missing.
+#   -R        Run the agent as root, rather than under its own account.
 #   -n        Leave the firewall alone.
 #   -y        Take every default and ask nothing. For an unattended run.
 #   -h        This text.
@@ -46,12 +47,15 @@ MAIN_CONFIG_PATH=/etc/unbound/unbound.conf
 LISTEN_ADDR=0.0.0.0:8443
 PANEL_ADDR=
 INSTALL_UNBOUND=no
+AGENT_AS_ROOT=
 TOUCH_FIREWALL=yes
 ASSUME_YES=no
 
 WORK_DIR=
 cleanup() {
-    [ -n "$WORK_DIR" ] && [ -d "$WORK_DIR" ] && rm -rf "$WORK_DIR"
+    if [ -n "$WORK_DIR" ] && [ -d "$WORK_DIR" ]; then
+        rm -rf "$WORK_DIR"
+    fi
     return 0
 }
 trap cleanup EXIT INT TERM
@@ -102,7 +106,7 @@ read_secret() {
     printf '%s' "$secret_answer"
 }
 
-while getopts 't:r:b:f:c:a:P:unyh' opt; do
+while getopts 't:r:b:f:c:a:P:uRnyh' opt; do
     case "$opt" in
         t) TOKEN=$OPTARG ;;
         r) REPO=$OPTARG ;;
@@ -112,9 +116,10 @@ while getopts 't:r:b:f:c:a:P:unyh' opt; do
         a) LISTEN_ADDR=$OPTARG ;;
         P) PANEL_ADDR=$OPTARG ;;
         u) INSTALL_UNBOUND=yes ;;
+        R) AGENT_AS_ROOT=-R ;;
         n) TOUCH_FIREWALL=no ;;
         y) ASSUME_YES=yes ;;
-        h) sed -n '2,32p' "$0"; exit 0 ;;
+        h) sed -n '2,33p' "$0"; exit 0 ;;
         *) echo "run with -h for usage" >&2; exit 2 ;;
     esac
 done
@@ -198,7 +203,9 @@ EXTRA=
 command -v git > /dev/null 2>&1 || EXTRA="$EXTRA git"
 command -v curl > /dev/null 2>&1 || EXTRA="$EXTRA curl"
 command -v openssl > /dev/null 2>&1 || EXTRA="$EXTRA openssl"
-[ "$INSTALL_UNBOUND" = yes ] && EXTRA="$EXTRA unbound"
+if [ "$INSTALL_UNBOUND" = yes ]; then
+    EXTRA="$EXTRA unbound"
+fi
 
 if [ "$FAMILY" = debian ]; then
     export DEBIAN_FRONTEND=noninteractive
@@ -357,7 +364,8 @@ fi
 
 step "Configuring the agent"
 
-./deploy/setup-agent.sh -t "$TOKEN" -f "$RECORDS_PATH" \
+# shellcheck disable=SC2086
+./deploy/setup-agent.sh $AGENT_AS_ROOT -t "$TOKEN" -f "$RECORDS_PATH" \
     -c "$MAIN_CONFIG_PATH" -a "$LISTEN_ADDR"
 TOKEN=
 

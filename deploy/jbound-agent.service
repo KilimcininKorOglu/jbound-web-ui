@@ -7,15 +7,16 @@ Wants=network-online.target
 [Service]
 Type=simple
 
-# Root, deliberately. The agent writes the records file, repairs the main
-# configuration and reloads the resolver, and all three need it. Running
-# unprivileged with sudoers rules would put back exactly the surface this
-# binary exists to remove.
+# Its own account, created by setup-agent.sh, which also grants it the three
+# things the steps need: read on the control credentials, write in the
+# resolver's configuration directory, and one polkit rule for the restart. No
+# sudoers rule anywhere, which is the surface this binary exists to remove.
 #
-# What it gets in exchange is a fixed surface. No request carries a path, no
-# request carries a command, and there is no shell anywhere in the process.
-User=root
-Group=root
+# A host with no polkit cannot grant the restart to anybody but root, and
+# setup-agent.sh writes a drop-in here that says so rather than leaving an
+# agent that cannot restart the resolver it just reconfigured.
+User=jbound-agent
+Group=jbound-agent
 
 EnvironmentFile=/etc/jbound-agent/jbound-agent.env
 ExecStart=/usr/local/bin/jbound-agent

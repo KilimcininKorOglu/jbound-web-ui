@@ -55,7 +55,9 @@ ASSUME_YES=no
 WORK_DIR=
 cleanup() {
     # The credential file lives in here. It goes whatever way the script ends.
-    [ -n "$WORK_DIR" ] && [ -d "$WORK_DIR" ] && rm -rf "$WORK_DIR"
+    if [ -n "$WORK_DIR" ] && [ -d "$WORK_DIR" ]; then
+        rm -rf "$WORK_DIR"
+    fi
     return 0
 }
 trap cleanup EXIT INT TERM

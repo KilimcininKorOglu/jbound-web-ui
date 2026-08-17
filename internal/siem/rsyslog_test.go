@@ -257,52 +257,6 @@ func TestAFailedRestartIsReported(t *testing.T) {
 	}
 }
 
-func TestTheRecentLinesComeBackNewestFirst(t *testing.T) {
-	m, rules := manager(t)
-	logFile := filepath.Join(filepath.Dir(rules), "panel.log")
-
-	if err := os.WriteFile(logFile, []byte("first\nsecond\nthird\n"), 0o644); err != nil {
-		t.Fatalf("cannot write the log file: %v", err)
-	}
-
-	lines, err := m.Recent(50)
-	if err != nil {
-		t.Fatalf("Recent returned an error: %v", err)
-	}
-	if len(lines) != 3 || lines[0] != "third" || lines[2] != "first" {
-		t.Errorf("lines = %v", lines)
-	}
-}
-
-func TestTheLineCountStaysWithinItsBounds(t *testing.T) {
-	m, rules := manager(t)
-	logFile := filepath.Join(filepath.Dir(rules), "panel.log")
-
-	var content strings.Builder
-	for i := range 300 {
-		fmt.Fprintf(&content, "line %d\n", i)
-	}
-	if err := os.WriteFile(logFile, []byte(content.String()), 0o644); err != nil {
-		t.Fatalf("cannot write the log file: %v", err)
-	}
-
-	if lines, _ := m.Recent(1); len(lines) != 10 {
-		t.Errorf("a request for one line returned %d", len(lines))
-	}
-	if lines, _ := m.Recent(5000); len(lines) != 200 {
-		t.Errorf("a request for five thousand lines returned %d", len(lines))
-	}
-}
-
-func TestAMissingLogFileIsNotAFailure(t *testing.T) {
-	m, _ := manager(t)
-
-	lines, err := m.Recent(50)
-	if err != nil || lines != nil {
-		t.Errorf("got %v %v", lines, err)
-	}
-}
-
 func TestTheTestEventsCoverMoreThanOneSeverity(t *testing.T) {
 	// A single event would prove the socket works and nothing about the
 	// mapping the receiver sorts on.

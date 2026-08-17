@@ -97,6 +97,23 @@ func Format(entry audit.Entry, panelHost string) string {
 		escapeValue(entry.Details), escapeValue(target), escapeValue(panelHost))
 }
 
+// FormatRow renders one stored audit row as the CEF line it is sent as.
+//
+// It exists so the sender and the page that shows what was sent read the same
+// row the same way. Two renderings would drift, and the page would then be a
+// picture of something the receiver never got.
+func FormatRow(row audit.Row, panelHost string) string {
+	return Format(audit.Entry{
+		UID:        row.UID,
+		Username:   row.Username,
+		ServerID:   row.ServerID,
+		Action:     row.Action,
+		Details:    row.Details,
+		IPAddress:  row.IPAddress,
+		ServerName: row.ServerName,
+	}, panelHost)
+}
+
 // escapeHeader escapes the pipe and the backslash, which are what separate the
 // header fields.
 func escapeHeader(value string) string {

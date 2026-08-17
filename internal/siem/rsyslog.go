@@ -260,39 +260,6 @@ func writeRulesFile(path string, content []byte) error {
 	return nil
 }
 
-// Recent returns the last lines of the panel log, newest first.
-//
-// The file is read directly. Shelling out to tail would put a path the
-// operator can influence on a command line for no gain.
-func (m *Manager) Recent(lines int) ([]string, error) {
-	lines = max(10, min(200, lines))
-
-	content, err := os.ReadFile(m.logPath)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("cannot read %s: %w", m.logPath, err)
-	}
-
-	var kept []string
-	for line := range strings.SplitSeq(string(content), "\n") {
-		if strings.TrimSpace(line) != "" {
-			kept = append(kept, line)
-		}
-	}
-
-	if len(kept) > lines {
-		kept = kept[len(kept)-lines:]
-	}
-
-	// Newest first, because that is the end an operator reads.
-	for i, j := 0, len(kept)-1; i < j; i, j = i+1, j-1 {
-		kept[i], kept[j] = kept[j], kept[i]
-	}
-	return kept, nil
-}
-
 // commandTimeout bounds one configured command.
 //
 // A daemon that never comes back would otherwise hold the request open until

@@ -261,31 +261,55 @@ func TestTheTestEventsGoOutAndAreAudited(t *testing.T) {
 	}
 }
 
-func TestTheViewerShowsTheNewestLineFirst(t *testing.T) {
+func TestTheViewerShowsTheTrailNewestFirst(t *testing.T) {
+	// It reads the audit trail rather than a log file, so what it shows is what
+	// a receiver was given rather than what a local daemon happened to write.
 	env := newFleetEnv(t)
-
-	logFile := filepath.Join(env.siemDir, "panel.log")
-	if err := os.WriteFile(logFile, []byte("older line\nnewer line\n"), 0o644); err != nil {
-		t.Fatalf("cannot write the log file: %v", err)
-	}
+	env.seedLog(t)
 
 	body := env.siemPanel(t)
-	older := strings.Index(body, "older line")
-	newer := strings.Index(body, "newer line")
-
-	if older < 0 || newer < 0 {
-		t.Fatalf("the viewer does not show the log:\n%s", body)
+	if !strings.Contains(body, "CEF:0|JBound|JBoundDNSPanel") {
+		t.Fatalf("the viewer shows no events:\n%s", body)
 	}
-	if newer > older {
-		t.Error("the older line is shown above the newer one")
+
+	// The newest row of the seed is the reload that follows the record change.
+	reload := strings.Index(body, audit.ActionDNSRestart)
+	added := strings.Index(body, audit.ActionDNSAdd)
+	if reload < 0 || added < 0 {
+		t.Fatalf("the viewer does not show both seeded actions:\n%s", body)
+	}
+	if reload > added {
+		t.Error("the older event is shown above the newer one")
 	}
 }
 
-func TestAPanelWithNoLogYetSaysSo(t *testing.T) {
+func TestTheViewerShowsWhatTheReceiverWasGiven(t *testing.T) {
+	// The same rendering the sender uses. Two renderings would drift, and this
+	// page would become a picture of something nobody received.
 	env := newFleetEnv(t)
+	env.seedLog(t)
 
 	body := env.siemPanel(t)
-	if !strings.Contains(body, "No events yet.") {
+	if !strings.Contains(body, "suser=dnsadmin") {
+		t.Errorf("the line does not name the actor:\n%s", body)
+	}
+	if !strings.Contains(body, "dvchost=") {
+		t.Errorf("the line does not name the panel host:\n%s", body)
+	}
+}
+
+func TestAViewerWithNothingToShowSaysSo(t *testing.T) {
+	// Reachable two ways: a trail that holds nothing, and a read of it that
+	// failed. Both leave the same empty list, and an empty box with no sentence
+	// reads as a broken page.
+	env := newFleetEnv(t)
+
+	if _, err := env.db.Exec("DELETE FROM audit_logs"); err != nil {
+		t.Fatalf("cannot empty the trail: %v", err)
+	}
+
+	body := env.siemPanel(t)
+	if !strings.Contains(body, env.app.Catalogs.Catalog(i18n.Default).T("siem.no_events")) {
 		t.Errorf("the viewer does not explain the empty state:\n%s", body)
 	}
 }

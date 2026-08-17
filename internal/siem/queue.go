@@ -170,16 +170,7 @@ func (q *Queue) round(ctx context.Context) (int, bool, error) {
 
 // send renders one row and hands it to the sender.
 func (q *Queue) send(row audit.Row) error {
-	entry := audit.Entry{
-		UID:        row.UID,
-		Username:   row.Username,
-		ServerID:   row.ServerID,
-		Action:     row.Action,
-		Details:    row.Details,
-		IPAddress:  row.IPAddress,
-		ServerName: row.ServerName,
-	}
-	return q.sender.Send(row.Action, Format(entry, q.panelHost), row.CreatedAt)
+	return q.sender.Send(row.Action, FormatRow(row, q.panelHost), row.CreatedAt)
 }
 
 // start returns the cursor to read from, placing it at the present the first

@@ -91,10 +91,11 @@ func (a *App) siemPageData(r *http.Request) (siemPageData, error) {
 		return siemPageData{}, err
 	}
 
-	lines, err := a.SIEM.Recent(defaultLogLines)
+	lines, err := a.recentEvents(r.Context())
 	if err != nil {
-		// The log file is a view. A panel whose log cannot be read still has to
-		// show its configuration, which is what an operator fixes it with.
+		// The viewer is a view. A panel that could not read it still has to show
+		// its configuration, which is what an operator fixes it with.
+		logging.From(r.Context()).Warn("cannot read the recent events", "error", err)
 		lines = nil
 	}
 
@@ -105,6 +106,26 @@ func (a *App) siemPageData(r *http.Request) (siemPageData, error) {
 		Receiver:   a.receiverData(r.Context()),
 		Lines:      lines,
 	}, nil
+}
+
+// recentEvents renders the newest audit rows as the CEF lines they are sent as.
+//
+// It reads the trail rather than a log file on disk. The trail is what the panel
+// forwards, so this shows what a receiver was given rather than what a syslog
+// daemon happened to write locally, and it needs no file for the panel to read
+// back.
+func (a *App) recentEvents(ctx context.Context) ([]string, error) {
+	page, err := a.Audit.List(ctx, audit.Query{PerPage: defaultLogLines})
+	if err != nil {
+		return nil, err
+	}
+
+	// The listing is newest first, which is the end an operator reads.
+	lines := make([]string, 0, len(page.Rows))
+	for _, row := range page.Rows {
+		lines = append(lines, siem.FormatRow(row, a.Hostname))
+	}
+	return lines, nil
 }
 
 // receiverData reads the receiver card off the settings and the sender.

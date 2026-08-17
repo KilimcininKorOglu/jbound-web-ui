@@ -115,8 +115,7 @@ func (a *App) handleSettingsSave(w http.ResponseWriter, r *http.Request) {
 	before := a.Settings.Values().All()
 
 	if err := a.Settings.Save(r.Context(), submitted); err != nil {
-		var refusal *settings.Refusal
-		if errors.As(err, &refusal) {
+		if refusal, ok := errors.AsType[*settings.Refusal](err); ok {
 			a.settingsProblem(w, r, submitted, refusal, http.StatusUnprocessableEntity)
 			return
 		}

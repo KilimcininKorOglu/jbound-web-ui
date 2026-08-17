@@ -95,8 +95,7 @@ func (a *Agent) serviceStatus(ctx context.Context) (bool, string, error) {
 		return true, output, nil
 	}
 
-	var refused *commandError
-	if errors.As(err, &refused) {
+	if _, ok := errors.AsType[*commandError](err); ok {
 		return false, output, nil
 	}
 	return false, output, err

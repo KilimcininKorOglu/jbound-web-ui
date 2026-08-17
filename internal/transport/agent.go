@@ -296,8 +296,7 @@ func (t *AgentTransport) step(ctx context.Context, path string) (string, error) 
 
 	var answer agentapi.CommandResult
 	if err := t.call(ctx, http.MethodPost, path, nil, &answer); err != nil {
-		var refused *CommandError
-		if errors.As(err, &refused) {
+		if refused, ok := errors.AsType[*CommandError](err); ok {
 			return refused.Stderr, err
 		}
 		return "", err
@@ -449,13 +448,11 @@ func (t *AgentTransport) call(ctx context.Context, method, path string,
 // The pinning callback runs inside the TLS handshake, so its error arrives
 // wrapped in a url.Error and has to be unwrapped before the class survives.
 func dialFailure(err error) error {
-	var urlErr *url.Error
-	if errors.As(err, &urlErr) {
+	if urlErr, ok := errors.AsType[*url.Error](err); ok {
 		err = urlErr.Err
 	}
 
-	var hostKeyErr *HostKeyError
-	if errors.As(err, &hostKeyErr) {
+	if hostKeyErr, ok := errors.AsType[*HostKeyError](err); ok {
 		return hostKeyErr
 	}
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {

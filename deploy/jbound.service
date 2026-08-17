@@ -21,8 +21,9 @@ CapabilityBoundingSet=
 AmbientCapabilities=
 
 # The setuid helper is how the panel reaches PAM, and two sudoers rules are how
-# it restarts rsyslog. Both need a privilege the process does not hold, so the
-# usual no-new-privileges hardening cannot be turned on here.
+# it applies its forwarding rules and restarts rsyslog. Both need a privilege
+# the process does not hold, so the usual no-new-privileges hardening cannot be
+# turned on here.
 NoNewPrivileges=no
 RestrictSUIDSGID=no
 
@@ -41,10 +42,10 @@ RestrictRealtime=yes
 RestrictNamespaces=yes
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 
-# The database, the SSH keys and the one rsyslog file the panel owns. Nothing
-# else on the system is writable.
+# The database, the SSH keys and the forwarding rules. Nothing else on the
+# system is writable, and that includes the rsyslog configuration: the panel
+# writes rules and jbound-siem-apply is what turns them into configuration.
 ReadWritePaths=/var/lib/jbound
-ReadWritePaths=/etc/rsyslog.d/60-jbound.conf
 
 # The panel writes its own log through syslog and its audit trail into the
 # database, so stdout carries the startup diagnostics alone.

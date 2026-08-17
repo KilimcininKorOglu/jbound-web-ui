@@ -37,15 +37,21 @@ COPY deploy/pam.d-jbound /etc/pam.d/jbound
 COPY docker/rsyslog-app.conf /etc/rsyslog.conf
 RUN mkdir -p /var/spool/rsyslog /etc/rsyslog.d /usr/local/libexec
 
-# The container has no systemd. These two helpers stand in for the systemctl
-# commands the panel runs in production.
+# The apply script is the production one. It is what keeps the panel account
+# out of /etc/rsyslog.d, so a development stack that stood in for it would
+# prove nothing about the boundary it draws.
+COPY deploy/jbound-siem-apply /usr/local/sbin/jbound-siem-apply
+RUN chmod 0755 /usr/local/sbin/jbound-siem-apply
+
+# The container has no systemd, so this stands in for "systemctl restart
+# rsyslog" alone.
 COPY docker/rsyslog-restart /usr/local/bin/rsyslog-restart
 RUN chmod 0755 /usr/local/bin/rsyslog-restart
 
 # Mirrors the production sudoers rules for the panel account.
 RUN printf '%s\n' \
+        'jbound ALL=(ALL) NOPASSWD: /usr/local/sbin/jbound-siem-apply' \
         'jbound ALL=(ALL) NOPASSWD: /usr/local/bin/rsyslog-restart' \
-        'jbound ALL=(ALL) NOPASSWD: /usr/sbin/rsyslogd -N1' \
         > /etc/sudoers.d/jbound \
     && chmod 0440 /etc/sudoers.d/jbound \
     && visudo -c -f /etc/sudoers.d/jbound

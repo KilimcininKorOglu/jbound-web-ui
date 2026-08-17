@@ -151,7 +151,7 @@ func newTestEnv(t *testing.T) *testEnv {
 
 	siemDir := t.TempDir()
 	rsyslog := siem.NewManager(
-		filepath.Join(siemDir, "60-panel.conf"), filepath.Join(siemDir, "panel.log"),
+		filepath.Join(siemDir, "siem-rules.conf"), filepath.Join(siemDir, "panel.log"),
 		[]string{"true"}, []string{"true"}, []string{"true"})
 
 	// The probe is held rather than passed straight through, so a test can

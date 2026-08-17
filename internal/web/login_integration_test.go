@@ -166,8 +166,8 @@ func newLiveApp(t *testing.T) *App {
 		Audit:   auditLog,
 		Servers: servers,
 		Records: records,
-		SIEM: siem.NewManager(cfg.RsyslogConfPath, cfg.SyslogLogPath,
-			cfg.RsyslogValidateCmd, cfg.RsyslogRestartCmd, cfg.RsyslogStatusCmd),
+		SIEM: siem.NewManager(cfg.SIEMRulesPath, cfg.SyslogLogPath,
+			cfg.RsyslogApplyCmd, cfg.RsyslogRestartCmd, cfg.RsyslogStatusCmd),
 		Forwarder: forwarder,
 		Health:    db.Probe,
 	})

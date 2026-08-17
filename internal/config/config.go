@@ -40,11 +40,18 @@ type Config struct {
 
 	DigPath string
 
-	RsyslogRestartCmd  Command
-	RsyslogStatusCmd   Command
-	RsyslogValidateCmd Command
-	RsyslogConfPath    string
-	SyslogLogPath      string
+	// RsyslogApplyCmd turns the rules the panel wrote into rsyslog
+	// configuration. It runs as root through one sudoers rule and refuses
+	// anything that is not a forwarding rule, which is why the panel itself
+	// needs no write access to /etc/rsyslog.d.
+	RsyslogApplyCmd   Command
+	RsyslogRestartCmd Command
+	RsyslogStatusCmd  Command
+
+	// SIEMRulesPath is the panel's own file, inside its data directory. The
+	// apply command reads it and is the only thing that writes configuration.
+	SIEMRulesPath string
+	SyslogLogPath string
 }
 
 // shellMetacharacters are rejected in every configured command. Commands run
@@ -77,7 +84,7 @@ func Load() (*Config, error) {
 	cfg.PAMService = env("PAM_SERVICE", "jbound")
 	cfg.AdminGroup = env("ADMIN_GROUP", "sudo")
 	cfg.AllowedGroup = env("ALLOWED_GROUP", "")
-	cfg.RsyslogConfPath = env("RSYSLOG_CONF_PATH", "/etc/rsyslog.d/60-jbound.conf")
+	cfg.SIEMRulesPath = filepath.Join(cfg.DataDir, "siem-rules.conf")
 	cfg.SyslogLogPath = env("SYSLOG_LOG_PATH", "/var/log/jbound.log")
 	cfg.DigPath = env("DIG_PATH", "dig")
 
@@ -101,9 +108,12 @@ func Load() (*Config, error) {
 		def    string
 		target *Command
 	}{
-		{"RSYSLOG_RESTART_CMD", "systemctl restart rsyslog", &cfg.RsyslogRestartCmd},
+		// Both defaults name sudo, because both are sudoers rules the install
+		// writes. A command that does not reach sudo is a command the panel
+		// account is refused, and the refusal only surfaces on the SIEM page.
+		{"RSYSLOG_APPLY_CMD", "sudo /usr/local/sbin/jbound-siem-apply", &cfg.RsyslogApplyCmd},
+		{"RSYSLOG_RESTART_CMD", "sudo systemctl restart rsyslog", &cfg.RsyslogRestartCmd},
 		{"RSYSLOG_STATUS_CMD", "systemctl is-active rsyslog", &cfg.RsyslogStatusCmd},
-		{"RSYSLOG_VALIDATE_CMD", "rsyslogd -N1", &cfg.RsyslogValidateCmd},
 	}
 	for _, c := range commands {
 		value, cerr := ParseCommand(env(c.key, c.def))

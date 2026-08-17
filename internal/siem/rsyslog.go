@@ -15,18 +15,23 @@ import (
 // ErrRule marks a forwarding rule the panel refuses to write.
 var ErrRule = errors.New("invalid forwarding rule")
 
-// ErrConfig marks a configuration rsyslog itself rejected.
+// ErrConfig marks rules the apply step refused.
 //
 // It is about the content the operator submitted, so the panel sends the form
 // back with the reason and their text still in it.
 var ErrConfig = errors.New("rsyslog rejected the configuration")
 
-// ErrWrite marks a configuration file the panel could not replace.
+// ErrWrite marks a rules file the panel could not replace.
 //
 // It says nothing about what the operator typed. The file is unwritable, the
 // disk is full or the mode is wrong, and every one of those is the panel host's
 // own fault rather than a form to correct.
 var ErrWrite = errors.New("cannot write the forwarding configuration")
+
+// refusedExit is what the apply step returns when it will not turn the rules
+// into configuration. Every other exit code is the host failing to apply rules
+// it did not object to, which is not something the operator can correct.
+const refusedExit = 2
 
 // rulePattern is what a forwarding rule may look like.
 //
@@ -35,9 +40,6 @@ var ErrWrite = errors.New("cannot write the forwarding configuration")
 // the list loses.
 var rulePattern = regexp.MustCompile(
 	`^local6\.[A-Za-z*]+\s+@{1,2}[A-Za-z0-9._-]+(:\d{1,5})?$`)
-
-// forwardingBlock finds the operator's rules between the two markers.
-var forwardingBlock = regexp.MustCompile(`(?s)# ─── SIEM Forwarding.*?─+\n(.*?)# ─+`)
 
 // Settings is what the SIEM page shows.
 type Settings struct {
@@ -61,40 +63,46 @@ type Settings struct {
 	Tag string
 }
 
-// Manager owns the panel's own rsyslog configuration.
+// Manager owns the panel's own forwarding rules.
 //
 // It manages the panel host and never a managed DNS server. The events it
 // forwards are the panel's audit trail.
+//
+// What it writes is the rules file inside the panel's data directory, never
+// the rsyslog configuration itself. rsyslog runs as root and its configuration
+// can name a program to execute, so a panel that could write that file could
+// take the machine. Turning rules into configuration is the apply command's
+// job, and it refuses anything that is not a forwarding rule.
 type Manager struct {
-	confPath string
-	logPath  string
+	rulesPath string
+	logPath   string
 
-	validate []string
-	restart  []string
-	status   []string
+	apply   []string
+	restart []string
+	status  []string
 
 	// run executes one configured command. It is a field so the manager can be
 	// covered without rsyslog on the machine running the tests.
 	run func(ctx context.Context, argv []string) ([]byte, error)
 
-	// writeFile replaces the configuration file. It is a field for the same
-	// reason run is: the failure this manager rolls back from is a write that
-	// stops part way through, and a disk that fills up mid write is not
-	// something a test can arrange on the machine it runs on.
+	// writeFile replaces the rules file. It is a field for the same reason run
+	// is: the failure this manager rolls back from is a write that stops part
+	// way through, and a disk that fills up mid write is not something a test
+	// can arrange on the machine it runs on.
 	writeFile func(path string, content []byte) error
 }
 
 // NewManager builds the manager.
-func NewManager(confPath, logPath string, validate, restart, status []string) *Manager {
+func NewManager(rulesPath, logPath string, apply, restart, status []string) *Manager {
 	return &Manager{
-		confPath: confPath,
-		logPath:  logPath,
-		validate: validate,
-		restart:  restart,
-		status:   status,
-		run:      runCommand,
+		rulesPath: rulesPath,
+		logPath:   logPath,
+		apply:     apply,
+		restart:   restart,
+		status:    status,
+		run:       runCommand,
 
-		writeFile: writeConfFile,
+		writeFile: writeRulesFile,
 	}
 }
 
@@ -110,12 +118,12 @@ func (m *Manager) Settings(ctx context.Context) (Settings, error) {
 		Tag:      Tag,
 	}
 
-	content, err := os.ReadFile(m.confPath)
+	content, err := os.ReadFile(m.rulesPath)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return Settings{}, fmt.Errorf("cannot read %s: %w", m.confPath, err)
+		return Settings{}, fmt.Errorf("cannot read %s: %w", m.rulesPath, err)
 	}
 	if err == nil {
-		settings.ForwardingRules = extractRules(string(content))
+		settings.ForwardingRules = strings.TrimRight(string(content), "\n")
 		settings.HasActiveRules = hasActiveRule(settings.ForwardingRules)
 	}
 
@@ -125,15 +133,6 @@ func (m *Manager) Settings(ctx context.Context) (Settings, error) {
 		settings.Status = "inactive"
 	}
 	return settings, nil
-}
-
-// extractRules returns the block between the markers.
-func extractRules(content string) string {
-	match := forwardingBlock.FindStringSubmatch(content)
-	if len(match) < 2 {
-		return ""
-	}
-	return strings.TrimSpace(match[1])
 }
 
 // hasActiveRule reports whether any line is more than a comment.
@@ -169,37 +168,42 @@ func ValidateRules(rules string) error {
 	return nil
 }
 
-// Save writes the forwarding rules and restarts the daemon.
+// Save writes the forwarding rules, applies them and restarts the daemon.
 //
-// The previous content is restored when rsyslog rejects the new one, because a
-// configuration the daemon will not load leaves the panel with no log at all
-// after the next restart.
+// The rules the panel wrote are put back when the apply step refuses them,
+// because the page reads that file and would otherwise show rules rsyslog is
+// not running.
 func (m *Manager) Save(ctx context.Context, rules string) error {
 	if err := ValidateRules(rules); err != nil {
 		return err
 	}
 
-	previous, err := os.ReadFile(m.confPath)
+	previous, err := os.ReadFile(m.rulesPath)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("cannot read %s: %w", m.confPath, err)
+		return fmt.Errorf("cannot read %s: %w", m.rulesPath, err)
 	}
 
 	// The write replaces the file in place, so a failure part way through
-	// leaves it empty or half written. What this file routes is the panel's
-	// own audit trail, and the running daemon holds the old rules until it is
+	// leaves it empty or half written. What these rules route is the panel's
+	// own audit trail, and the running daemon holds the old ones until it is
 	// restarted, so the loss surfaces hours later and far from its cause.
-	if err := m.write(render(rules, m.logPath)); err != nil {
+	if err := m.write(rulesFile(rules)); err != nil {
 		if restoreErr := m.write(previous); restoreErr != nil {
-			return fmt.Errorf("%w: %v (the previous configuration could not be "+
+			return fmt.Errorf("%w: %v (the previous rules could not be "+
 				"restored either: %v)", ErrWrite, err, restoreErr)
 		}
 		return fmt.Errorf("%w: %v", ErrWrite, err)
 	}
 
-	if output, err := m.run(ctx, m.validate); err != nil {
+	if output, err := m.run(ctx, m.apply); err != nil {
 		if restoreErr := m.write(previous); restoreErr != nil {
-			return fmt.Errorf("%w: %s (the previous configuration could not be "+
+			return fmt.Errorf("%w: %s (the previous rules could not be "+
 				"restored either: %v)", ErrConfig, firstLine(output), restoreErr)
+		}
+		if exitCode(err) != refusedExit {
+			// The rules were not the problem. The host could not turn them
+			// into configuration, which is not something the form can correct.
+			return fmt.Errorf("cannot apply the forwarding rules: %s", firstLine(output))
 		}
 		return fmt.Errorf("%w: %s", ErrConfig, firstLine(output))
 	}
@@ -210,23 +214,36 @@ func (m *Manager) Save(ctx context.Context, rules string) error {
 	return nil
 }
 
-// write replaces the configuration file.
-//
-// A file that did not exist before is restored as an empty one rather than
-// removed, because the install grants the panel write access to this file and
-// not to the directory it sits in. An empty file routes nothing, which is what
-// its absence did.
-func (m *Manager) write(content []byte) error {
-	return m.writeFile(m.confPath, content)
+// rulesFile renders what goes on disk. A file with no trailing newline is one
+// the apply step reads a line short of, so an empty last rule would be lost.
+func rulesFile(rules string) []byte {
+	trimmed := strings.TrimRight(rules, "\n")
+	if trimmed == "" {
+		return nil
+	}
+	return []byte(trimmed + "\n")
 }
 
-// writeConfFile replaces the configuration file in place.
+// exitCode reports what a command exited with, or -1 when it never ran.
+func exitCode(err error) int {
+	if exit, ok := errors.AsType[*exec.ExitError](err); ok {
+		return exit.ExitCode()
+	}
+	return -1
+}
+
+// write replaces the rules file.
+func (m *Manager) write(content []byte) error {
+	return m.writeFile(m.rulesPath, content)
+}
+
+// writeRulesFile replaces the rules file in place.
 //
-// In place rather than through a rename, because the panel runs unprivileged
-// and the install grants it write access to this one file rather than to
-// /etc/rsyslog.d itself. A rename needs the directory.
-func writeConfFile(path string, content []byte) error {
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o640)
+// In place rather than through a rename, because a rename would leave the mode
+// to the umask of whatever started the panel. This file lives in the data
+// directory and stays as restricted as the directory around it.
+func writeRulesFile(path string, content []byte) error {
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return fmt.Errorf("cannot open %s: %w", path, err)
 	}
@@ -235,8 +252,8 @@ func writeConfFile(path string, content []byte) error {
 	if _, err := file.Write(content); err != nil {
 		return fmt.Errorf("cannot write %s: %w", path, err)
 	}
-	// The daemon is about to read this file, and a restart that lands before
-	// the bytes do would load half a configuration.
+	// The apply step is about to read this file as a different process, and a
+	// run that lands before the bytes do would render half a configuration.
 	if err := file.Sync(); err != nil {
 		return fmt.Errorf("cannot flush %s: %w", path, err)
 	}
@@ -274,40 +291,6 @@ func (m *Manager) Recent(lines int) ([]string, error) {
 		kept[i], kept[j] = kept[j], kept[i]
 	}
 	return kept, nil
-}
-
-// render builds the whole configuration file around the operator's rules.
-//
-// The panel owns this file. Writing only the block between the markers would
-// leave the template and the log rule to drift with whatever wrote them last.
-func render(rules, logPath string) []byte {
-	if strings.TrimSpace(rules) == "" {
-		rules = "# No forwarding rules configured."
-	}
-
-	var out bytes.Buffer
-	fmt.Fprintf(&out, `# JBound - Syslog Configuration
-# Logs from the DNS management panel (facility local6)
-#
-# This file is written by the panel. Edit it through the SIEM page.
-
-# Template: SIEM-compatible format with ISO8601 timestamp
-template(name="JBoundPanelFormat" type="string"
-    string="%%timegenerated:::date-rfc3339%% %%HOSTNAME%% %%syslogtag%%%%msg%%\n"
-)
-
-# Write to dedicated log file
-local6.*    %s;JBoundPanelFormat
-
-# ─── SIEM Forwarding ────────────────────────────────────────────────────
-%s
-# ─────────────────────────────────────────────────────────────────────────
-
-# Stop processing these messages in other log files
-& stop
-`, logPath, strings.TrimSpace(rules))
-
-	return out.Bytes()
 }
 
 // commandTimeout bounds one configured command.

@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -13,19 +15,32 @@ import (
 	"jbound/internal/audit"
 )
 
-// manager returns a manager over a temporary configuration file.
+// manager returns a manager over a temporary rules file.
 func manager(t *testing.T) (*Manager, string) {
 	t.Helper()
 
 	dir := t.TempDir()
-	conf := filepath.Join(dir, "60-panel.conf")
+	rules := filepath.Join(dir, "siem-rules.conf")
 	logFile := filepath.Join(dir, "panel.log")
 
-	m := NewManager(conf, logFile,
-		[]string{"validate"}, []string{"restart"}, []string{"status"})
+	m := NewManager(rules, logFile,
+		[]string{"apply"}, []string{"restart"}, []string{"status"})
 	m.run = func(context.Context, []string) ([]byte, error) { return nil, nil }
 
-	return m, conf
+	return m, rules
+}
+
+// refused stands in for the apply step turning rules down. The exit code is
+// what separates rules the operator can correct from a host that could not
+// apply rules it did not object to.
+func refused(t *testing.T, message string) error {
+	t.Helper()
+
+	err := exec.Command("sh", "-c", "exit "+strconv.Itoa(refusedExit)).Run()
+	if err == nil {
+		t.Fatal("the command meant to fail succeeded")
+	}
+	return fmt.Errorf("%s: %w", message, err)
 }
 
 func TestARuleThatReadsLikeAForwarderIsAccepted(t *testing.T) {
@@ -73,24 +88,42 @@ func TestEveryRefusedRuleIsNamedInOnePass(t *testing.T) {
 	}
 }
 
-func TestTheSavedFileCarriesTheRulesBetweenTheMarkers(t *testing.T) {
-	m, conf := manager(t)
+func TestTheSavedFileCarriesTheRulesAndNothingElse(t *testing.T) {
+	// rsyslog runs as root and its configuration can name a program to run.
+	// What the panel writes is a list of rules, and the apply step is what
+	// turns them into configuration, so nothing rsyslog reads as a directive
+	// passes through this file.
+	m, rules := manager(t)
 	const rule = "local6.*    @@siem-sink:514"
 
 	if err := m.Save(context.Background(), rule); err != nil {
 		t.Fatalf("Save returned an error: %v", err)
 	}
 
-	content, err := os.ReadFile(conf)
+	content, err := os.ReadFile(rules)
 	if err != nil {
 		t.Fatalf("cannot read the file back: %v", err)
 	}
-	for _, want := range []string{
-		"JBoundPanelFormat", "SIEM Forwarding", rule, "& stop",
-	} {
-		if !strings.Contains(string(content), want) {
-			t.Errorf("the file does not carry %q:\n%s", want, content)
-		}
+	if string(content) != rule+"\n" {
+		t.Errorf("the file holds more than the rules:\n%s", content)
+	}
+}
+
+func TestTheRulesFileIsNotReadableBeyondThePanel(t *testing.T) {
+	// It sits in the data directory next to the SSH keys, and the apply step
+	// reads it as root.
+	m, rules := manager(t)
+
+	if err := m.Save(context.Background(), "local6.*    @@siem-sink:514"); err != nil {
+		t.Fatalf("Save returned an error: %v", err)
+	}
+
+	info, err := os.Stat(rules)
+	if err != nil {
+		t.Fatalf("cannot stat the rules file: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Errorf("mode = %o, want 600", got)
 	}
 }
 
@@ -157,18 +190,19 @@ func TestTheStatusFollowsTheStatusCommand(t *testing.T) {
 	}
 }
 
-func TestARejectedConfigurationIsRolledBack(t *testing.T) {
-	// A configuration the daemon will not load would leave the panel with no
-	// log at all after the next restart.
-	m, conf := manager(t)
+func TestRulesTheApplyStepRefusesAreRolledBack(t *testing.T) {
+	// The page reads the rules file. Leaving the new rules there after the
+	// apply step turned them down would show an operator rules rsyslog is not
+	// running.
+	m, rules := manager(t)
 
 	if err := m.Save(context.Background(), "local6.*    @@first.example.net:514"); err != nil {
 		t.Fatalf("the first save failed: %v", err)
 	}
 
 	m.run = func(_ context.Context, argv []string) ([]byte, error) {
-		if argv[0] == "validate" {
-			return []byte("rsyslogd: error on line 12\n"), errors.New("exit status 1")
+		if argv[0] == "apply" {
+			return []byte("rsyslogd: error on line 12\n"), refused(t, "apply")
 		}
 		return nil, nil
 	}
@@ -181,9 +215,30 @@ func TestARejectedConfigurationIsRolledBack(t *testing.T) {
 		t.Errorf("the reason was lost: %v", err)
 	}
 
-	content, _ := os.ReadFile(conf)
+	content, _ := os.ReadFile(rules)
 	if !strings.Contains(string(content), "first.example.net") {
-		t.Errorf("the previous configuration was not restored:\n%s", content)
+		t.Errorf("the previous rules were not restored:\n%s", content)
+	}
+}
+
+func TestAnApplyThatFailedForAnotherReasonIsNotTheOperatorsProblem(t *testing.T) {
+	// The form comes back only for rules an operator can correct. A host that
+	// could not run the apply step at all is a server error, and answering it
+	// as a form refusal would send them editing rules that are fine.
+	m, _ := manager(t)
+	m.run = func(_ context.Context, argv []string) ([]byte, error) {
+		if argv[0] == "apply" {
+			return []byte("sudo: a password is required\n"), errors.New("exit status 1")
+		}
+		return nil, nil
+	}
+
+	err := m.Save(context.Background(), "local6.*    @@siem-sink:514")
+	if err == nil || errors.Is(err, ErrConfig) {
+		t.Fatalf("got %v, want a plain failure", err)
+	}
+	if !strings.Contains(err.Error(), "a password is required") {
+		t.Errorf("the reason was lost: %v", err)
 	}
 }
 
@@ -203,8 +258,8 @@ func TestAFailedRestartIsReported(t *testing.T) {
 }
 
 func TestTheRecentLinesComeBackNewestFirst(t *testing.T) {
-	m, conf := manager(t)
-	logFile := filepath.Join(filepath.Dir(conf), "panel.log")
+	m, rules := manager(t)
+	logFile := filepath.Join(filepath.Dir(rules), "panel.log")
 
 	if err := os.WriteFile(logFile, []byte("first\nsecond\nthird\n"), 0o644); err != nil {
 		t.Fatalf("cannot write the log file: %v", err)
@@ -220,8 +275,8 @@ func TestTheRecentLinesComeBackNewestFirst(t *testing.T) {
 }
 
 func TestTheLineCountStaysWithinItsBounds(t *testing.T) {
-	m, conf := manager(t)
-	logFile := filepath.Join(filepath.Dir(conf), "panel.log")
+	m, rules := manager(t)
+	logFile := filepath.Join(filepath.Dir(rules), "panel.log")
 
 	var content strings.Builder
 	for i := range 300 {
@@ -311,12 +366,12 @@ func TestAFailingCommandStillReportsItsExitCode(t *testing.T) {
 	}
 }
 
-func TestAWriteThatStopsPartWayLeavesThePreviousConfiguration(t *testing.T) {
-	// The write truncates the file in place, so a full disk destroys the
-	// configuration before the first byte of the new one lands. This file
-	// routes the panel's own audit trail, and the running daemon holds the old
-	// rules until it is restarted, so the loss would surface hours later.
-	m, conf := manager(t)
+func TestAWriteThatStopsPartWayLeavesThePreviousRules(t *testing.T) {
+	// The write truncates the file in place, so a full disk destroys the rules
+	// before the first byte of the new ones lands. These rules route the
+	// panel's own audit trail, and the running daemon holds the old ones until
+	// it is restarted, so the loss would surface hours later.
+	m, rules := manager(t)
 
 	if err := m.Save(context.Background(), "local6.*    @@first.example.net:514"); err != nil {
 		t.Fatalf("the first save failed: %v", err)
@@ -329,12 +384,12 @@ func TestAWriteThatStopsPartWayLeavesThePreviousConfiguration(t *testing.T) {
 	m.writeFile = func(path string, content []byte) error {
 		if !failed {
 			failed = true
-			if err := writeConfFile(path, content[:len(content)/2]); err != nil {
+			if err := writeRulesFile(path, content[:len(content)/2]); err != nil {
 				return err
 			}
 			return errors.New("no space left on device")
 		}
-		return writeConfFile(path, content)
+		return writeRulesFile(path, content)
 	}
 
 	err := m.Save(context.Background(), "local6.*    @@second.example.net:514")
@@ -347,12 +402,12 @@ func TestAWriteThatStopsPartWayLeavesThePreviousConfiguration(t *testing.T) {
 		t.Errorf("the reason was lost: %v", err)
 	}
 
-	content, _ := os.ReadFile(conf)
+	content, _ := os.ReadFile(rules)
 	if !strings.Contains(string(content), "first.example.net") {
-		t.Errorf("the previous configuration was not restored:\n%s", content)
+		t.Errorf("the previous rules were not restored:\n%s", content)
 	}
 	if strings.Contains(string(content), "second.example.net") {
-		t.Errorf("the half written configuration was left behind:\n%s", content)
+		t.Errorf("the half written rules were left behind:\n%s", content)
 	}
 }
 
@@ -370,6 +425,6 @@ func TestAFailedRestoreIsReportedNextToTheFailureThatCausedIt(t *testing.T) {
 		t.Fatalf("got %v, want ErrWrite", err)
 	}
 	if !strings.Contains(err.Error(), "could not be restored") {
-		t.Errorf("the message does not say the file is still broken: %v", err)
+		t.Errorf("the message does not say the rules are still broken: %v", err)
 	}
 }

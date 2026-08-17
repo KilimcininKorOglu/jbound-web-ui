@@ -48,8 +48,8 @@ func TestGateAForwardedEventLeavesTheHost(t *testing.T) {
 	defer listener.Close()
 
 	port := listener.Addr().(*net.TCPAddr).Port
-	manager := siem.NewManager(cfg.RsyslogConfPath, cfg.SyslogLogPath,
-		cfg.RsyslogValidateCmd, cfg.RsyslogRestartCmd, cfg.RsyslogStatusCmd)
+	manager := siem.NewManager(cfg.SIEMRulesPath, cfg.SyslogLogPath,
+		cfg.RsyslogApplyCmd, cfg.RsyslogRestartCmd, cfg.RsyslogStatusCmd)
 
 	// The configuration of the container is restored afterwards, because the
 	// stack keeps running after the tests do.

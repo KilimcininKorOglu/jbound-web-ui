@@ -151,9 +151,11 @@ func TestTheRulesAreWrittenAndComeBack(t *testing.T) {
 		t.Errorf("the panel does not report that it forwards:\n%s", body)
 	}
 
-	content, err := os.ReadFile(filepath.Join(env.siemDir, "60-panel.conf"))
+	// The panel writes rules, never rsyslog configuration. What lands on disk
+	// is the file the apply step reads as root.
+	content, err := os.ReadFile(filepath.Join(env.siemDir, "siem-rules.conf"))
 	if err != nil {
-		t.Fatalf("cannot read the configuration: %v", err)
+		t.Fatalf("cannot read the rules file: %v", err)
 	}
 	if !strings.Contains(string(content), rule) {
 		t.Errorf("the file does not carry the rule:\n%s", content)
@@ -190,9 +192,9 @@ func TestASaveThatCannotWriteTheFileIsAServerError(t *testing.T) {
 		t.Fatalf("the first save returned %d", recorder.Code)
 	}
 
-	conf := filepath.Join(env.siemDir, "60-panel.conf")
+	conf := filepath.Join(env.siemDir, "siem-rules.conf")
 	if err := os.Chmod(conf, 0o400); err != nil {
-		t.Fatalf("cannot make the configuration read only: %v", err)
+		t.Fatalf("cannot make the rules file read only: %v", err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(conf, 0o600) })
 

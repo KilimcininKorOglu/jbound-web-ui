@@ -53,14 +53,22 @@ else
 fi
 
 # --- rsyslog -----------------------------------------------------------------
-# The panel rewrites this file, so it exists up front with group write for the
-# service account. This mirrors the production install step.
+# The panel never writes this file. jbound-siem-apply does, as root, from the
+# rules the panel wrote into its own data directory. The mode mirrors the
+# production install step, and a group writable one here would hide the whole
+# point of that split.
 touch "$RSYSLOG_CONF_PATH"
-chown root:jbound "$RSYSLOG_CONF_PATH"
-chmod 0664 "$RSYSLOG_CONF_PATH"
+chown root:root "$RSYSLOG_CONF_PATH"
+chmod 0644 "$RSYSLOG_CONF_PATH"
 
-touch "$SYSLOG_LOG_PATH"
-chmod 0644 "$SYSLOG_LOG_PATH"
+# Removed rather than created, so rsyslog creates it through the action
+# jbound-siem-apply writes, with the group that action names.
+rm -f "$SYSLOG_LOG_PATH"
+
+# The same first run the production install does, so the panel has a log file
+# before anybody opens the SIEM page.
+/usr/local/sbin/jbound-siem-apply
+log "rendered $RSYSLOG_CONF_PATH"
 
 /usr/sbin/rsyslogd -i /run/rsyslogd.pid
 log "rsyslogd started"

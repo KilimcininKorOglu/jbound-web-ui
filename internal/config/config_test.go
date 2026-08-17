@@ -79,8 +79,8 @@ var settableKeys = []string{
 	"AUTH_HELPER_PATH", "PAM_SERVICE", "ADMIN_GROUP", "ALLOWED_GROUP",
 	"MIN_UID", "AUTH_MAX_CONCURRENT",
 	"COOKIE_SECURE", "DIG_PATH", "LOG_LEVEL",
-	"RSYSLOG_RESTART_CMD", "RSYSLOG_STATUS_CMD", "RSYSLOG_VALIDATE_CMD",
-	"RSYSLOG_CONF_PATH", "SYSLOG_LOG_PATH",
+	"RSYSLOG_APPLY_CMD", "RSYSLOG_RESTART_CMD", "RSYSLOG_STATUS_CMD",
+	"SYSLOG_LOG_PATH",
 }
 
 // clearEnvironment removes every configured value for the duration of a test.
@@ -121,9 +121,17 @@ func TestLoadUsesProductionDefaults(t *testing.T) {
 		t.Errorf("LogLevel = %v, want info", cfg.LogLevel)
 	}
 	// The defaults decide production behaviour when nothing is configured, so
-	// they are asserted rather than assumed.
-	if got := cfg.RsyslogRestartCmd.String(); got != "systemctl restart rsyslog" {
-		t.Errorf("RsyslogRestartCmd = %q, want systemctl restart rsyslog", got)
+	// they are asserted rather than assumed. Both of these are sudoers rules
+	// the install writes, and a default that dropped the sudo would be refused
+	// by systemd on the first save and by nothing before it.
+	if got := cfg.RsyslogApplyCmd.String(); got != "sudo /usr/local/sbin/jbound-siem-apply" {
+		t.Errorf("RsyslogApplyCmd = %q, want it to go through sudo", got)
+	}
+	if got := cfg.RsyslogRestartCmd.String(); got != "sudo systemctl restart rsyslog" {
+		t.Errorf("RsyslogRestartCmd = %q, want sudo systemctl restart rsyslog", got)
+	}
+	if cfg.SIEMRulesPath != cfg.DataDir+"/siem-rules.conf" {
+		t.Errorf("SIEMRulesPath = %q, want it under DataDir", cfg.SIEMRulesPath)
 	}
 	if cfg.DBPath != cfg.DataDir+"/jbound.db" {
 		t.Errorf("DBPath = %q, want it under DataDir", cfg.DBPath)

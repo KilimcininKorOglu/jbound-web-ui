@@ -75,11 +75,13 @@ if ! id -u "$SERVICE_USER" >/dev/null 2>&1; then
     echo "created account: $SERVICE_USER"
 fi
 
-# The panel reads the syslog file back for the SIEM page. On a Debian family
-# host that file belongs to the adm group.
-if getent group adm >/dev/null && ! id -nG "$SERVICE_USER" | grep -qw adm; then
-    usermod -aG adm "$SERVICE_USER"
-    echo "added $SERVICE_USER to the adm group so it can read the syslog file"
+# The panel reads its own syslog file back for the SIEM page, and the rsyslog
+# configuration jbound-siem-apply writes gives that one file to this group. An
+# earlier install joined the adm group for the same purpose, which also handed
+# over every other service's records.
+if id -nG "$SERVICE_USER" 2>/dev/null | grep -qw adm; then
+    gpasswd -d "$SERVICE_USER" adm > /dev/null
+    echo "removed $SERVICE_USER from the adm group, its own log carries group $SERVICE_GROUP"
 fi
 
 # --- State directory ---------------------------------------------------------
@@ -89,7 +91,7 @@ install -d -m 0700 -o "$SERVICE_USER" -g "$SERVICE_GROUP" "$DATA_DIR"
 install -d -m 0700 -o "$SERVICE_USER" -g "$SERVICE_GROUP" "$DATA_DIR/keys"
 
 # --- Binaries ----------------------------------------------------------------
-install -d -m 0755 "$PREFIX/bin" "$PREFIX/libexec"
+install -d -m 0755 "$PREFIX/bin" "$PREFIX/sbin" "$PREFIX/libexec"
 install -m 0755 -o root -g root "$PANEL_BINARY" "$PREFIX/bin/jbound"
 echo "installed $PREFIX/bin/jbound"
 
@@ -127,21 +129,36 @@ else
     echo "kept the existing $ENV_FILE"
 fi
 
-# --- rsyslog file the panel owns ---------------------------------------------
-# The panel runs unprivileged, so the file exists before it does and is group
-# writable. The directory permissions are left alone.
-if [ ! -e "$RSYSLOG_CONF" ]; then
-    install -m 0664 -o root -g "$SERVICE_GROUP" /dev/null "$RSYSLOG_CONF"
-    echo "created $RSYSLOG_CONF"
+# --- rsyslog file, and the only thing that writes it -------------------------
+# rsyslog runs as root and its configuration can name a program to execute, so
+# this file belongs to root and the panel never writes it. The panel writes
+# forwarding rules into its own data directory, and the script below is what
+# turns them into configuration. An earlier install left this file group
+# writable, which is why the mode is set rather than only created.
+install -m 0755 -o root -g root \
+    "$SOURCE_DIR/jbound-siem-apply" "$PREFIX/sbin/jbound-siem-apply"
+echo "installed $PREFIX/sbin/jbound-siem-apply"
+
+if [ -e "$RSYSLOG_CONF" ]; then
+    chown root:root "$RSYSLOG_CONF"
+    chmod 0644 "$RSYSLOG_CONF"
+    echo "took $RSYSLOG_CONF back to root:root 0644"
+fi
+
+# Run it once, so the panel has a log file before anybody opens the SIEM page.
+# Without this the configuration that routes the panel's own trail would not
+# exist until the first save, and the trail before that would be lost.
+if command -v rsyslogd > /dev/null 2>&1; then
+    "$PREFIX/sbin/jbound-siem-apply"
 else
-    chown root:"$SERVICE_GROUP" "$RSYSLOG_CONF"
-    chmod 0664 "$RSYSLOG_CONF"
+    echo "rsyslogd is not installed, skipped the first apply"
 fi
 
 # --- Sudoers rules and the systemd unit --------------------------------------
-# Two exact rules, no wildcards. The panel restarts rsyslog after writing the
-# file above and validates the configuration before it does. Both rules drive
-# systemctl, so a host without systemd gets neither.
+# Two exact rules, no wildcards. One applies the forwarding rules the panel
+# wrote, the other restarts the daemon that reads the result. Neither takes an
+# argument from the panel. The restart drives systemctl, so a host without
+# systemd gets neither rule.
 resolve() {
     _found=$(command -v "$1" 2>/dev/null || true)
     if [ -z "$_found" ]; then
@@ -153,15 +170,14 @@ resolve() {
 
 if [ "$USE_SYSTEMD" = yes ]; then
     SYSTEMCTL_PATH=$(resolve systemctl)
-    RSYSLOGD_PATH=$(resolve rsyslogd)
 
     TMP_SUDOERS=$(mktemp)
     trap 'rm -f "$TMP_SUDOERS"' EXIT
 
     cat > "$TMP_SUDOERS" <<EOF
 # Managed by jbound install.sh. Do not edit by hand.
+$SERVICE_USER ALL=(ALL) NOPASSWD: $PREFIX/sbin/jbound-siem-apply
 $SERVICE_USER ALL=(ALL) NOPASSWD: $SYSTEMCTL_PATH restart rsyslog
-$SERVICE_USER ALL=(ALL) NOPASSWD: $RSYSLOGD_PATH -N1
 EOF
 
     chmod 440 "$TMP_SUDOERS"
@@ -183,7 +199,7 @@ else
 fi
 
 # --- Verify ------------------------------------------------------------------
-# The hardening is worth nothing unspoken. These are the two modes that carry
+# The hardening is worth nothing unspoken. These are the three modes that carry
 # it, so they are read back rather than assumed.
 HELPER_MODE=$(stat -c '%a %U %G' "$PREFIX/libexec/jbound-authhelper")
 if [ "$HELPER_MODE" != "4750 root $SERVICE_GROUP" ]; then
@@ -197,15 +213,25 @@ if [ "$DATA_MODE" != "700 $SERVICE_USER" ]; then
     exit 1
 fi
 
+# A file rsyslog reads as root, writable by the panel account, is the panel
+# account holding root.
+CONF_MODE=$(stat -c '%a %U %G' "$RSYSLOG_CONF")
+if [ "$CONF_MODE" != "644 root root" ]; then
+    echo "error: $RSYSLOG_CONF is $CONF_MODE, want 644 root root" >&2
+    exit 1
+fi
+
 cat <<EOF
 
 Installed. What is left:
 
   1. Review $ENV_FILE. ADMIN_GROUP decides who administers the panel.
-  2. Start the service:
+  2. Pick the panel's log up:
+       systemctl restart rsyslog
+  3. Start the service:
        systemctl enable --now jbound
-  3. Put a reverse proxy in front of $(grep -s '^LISTEN_ADDR=' "$ENV_FILE" | cut -d= -f2-) and terminate TLS there.
-  4. Prepare every DNS server with deploy/setup-target.sh and add it in the
+  4. Put a reverse proxy in front of $(grep -s '^LISTEN_ADDR=' "$ENV_FILE" | cut -d= -f2-) and terminate TLS there.
+  5. Prepare every DNS server with deploy/setup-target.sh and add it in the
      panel. The panel generates the key pair; the setup script takes the public
      half.
 

@@ -242,8 +242,8 @@ func run() error {
 		queries, auditLog, options.DurationOf(settings.CacheStaleAfter),
 		options.IntOf(settings.RecordsPerPage))
 
-	rsyslog := siem.NewManager(cfg.RsyslogConfPath, cfg.SyslogLogPath,
-		cfg.RsyslogValidateCmd, cfg.RsyslogRestartCmd, cfg.RsyslogStatusCmd)
+	rsyslog := siem.NewManager(cfg.SIEMRulesPath, cfg.SyslogLogPath,
+		cfg.RsyslogApplyCmd, cfg.RsyslogRestartCmd, cfg.RsyslogStatusCmd)
 
 	app, err := web.NewApp(web.Deps{
 		Config:    cfg,

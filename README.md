@@ -27,8 +27,8 @@ an agent that runs on it, and the choice is made per server.
   where it must, and proves each one is running afterwards.
 - Asks each resolver what it answers for a name.
 - Records every action with the user, the address and the result, and sends the
-  trail to a SIEM collector in CEF, in order, with nothing lost while the
-  collector is down.
+  trail to a SIEM collector in CEF, in order, holding it in the database while
+  the collector is down.
 - Writes a consistent backup of its own database and keys with one command.
 - Signs users in against the local accounts of the panel host through PAM.
 - Speaks English and Turkish, follows a light or dark theme or the one the
@@ -39,8 +39,10 @@ an agent that runs on it, and the choice is made per server.
 Panel host:
 
 - Linux with systemd and PAM.
-- Go 1.26 to build the panel, and a C compiler with the PAM development headers
-  (`libpam0g-dev` on Debian) to build the helper.
+- Go to build the panel, and a C compiler with the PAM development headers
+  (`libpam0g-dev` on Debian) to build the helper. `go.mod` carries a `toolchain`
+  line at a patched release, so a host with an older 1.26 fetches that one
+  instead of building with an unpatched compiler.
 - `dig` for the query page.
 - A reverse proxy for TLS. The panel listens on the loopback address.
 
@@ -348,6 +350,17 @@ rather than losing events: the page shows how many rows are waiting, and they go
 out in order once it answers. A newly named collector is given what happens from
 then on rather than the whole history.
 
+What arrives is one line per event: the RFC 5424 envelope, facility `local6`,
+tag `jbound`, and a CEF payload with vendor `JBound` and product
+`JBoundDNSPanel`. That is what a collector filters on. The severity of the line
+follows the action, so a failed login and a deleted record arrive as warnings
+and an added one as a notice. The timestamp is the moment the action happened
+rather than the moment it was sent, so a backlog that goes out after an outage
+does not arrive stamped with the recovery.
+
+A change across a group arrives as one line per server: `dhost` names the
+resolver the action was aimed at and `dvchost` names the panel.
+
 Plain syslog over a stream carries no acknowledgement. A collector that
 disappears without closing the connection can lose what was in flight, which is
 the same limit rsyslog has when it forwards with `@@`.
@@ -582,8 +595,9 @@ make coverage     # coverage without the integration tests
 make dev-coverage # coverage of both tag sets, inside the container
 ```
 
-Every target runs the tests with `-count=1 -race`, so a run never reports a
-cached result. One test on its own is the usual Go command:
+Every test target passes `-count=1`, so a run never reports a cached result, and
+every one but the coverage pair also passes `-race`. One test on its own is the
+usual Go command:
 
 ```
 go test ./internal/fleet/ -run TestRepairAllDeletesNothing -count=1

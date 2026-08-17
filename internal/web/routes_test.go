@@ -15,7 +15,6 @@ import (
 	"jbound/internal/fleet"
 	"jbound/internal/i18n"
 	"jbound/internal/server"
-	"jbound/internal/siem"
 	"jbound/internal/store"
 	"jbound/internal/transport"
 )
@@ -401,46 +400,6 @@ func TestARefusedRecordCarriesItsOwnReason(t *testing.T) {
 			}
 			if got := dnsStatus(testCase.err); got != testCase.status {
 				t.Errorf("status = %d, want %d", got, testCase.status)
-			}
-		})
-	}
-}
-
-func TestARefusedRuleIsReportedByItsKind(t *testing.T) {
-	cases := []struct {
-		name    string
-		err     error
-		message string
-	}{
-		{
-			name:    "a rule the panel will not write",
-			err:     fmt.Errorf("%w: line 1: *.* @@host", siem.ErrRule),
-			message: "Line 1: *.* @@host.",
-		},
-		{
-			name:    "a configuration the daemon refused",
-			err:     fmt.Errorf("%w: unknown parameter", siem.ErrConfig),
-			message: "Rsyslog rejected the configuration: unknown parameter.",
-		},
-		{
-			// A write that failed names the path and the reason, which the
-			// reader has no business seeing and cannot act on.
-			name:    "anything else",
-			err:     errors.New("permission denied"),
-			message: "The panel could not complete the request.",
-		},
-	}
-
-	catalogs, err := i18n.Load()
-	if err != nil {
-		t.Fatalf("cannot load the catalogues: %v", err)
-	}
-	catalog := catalogs.Catalog(i18n.Default)
-
-	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
-			if got := siemMessage(context.Background(), catalog, testCase.err); got != testCase.message {
-				t.Errorf("message = %q, want %q", got, testCase.message)
 			}
 		})
 	}

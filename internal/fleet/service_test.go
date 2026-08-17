@@ -97,7 +97,7 @@ func (h *writeHarness) service(lister *fakeLister, queries NameQuerier) *Service
 		settings.Fixed(2))
 
 	return NewService(lister, h.states, h.writer, refresher, queries,
-		audit.NewLogger(h.audit, nil), settings.Fixed(15*time.Minute),
+		audit.NewLogger(h.audit), settings.Fixed(15*time.Minute),
 		settings.Fixed(DefaultPerPage))
 }
 

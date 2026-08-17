@@ -38,15 +38,10 @@ type Deps struct {
 	Servers  *server.Service
 	Records  *fleet.Service
 
-	// SIEM manages the panel's own rsyslog configuration, and Forwarder is
-	// what the test events go out through.
-	SIEM      *siem.Manager
-	Forwarder audit.Forwarder
-
-	// Receiver is the collector the panel sends its trail to itself, and
-	// Backlog is how far behind that collector is. Both are nil on a panel
-	// built without them, which is what the handler tests do, and the page then
-	// reports a receiver that is off.
+	// Receiver is the collector the panel sends its trail to, and Backlog is
+	// how far behind that collector is. Both are nil on a panel built without
+	// them, which is what the handler tests do, and the page then reports a
+	// receiver that is off.
 	Receiver *siem.Sender
 	Backlog  *siem.Queue
 
@@ -201,7 +196,6 @@ func (a *App) Router() http.Handler {
 
 		"GET /siem":       a.handleSIEMPage,
 		"GET /siem/panel": a.handleSIEMPanel,
-		"POST /siem":      a.handleSIEMSave,
 		"POST /siem/test": a.handleSIEMTest,
 		"POST /diff/sync": a.withFleetDeadline(a.handleDiffSync),
 

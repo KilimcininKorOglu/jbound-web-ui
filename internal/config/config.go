@@ -40,31 +40,12 @@ type Config struct {
 
 	DigPath string
 
-	// RsyslogApplyCmd turns the rules the panel wrote into rsyslog
-	// configuration. It runs as root through one sudoers rule and refuses
-	// anything that is not a forwarding rule, which is why the panel itself
-	// needs no write access to /etc/rsyslog.d.
-	RsyslogApplyCmd   Command
-	RsyslogRestartCmd Command
-	RsyslogStatusCmd  Command
-
-	// SIEMRulesPath is the panel's own file, inside its data directory. The
-	// apply command reads it and is the only thing that writes configuration.
+	// SIEMRulesPath is where the release that forwarded through rsyslog kept the
+	// rules an operator wrote. The panel sends its trail itself now and writes
+	// nothing here, but it still reads the file once at startup to carry an
+	// existing collector over.
 	SIEMRulesPath string
-	SyslogLogPath string
 }
-
-// shellMetacharacters are rejected in every configured command. Commands run
-// through exec without a shell, so a metacharacter can only come from a
-// misconfiguration or an injection attempt. Failing at startup surfaces both.
-const shellMetacharacters = ";&|`$<>()\n\r"
-
-// Command is a command line already split into an argv list. Splitting happens
-// once at load time so no caller is tempted to hand the value to a shell.
-type Command []string
-
-// String renders the command for logs and error messages.
-func (c Command) String() string { return strings.Join(c, " ") }
 
 // Load reads the configuration from the environment and validates it.
 func Load() (*Config, error) {
@@ -85,7 +66,6 @@ func Load() (*Config, error) {
 	cfg.AdminGroup = env("ADMIN_GROUP", "sudo")
 	cfg.AllowedGroup = env("ALLOWED_GROUP", "")
 	cfg.SIEMRulesPath = filepath.Join(cfg.DataDir, "siem-rules.conf")
-	cfg.SyslogLogPath = env("SYSLOG_LOG_PATH", "/var/log/jbound.log")
 	cfg.DigPath = env("DIG_PATH", "dig")
 
 	var err error
@@ -103,27 +83,6 @@ func Load() (*Config, error) {
 		fail("%v", err)
 	}
 
-	commands := []struct {
-		key    string
-		def    string
-		target *Command
-	}{
-		// Both defaults name sudo, because both are sudoers rules the install
-		// writes. A command that does not reach sudo is a command the panel
-		// account is refused, and the refusal only surfaces on the SIEM page.
-		{"RSYSLOG_APPLY_CMD", "sudo /usr/local/sbin/jbound-siem-apply", &cfg.RsyslogApplyCmd},
-		{"RSYSLOG_RESTART_CMD", "sudo systemctl restart rsyslog", &cfg.RsyslogRestartCmd},
-		{"RSYSLOG_STATUS_CMD", "systemctl is-active rsyslog", &cfg.RsyslogStatusCmd},
-	}
-	for _, c := range commands {
-		value, cerr := ParseCommand(env(c.key, c.def))
-		if cerr != nil {
-			fail("%s: %v", c.key, cerr)
-			continue
-		}
-		*c.target = value
-	}
-
 	if cfg.MinUID < 0 {
 		fail("MIN_UID must not be negative, got %d", cfg.MinUID)
 	}
@@ -135,20 +94,6 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("invalid configuration:\n  %s", strings.Join(errs, "\n  "))
 	}
 	return cfg, nil
-}
-
-// ParseCommand splits a configured command into an argv list and rejects shell
-// metacharacters. The result is passed to exec directly, never to a shell.
-func ParseCommand(raw string) (Command, error) {
-	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" {
-		return nil, fmt.Errorf("command is empty")
-	}
-	if i := strings.IndexAny(trimmed, shellMetacharacters); i >= 0 {
-		return nil, fmt.Errorf("command contains the shell metacharacter %q: %s",
-			trimmed[i], trimmed)
-	}
-	return Command(strings.Fields(trimmed)), nil
 }
 
 func env(key, def string) string {

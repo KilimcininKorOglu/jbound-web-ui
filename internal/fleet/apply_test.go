@@ -321,7 +321,7 @@ func newWriteHarness(t *testing.T, count int) *writeHarness {
 	harness.refresher = refresher
 	harness.backups = &fakeBackups{saved: map[int64]FileBackup{}}
 	harness.writer = NewWriter(servers, groups, pool, refresher,
-		audit.NewLogger(auditRepo, nil), harness.backups, "/data",
+		audit.NewLogger(auditRepo), harness.backups, "/data",
 		settings.Fixed(timeouts), settings.Fixed(2))
 
 	// A real restart is given half a minute to bring the resolver back. The

@@ -111,10 +111,17 @@ func newLiveApp(t *testing.T) *App {
 		t.Fatalf("cannot load the settings: %v", err)
 	}
 
-	forwarder := siem.NewForwarder("panel.test")
-	t.Cleanup(func() { forwarder.Close() })
-	auditLog := audit.NewLogger(store.NewAuditLogs(db.DB), forwarder).
-		WithForwarding(options.BoolOf(settings.SIEMForwardingEnabled))
+	// The login path forwards nothing on its own, so the sender is here only
+	// because the application needs one to build. It stays off, which is what
+	// every install starts as.
+	sender := siem.NewSender("panel.test",
+		options.StringOf(settings.SIEMProtocol),
+		options.StringOf(settings.SIEMReceiverHost),
+		options.IntOf(settings.SIEMReceiverPort))
+	t.Cleanup(func() { sender.Close() })
+
+	auditLogs := store.NewAuditLogs(db.DB)
+	auditLog := audit.NewLogger(auditLogs)
 
 	// The login path does not reach a managed server, so the service is here
 	// only because the application needs one to build.
@@ -163,13 +170,12 @@ func newLiveApp(t *testing.T) *App {
 		Limiter: auth.NewRateLimiter(store.NewLoginAttempts(db.DB),
 			options.DurationOf(settings.LoginRateWindow),
 			options.IntOf(settings.LoginRateMaxAttempts)),
-		Audit:   auditLog,
-		Servers: servers,
-		Records: records,
-		SIEM: siem.NewManager(cfg.SIEMRulesPath, cfg.SyslogLogPath,
-			cfg.RsyslogApplyCmd, cfg.RsyslogRestartCmd, cfg.RsyslogStatusCmd),
-		Forwarder: forwarder,
-		Health:    db.Probe,
+		Audit:    auditLog,
+		Servers:  servers,
+		Records:  records,
+		Receiver: sender,
+		Health:   db.Probe,
+		Hostname: "panel.test",
 	})
 	if err != nil {
 		t.Fatalf("cannot build the application: %v", err)

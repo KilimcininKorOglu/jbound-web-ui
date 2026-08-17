@@ -44,22 +44,11 @@ func (f *fakeRepo) List(_ context.Context, query Query) (Page, error) {
 	return f.page, f.listErr
 }
 
-// fakeForwarder records what the logger mirrored.
-type fakeForwarder struct {
-	entries []Entry
-	err     error
-}
-
-func (f *fakeForwarder) Forward(entry Entry) error {
-	f.entries = append(f.entries, entry)
-	return f.err
-}
-
 func TestAnEntryWithoutAnActionIsRefused(t *testing.T) {
 	// A row nobody can filter on is worse than no row, because it reads as a
 	// complete log that happens to be missing the event.
 	repo := &fakeRepo{}
-	logger := NewLogger(repo, nil)
+	logger := NewLogger(repo)
 
 	if err := logger.Write(context.Background(), Entry{Username: "dnsadmin"}); err == nil {
 		t.Fatal("the logger accepted an entry with no action")
@@ -71,7 +60,7 @@ func TestAnEntryWithoutAnActionIsRefused(t *testing.T) {
 
 func TestTheMissingFieldsReadAsWords(t *testing.T) {
 	repo := &fakeRepo{}
-	logger := NewLogger(repo, nil)
+	logger := NewLogger(repo)
 
 	if err := logger.Write(context.Background(), Entry{Action: ActionCacheRefresh}); err != nil {
 		t.Fatalf("write failed: %v", err)
@@ -90,7 +79,7 @@ func TestTheStoredTimeIsUTC(t *testing.T) {
 	// Every timestamp in the database is UTC. A row written in local time
 	// would sort against the others and read hours off in the log.
 	repo := &fakeRepo{}
-	logger := NewLogger(repo, nil)
+	logger := NewLogger(repo)
 
 	if err := logger.Write(context.Background(), Entry{Action: ActionLogin}); err != nil {
 		t.Fatalf("write failed: %v", err)
@@ -100,105 +89,49 @@ func TestTheStoredTimeIsUTC(t *testing.T) {
 	}
 }
 
-func TestTheEntryIsMirroredWithTheServerName(t *testing.T) {
-	// The name never reaches the database. It travels with the entry so the
-	// forwarded event can say which machine the action landed on.
+// The queue reads the row out of the database rather than being handed the
+// entry, so the wake-up is worth nothing until the row is there.
+func TestTheQueueIsWokenOnceTheRowHasLanded(t *testing.T) {
 	repo := &fakeRepo{}
-	forwarder := &fakeForwarder{}
-	logger := NewLogger(repo, forwarder)
-
-	id := int64(7)
-	err := logger.Write(context.Background(), Entry{
-		Action: ActionDNSAdd, Username: "dnsadmin", ServerID: &id, ServerName: "dns2"})
-	if err != nil {
-		t.Fatalf("write failed: %v", err)
-	}
-
-	if len(forwarder.entries) != 1 {
-		t.Fatalf("the entry was forwarded %d times, want 1", len(forwarder.entries))
-	}
-	if forwarder.entries[0].ServerName != "dns2" {
-		t.Errorf("server name = %q, want dns2", forwarder.entries[0].ServerName)
-	}
-}
-
-func TestAForwarderThatIsDownDoesNotFailTheAction(t *testing.T) {
-	// The entry is in the database. Failing a record change over a syslog
-	// socket would cost more than the mirror is worth.
-	repo := &fakeRepo{}
-	forwarder := &fakeForwarder{err: errors.New("connection refused")}
-	logger := NewLogger(repo, forwarder)
-
-	if err := logger.Write(context.Background(), Entry{Action: ActionLogin}); err != nil {
-		t.Errorf("write returned %v, want nil", err)
-	}
-}
-
-func TestADatabaseFailureStillReachesTheMirror(t *testing.T) {
-	// The mirror sits off the panel host, which is exactly where a record is
-	// worth having when the panel database is the thing that went wrong.
-	repo := &fakeRepo{err: errors.New("database is locked")}
-	forwarder := &fakeForwarder{}
-	logger := NewLogger(repo, forwarder)
-
-	if err := logger.Write(context.Background(), Entry{Action: ActionServerDelete}); err == nil {
-		t.Error("the caller was not told that the entry could not be stored")
-	}
-	if len(forwarder.entries) != 1 {
-		t.Errorf("the entry was forwarded %d times, want 1", len(forwarder.entries))
-	}
-}
-
-// The switch stops the mirror and nothing else. The database is the primary
-// record, so an operator silencing a noisy receiver must not lose the trail.
-func TestForwardingOffStillWritesTheEntry(t *testing.T) {
-	repo := &fakeRepo{}
-	forwarder := &fakeForwarder{}
-	logger := NewLogger(repo, forwarder).WithForwarding(func() bool { return false })
+	woken := 0
+	logger := NewLogger(repo).WithNotify(func() { woken++ })
 
 	if err := logger.Write(context.Background(), Entry{Action: ActionLogin}); err != nil {
 		t.Fatalf("write failed: %v", err)
 	}
-
-	if len(repo.entries) != 1 {
-		t.Errorf("%d row(s) written, want 1", len(repo.entries))
-	}
-	if len(forwarder.entries) != 0 {
-		t.Errorf("%d entry(s) forwarded with the switch off, want none",
-			len(forwarder.entries))
+	if woken != 1 {
+		t.Errorf("the queue was woken %d times, want 1", woken)
 	}
 }
 
-// The switch is read per entry rather than held, so turning it back on takes
-// effect on the next action.
-func TestForwardingResumesWhenTheSwitchGoesBackOn(t *testing.T) {
-	repo := &fakeRepo{}
-	forwarder := &fakeForwarder{}
-
-	enabled := false
-	logger := NewLogger(repo, forwarder).WithForwarding(func() bool { return enabled })
-
-	ctx := context.Background()
-	if err := logger.Write(ctx, Entry{Action: ActionLogin}); err != nil {
-		t.Fatalf("write failed: %v", err)
+func TestTheQueueIsNotWokenForARowThatWasNotWritten(t *testing.T) {
+	// A wake-up over a failed insert sends the queue looking for a row that is
+	// not there, and the failure would read as a delivery that is late.
+	woken := 0
+	for _, tc := range []struct {
+		name  string
+		repo  *fakeRepo
+		entry Entry
+	}{
+		{"the database refused it", &fakeRepo{err: errors.New("database is locked")},
+			Entry{Action: ActionServerDelete}},
+		{"the entry had no action", &fakeRepo{}, Entry{Username: "dnsadmin"}},
+	} {
+		logger := NewLogger(tc.repo).WithNotify(func() { woken++ })
+		if err := logger.Write(context.Background(), tc.entry); err == nil {
+			t.Errorf("%s: the caller was not told", tc.name)
+		}
 	}
-	enabled = true
-	if err := logger.Write(ctx, Entry{Action: ActionLogout}); err != nil {
-		t.Fatalf("write failed: %v", err)
-	}
-
-	if len(forwarder.entries) != 1 {
-		t.Fatalf("%d entry(s) forwarded, want the second one only",
-			len(forwarder.entries))
-	}
-	if forwarder.entries[0].Action != ActionLogout {
-		t.Errorf("forwarded %s, want %s", forwarder.entries[0].Action, ActionLogout)
+	if woken != 0 {
+		t.Errorf("the queue was woken %d times, want none", woken)
 	}
 }
 
-func TestAPanelWithoutASIEMStillWrites(t *testing.T) {
+// The wake-up is optional. A panel that never forwards, and every caller that
+// has no queue, hand the logger nothing to call.
+func TestAPanelWithoutAQueueStillWrites(t *testing.T) {
 	repo := &fakeRepo{}
-	logger := NewLogger(repo, nil)
+	logger := NewLogger(repo)
 
 	if err := logger.Write(context.Background(), Entry{Action: ActionLogout}); err != nil {
 		t.Fatalf("write failed: %v", err)
@@ -210,7 +143,7 @@ func TestAPanelWithoutASIEMStillWrites(t *testing.T) {
 
 func TestTheListingIsHandedToTheRepository(t *testing.T) {
 	repo := &fakeRepo{page: Page{Window: paging.Window{Total: 3}}}
-	logger := NewLogger(repo, nil)
+	logger := NewLogger(repo)
 
 	page, err := logger.List(context.Background(), Query{Action: ActionDNSAdd, PerPage: 25})
 	if err != nil {
@@ -352,7 +285,7 @@ func TestACancelledRequestStillGetsItsAuditRow(t *testing.T) {
 	// cancels a request whenever it fires a second one from the same element,
 	// and that used to take the row with it.
 	repo := &fakeRepo{}
-	logger := NewLogger(repo, nil)
+	logger := NewLogger(repo)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -375,7 +308,7 @@ func TestTheDetachedWriteIsStillBounded(t *testing.T) {
 	// Detaching the cancellation must not hand the store a context that never
 	// ends, or an unavailable database holds the caller for ever.
 	repo := &fakeRepo{}
-	logger := NewLogger(repo, nil)
+	logger := NewLogger(repo)
 
 	if err := logger.Write(context.Background(), Entry{
 		Username: "dnsadmin", Action: ActionDNSAdd,

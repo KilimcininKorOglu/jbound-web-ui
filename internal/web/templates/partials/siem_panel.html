@@ -1,72 +1,11 @@
-{{/* The panel forwards its own audit trail. This page manages the rsyslog
-     configuration of the panel host and never that of a managed server. */}}
+{{/* The panel forwards its own audit trail, and reaches the receiver itself.
+     Nothing here touches a managed server. */}}
 {{define "siem-panel"}}
 <div class="row g-4">
   <div class="col-lg-7">
-    <div class="card mb-4">
-      <div class="card-header d-flex flex-wrap align-items-center justify-content-between">
-        <h2 class="h6 mb-0">{{t "siem.title_rules"}}</h2>
-        <div>
-          {{if eq .Settings.Status "active"}}
-          <span class="badge bg-label-success" data-field="rsyslog-status">{{t "siem.status_active"}}</span>
-          {{else}}
-          <span class="badge bg-label-danger" data-field="rsyslog-status">{{tf "siem.status_other" .Settings.Status}}</span>
-          {{end}}
-          {{if not .Forwarding}}
-          <span class="badge bg-label-secondary ms-1" data-field="forwarding">{{t "siem.forwarding_disabled"}}</span>
-          {{else if .Settings.HasActiveRules}}
-          <span class="badge bg-label-success ms-1" data-field="forwarding">{{t "siem.forwarding_on"}}</span>
-          {{else}}
-          <span class="badge bg-label-secondary ms-1" data-field="forwarding">{{t "siem.forwarding_off"}}</span>
-          {{end}}
-        </div>
-      </div>
-
-      <div class="card-body">
-        {{if .Problem}}{{template "alert" (alert "error" .Problem)}}{{end}}
-        {{if .Notice}}{{template "alert" (alert "success" .Notice)}}{{end}}
-
-        {{/* The switch and the rules are separate on purpose. Turning the
-             mirror off keeps the rules on the host, which is what an operator
-             wants while a receiver is being repaired. */}}
-        <div class="form-check form-switch mb-4">
-          <input class="form-check-input" type="checkbox" role="switch"
-                 id="forwarding" name="forwarding" data-field="forwarding-switch"
-                 aria-describedby="forwarding-help" {{if .Forwarding}}checked{{end}}
-                 hx-post="/siem/forwarding" hx-target="#siem-panel" hx-swap="innerHTML">
-          <label class="form-check-label" for="forwarding">{{t "siem.forwarding_switch"}}</label>
-          <div class="form-text" id="forwarding-help">{{t "siem.forwarding_help"}}</div>
-        </div>
-
-        <form hx-post="/siem" hx-target="#siem-panel" hx-swap="innerHTML">
-          <label class="form-label" for="rules">{{t "siem.rules"}}</label>
-          <textarea class="form-control font-monospace" id="rules" name="rules"
-                    rows="6" spellcheck="false" autocapitalize="none"
-                    placeholder="local6.*    @@siem.example.net:514">{{.Rules}}</textarea>
-
-          <div class="form-text">
-            {{t "siem.rules_help_1"}} <code>@@</code> {{t "siem.rules_help_2"}}
-            <code>@</code> {{t "siem.rules_help_3"}} <code>#</code>
-            {{t "siem.rules_help_4"}}
-          </div>
-
-          <div class="dns-toolbar mt-4">
-            <button class="btn btn-primary" type="submit">{{t "siem.save"}}</button>
-            <button class="btn btn-outline-secondary" type="button"
-                    data-field="send-test"
-                    hx-post="/siem/test" hx-target="#siem-panel" hx-swap="innerHTML">
-              {{t "siem.send_test"}}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  </div>
-
-  <div class="col-lg-5">
     {{/* The receiver the panel reaches itself. It needs no daemon on this host
-         and no privilege, and the backlog below is what says a collector that
-         is down is costing a wait rather than the trail. */}}
+         and no privilege, and the backlog in the header is what says a collector
+         that is down is costing a wait rather than the trail. */}}
     <div class="card mb-4">
       <div class="card-header d-flex flex-wrap align-items-center justify-content-between">
         <h2 class="h6 mb-0">{{t "siem.receiver_title"}}</h2>
@@ -85,10 +24,28 @@
             {{tf "siem.receiver_pending" .Receiver.Pending}}
           </span>
           {{end}}
+          {{if not .Forwarding}}
+          <span class="badge bg-label-secondary ms-1" data-field="forwarding">{{t "siem.forwarding_disabled"}}</span>
+          {{end}}
         </div>
       </div>
 
       <div class="card-body">
+        {{if .Problem}}{{template "alert" (alert "error" .Problem)}}{{end}}
+        {{if .Notice}}{{template "alert" (alert "success" .Notice)}}{{end}}
+
+        {{/* The switch and the receiver are separate on purpose. Turning the
+             mirror off keeps the receiver where it is, which is what an operator
+             wants while a collector is being repaired. */}}
+        <div class="form-check form-switch mb-4">
+          <input class="form-check-input" type="checkbox" role="switch"
+                 id="forwarding" name="forwarding" data-field="forwarding-switch"
+                 aria-describedby="forwarding-help" {{if .Forwarding}}checked{{end}}
+                 hx-post="/siem/forwarding" hx-target="#siem-panel" hx-swap="innerHTML">
+          <label class="form-check-label" for="forwarding">{{t "siem.forwarding_switch"}}</label>
+          <div class="form-text" id="forwarding-help">{{t "siem.forwarding_help"}}</div>
+        </div>
+
         <form hx-post="/siem/receiver" hx-target="#siem-panel" hx-swap="innerHTML">
           <div class="mb-3">
             <label class="form-label" for="protocol">{{t "siem.receiver_protocol"}}</label>
@@ -122,25 +79,29 @@
 
           <div class="dns-toolbar mt-4">
             <button class="btn btn-primary" type="submit">{{t "siem.receiver_save"}}</button>
+            <button class="btn btn-outline-secondary" type="button"
+                    data-field="send-test"
+                    hx-post="/siem/test" hx-target="#siem-panel" hx-swap="innerHTML">
+              {{t "siem.send_test"}}
+            </button>
           </div>
         </form>
       </div>
     </div>
+  </div>
 
+  <div class="col-lg-5">
     <div class="card mb-4">
       <div class="card-header">
         <h2 class="h6 mb-0">{{t "siem.how_title"}}</h2>
       </div>
       <div class="card-body">
         <p class="mb-2">
-          {{t "siem.how_1a"}} <code>{{.Settings.Facility}}</code>,
-          {{t "siem.how_1b"}} <code>{{.Settings.Tag}}</code>.
+          {{t "siem.how_1a"}} <code>{{.Facility}}</code>,
+          {{t "siem.how_1b"}} <code>{{.Tag}}</code>.
         </p>
         <p class="mb-2">{{t "siem.how_2"}}</p>
-        <p class="mb-0">
-          {{t "siem.how_3a"}} <code>{{.Settings.LogFile}}</code>,
-          {{t "siem.how_3b"}}
-        </p>
+        <p class="mb-0">{{t "siem.how_3"}}</p>
       </div>
     </div>
   </div>

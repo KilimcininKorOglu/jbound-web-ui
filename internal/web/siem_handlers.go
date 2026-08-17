@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"jbound/internal/audit"
-	"jbound/internal/i18n"
 	"jbound/internal/logging"
 	appsettings "jbound/internal/settings"
 	"jbound/internal/siem"
@@ -19,19 +18,19 @@ const defaultLogLines = 50
 
 // siemPageData feeds the SIEM page and its fragments.
 type siemPageData struct {
-	Settings siem.Settings
-
-	// Forwarding is the panel's own switch. The rules stay on the host either
-	// way, so an operator can silence a noisy receiver without losing them.
+	// Forwarding is the panel's own switch. The receiver stays configured either
+	// way, so an operator can silence a noisy collector without losing where it
+	// is.
 	Forwarding bool
-
-	// Rules is what the form shows. It differs from the stored rules while a
-	// refused submission is being corrected.
-	Rules string
 
 	// Receiver is the collector the panel reaches itself, without a syslog
 	// daemon on the host and without a privilege for it.
 	Receiver receiverData
+
+	// Facility and Tag are what every line is sent with. The page names them
+	// because they are what a receiver filters on.
+	Facility string
+	Tag      string
 
 	Lines   []string
 	Problem string
@@ -68,7 +67,7 @@ type receiverData struct {
 func (a *App) handleSIEMPage(w http.ResponseWriter, r *http.Request) {
 	data, err := a.siemPageData(r)
 	if err != nil {
-		a.internalError(w, r, "cannot read the syslog configuration", err)
+		a.internalError(w, r, "cannot read the SIEM settings", err)
 		return
 	}
 	a.Render(w, r, http.StatusOK, "siem", PageData{Title: "nav.siem_config", Data: data})
@@ -79,18 +78,13 @@ func (a *App) handleSIEMPage(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleSIEMPanel(w http.ResponseWriter, r *http.Request) {
 	data, err := a.siemPageData(r)
 	if err != nil {
-		a.internalError(w, r, "cannot read the syslog configuration", err)
+		a.internalError(w, r, "cannot read the SIEM settings", err)
 		return
 	}
 	a.RenderPartial(w, r, http.StatusOK, "siem-panel", data)
 }
 
 func (a *App) siemPageData(r *http.Request) (siemPageData, error) {
-	config, err := a.SIEM.Settings(r.Context())
-	if err != nil {
-		return siemPageData{}, err
-	}
-
 	lines, err := a.recentEvents(r.Context())
 	if err != nil {
 		// The viewer is a view. A panel that could not read it still has to show
@@ -100,10 +94,10 @@ func (a *App) siemPageData(r *http.Request) (siemPageData, error) {
 	}
 
 	return siemPageData{
-		Settings:   config,
 		Forwarding: a.Settings.Bool(appsettings.SIEMForwardingEnabled),
-		Rules:      config.ForwardingRules,
 		Receiver:   a.receiverData(r.Context()),
+		Facility:   siem.FacilityName,
+		Tag:        siem.Tag,
 		Lines:      lines,
 	}, nil
 }
@@ -165,7 +159,7 @@ func (a *App) receiverData(ctx context.Context) receiverData {
 // connections is read about on this page, and that is where it gets corrected.
 func (a *App) handleSIEMReceiver(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		a.siemProblem(w, r, "", a.catalog(r).T("error.form_unreadable"), http.StatusBadRequest)
+		a.siemProblem(w, r, a.catalog(r).T("error.form_unreadable"), http.StatusBadRequest)
 		return
 	}
 
@@ -179,7 +173,7 @@ func (a *App) handleSIEMReceiver(w http.ResponseWriter, r *http.Request) {
 		if refusal, ok := errors.AsType[*appsettings.Refusal](err); ok {
 			// The operator typed it, so the card comes back with the reason
 			// rather than a server error nobody can act on.
-			a.siemProblem(w, r, "",
+			a.siemProblem(w, r,
 				capitalise(refusal.Error())+".", http.StatusUnprocessableEntity)
 			return
 		}
@@ -188,7 +182,7 @@ func (a *App) handleSIEMReceiver(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a.auditSIEM(r, audit.ActionSIEMConfig,
-		"SIEM receiver set to "+describeReceiver(submitted), false)
+		"SIEM receiver set to "+describeReceiver(submitted))
 
 	// A receiver that has just been named has a backlog of nothing, but one
 	// that was down while it was corrected has rows waiting. Waking the queue
@@ -215,17 +209,14 @@ func describeReceiver(submitted map[string]string) string {
 // handleSIEMForwarding turns the mirror on or off.
 //
 // It writes the same setting the settings page holds, because a switch next to
-// the rules is where an operator looks for it while the receiver is the thing
+// the receiver is where an operator looks for it while the receiver is the thing
 // going wrong.
 func (a *App) handleSIEMForwarding(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		a.siemProblem(w, r, "", a.catalog(r).T("error.form_unreadable"), http.StatusBadRequest)
+		a.siemProblem(w, r, a.catalog(r).T("error.form_unreadable"), http.StatusBadRequest)
 		return
 	}
 	enabled := r.PostForm.Has("forwarding")
-	// Save swaps the snapshot before it returns, so the state the entry has to
-	// be judged against is the one that is still in place here.
-	wasEnabled := a.Settings.Bool(appsettings.SIEMForwardingEnabled)
 
 	err := a.Settings.Save(r.Context(), map[string]string{
 		appsettings.SIEMForwardingEnabled: boolValue(enabled),
@@ -239,7 +230,7 @@ func (a *App) handleSIEMForwarding(w http.ResponseWriter, r *http.Request) {
 	if enabled {
 		state = "enabled"
 	}
-	a.auditSIEM(r, audit.ActionSIEMConfig, "SIEM forwarding "+state, wasEnabled && !enabled)
+	a.auditSIEM(r, audit.ActionSIEMConfig, "SIEM forwarding "+state)
 
 	catalog := a.catalog(r)
 	SetToast(w, ToastSuccess, catalog.Tf("toast.forwarding_state",
@@ -248,41 +239,18 @@ func (a *App) handleSIEMForwarding(w http.ResponseWriter, r *http.Request) {
 	a.handleSIEMPanel(w, r)
 }
 
-// handleSIEMSave writes the forwarding rules and restarts the daemon.
-func (a *App) handleSIEMSave(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		a.siemProblem(w, r, "", a.catalog(r).T("error.form_unreadable"), http.StatusBadRequest)
-		return
-	}
-	rules := strings.ReplaceAll(strings.TrimSpace(r.PostFormValue("rules")), "\r\n", "\n")
-
-	if err := a.SIEM.Save(r.Context(), rules); err != nil {
-		if errors.Is(err, siem.ErrRule) || errors.Is(err, siem.ErrConfig) {
-			// The operator can correct these, so the form comes back with
-			// their text in it and the reason above it.
-			a.siemProblem(w, r, rules,
-				siemMessage(r.Context(), a.catalog(r), err), http.StatusUnprocessableEntity)
-			return
-		}
-
-		// Everything else is the panel host's own fault: the file could not be
-		// replaced, or the daemon could not be restarted. It answers as a
-		// server error so a log alert that counts them sees it, and the toast
-		// carries the message because a 500 swaps nothing.
-		SetToast(w, ToastError, a.catalog(r).T("error.generic"))
-		a.internalError(w, r, "cannot save the syslog configuration", err)
-		return
-	}
-
-	a.auditSIEM(r, audit.ActionSIEMConfig, "SIEM forwarding configuration updated", false)
-	SetToast(w, ToastSuccess, a.catalog(r).T("toast.rules_saved"))
-	a.handleSIEMPanel(w, r)
-}
-
 // handleSIEMTest sends the test events.
 func (a *App) handleSIEMTest(w http.ResponseWriter, r *http.Request) {
+	if a.Receiver == nil || !a.Receiver.Configured() {
+		// Nothing to test. The operator names a receiver first, and saying so
+		// is more use than a failure from a socket that was never opened.
+		a.siemProblem(w, r, a.catalog(r).T("siem.test_needs_receiver"),
+			http.StatusUnprocessableEntity)
+		return
+	}
+
 	actor := a.actor(r)
-	message, err := siem.SendTestEvents(r.Context(), a.Forwarder, audit.Entry{
+	message, err := siem.SendTestEvents(a.Receiver, a.Hostname, audit.Entry{
 		UID: actor.UID, Username: actor.Username, IPAddress: actor.IPAddress})
 	if err != nil {
 		SetToast(w, ToastError, userMessage(r.Context(), a.catalog(r), err))
@@ -290,11 +258,11 @@ func (a *App) handleSIEMTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.auditSIEM(r, audit.ActionSIEMTest, message, false)
+	a.auditSIEM(r, audit.ActionSIEMTest, message)
 
 	data, err := a.siemPageData(r)
 	if err != nil {
-		a.internalError(w, r, "cannot read the syslog configuration", err)
+		a.internalError(w, r, "cannot read the SIEM settings", err)
 		return
 	}
 	data.Notice = message
@@ -303,19 +271,15 @@ func (a *App) handleSIEMTest(w http.ResponseWriter, r *http.Request) {
 	a.RenderPartial(w, r, http.StatusOK, "siem-panel", data)
 }
 
-// siemProblem sends the form back with the reason it was refused.
+// siemProblem sends the card back with the reason it was refused.
 func (a *App) siemProblem(w http.ResponseWriter, r *http.Request,
-	rules, problem string, status int) {
+	problem string, status int) {
 
 	data, err := a.siemPageData(r)
 	if err != nil {
-		a.internalError(w, r, "cannot read the syslog configuration", err)
+		a.internalError(w, r, "cannot read the SIEM settings", err)
 		return
 	}
-
-	// The submitted rules stay in the form, because the operator has to
-	// correct them rather than type them again.
-	data.Rules = rules
 	data.Problem = problem
 
 	a.RenderPartial(w, r, status, "siem-panel", data)
@@ -323,9 +287,10 @@ func (a *App) siemProblem(w http.ResponseWriter, r *http.Request,
 
 // auditSIEM records a change to the panel's own forwarding.
 //
-// mirrored asks for the entry to reach the receiver even though the switch it
-// just turned off already answers false.
-func (a *App) auditSIEM(r *http.Request, action, details string, mirrored bool) {
+// The entry that turns the mirror off still reaches the receiver. The queue
+// forwards this action whatever the switch says, because everything after that
+// entry is silence rather than quiet.
+func (a *App) auditSIEM(r *http.Request, action, details string) {
 	actor := a.actor(r)
 
 	entry := audit.Entry{
@@ -336,21 +301,5 @@ func (a *App) auditSIEM(r *http.Request, action, details string, mirrored bool) 
 		IPAddress: actor.IPAddress,
 	}
 
-	if mirrored {
-		_ = a.Audit.WriteMirrored(r.Context(), entry)
-		return
-	}
 	_ = a.Audit.Write(r.Context(), entry)
-}
-
-// siemMessage turns a refusal into a sentence the form can show.
-func siemMessage(ctx context.Context, catalog *i18n.Catalog, err error) string {
-	switch {
-	case errors.Is(err, siem.ErrRule):
-		return capitalise(strings.TrimPrefix(err.Error(), siem.ErrRule.Error()+": ")) + "."
-	case errors.Is(err, siem.ErrConfig):
-		return capitalise(err.Error()) + "."
-	default:
-		return userMessage(ctx, catalog, err)
-	}
 }

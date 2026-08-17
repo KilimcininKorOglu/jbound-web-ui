@@ -213,7 +213,9 @@ func (q *Queue) Pending(ctx context.Context) (int, error) {
 // alwaysForwarded reports the actions that go out even with the mirror off.
 //
 // The entry that turns forwarding off is the one a receiver cannot afford to
-// miss, because everything after it is silence rather than quiet.
+// miss, because everything after it is silence rather than quiet. The switch is
+// reachable from two pages, so both actions that can carry it are listed: the
+// SIEM page writes siem_config, the settings page writes settings_update.
 func alwaysForwarded(action string) bool {
-	return action == audit.ActionSIEMConfig
+	return action == audit.ActionSIEMConfig || action == audit.ActionSettingsUpdate
 }

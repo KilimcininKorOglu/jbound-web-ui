@@ -1,15 +1,16 @@
 //go:build integration
 
-// Proves that a forwarded event leaves the panel host.
+// Proves that an audit entry reaches a receiver over a real socket.
 //
-// The unit tests cover the CEF text and the rule syntax. What they cannot show
-// is the chain behind them: the panel writes to the local syslog socket, the
-// daemon reads its own configuration, and a receiver somewhere else gets a
-// line. Every part of that runs outside the process.
+// The unit tests cover the CEF text, the framing and the cursor, but every one
+// of them hands the sender a connection of its own. What they cannot show is
+// the chain: an entry written through the audit logger lands in the database,
+// the queue reads it back, and the bytes leave over a socket the operating
+// system opened.
 //
-// The receiver here is a listener inside the test rather than the sink
-// container, so the assertion sees the bytes rather than a file it would have
-// to poll on another machine.
+// The receiver is a listener inside the test rather than the sink container, so
+// the assertion sees the bytes rather than a file it would have to poll on
+// another machine.
 //
 // Run it with: make dev-itest
 
@@ -18,55 +19,30 @@ package siem_test
 import (
 	"bufio"
 	"context"
-	"fmt"
 	"net"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"jbound/internal/audit"
-	"jbound/internal/config"
+	"jbound/internal/database"
 	"jbound/internal/siem"
+	"jbound/internal/store"
 )
 
-// forwardWindow is how long the receiver waits for the line.
-//
-// rsyslog reconnects on its own schedule after a restart, so the window is
-// generous. A test that fails here means nothing arrived at all.
-const forwardWindow = 45 * time.Second
+// forwardWindow is how long the receiver waits for the line. A test that fails
+// here means nothing arrived at all.
+const forwardWindow = 30 * time.Second
 
-func TestGateAForwardedEventLeavesTheHost(t *testing.T) {
-	cfg, err := config.Load()
-	if err != nil {
-		t.Fatalf("cannot load the configuration: %v", err)
-	}
+func TestGateAnAuditEntryReachesTheReceiver(t *testing.T) {
+	ctx := context.Background()
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("cannot open the receiver: %v", err)
 	}
 	defer listener.Close()
-
-	port := listener.Addr().(*net.TCPAddr).Port
-	manager := siem.NewManager(cfg.SIEMRulesPath, cfg.SyslogLogPath,
-		cfg.RsyslogApplyCmd, cfg.RsyslogRestartCmd, cfg.RsyslogStatusCmd)
-
-	// The configuration of the container is restored afterwards, because the
-	// stack keeps running after the tests do.
-	previous, err := manager.Settings(context.Background())
-	if err != nil {
-		t.Fatalf("cannot read the current settings: %v", err)
-	}
-	t.Cleanup(func() {
-		if err := manager.Save(context.Background(), previous.ForwardingRules); err != nil {
-			t.Errorf("cannot restore the forwarding rules: %v", err)
-		}
-	})
-
-	rule := fmt.Sprintf("local6.*    @@127.0.0.1:%d", port)
-	if err := manager.Save(context.Background(), rule); err != nil {
-		t.Fatalf("cannot write the forwarding rule: %v", err)
-	}
 
 	lines := make(chan string, 1)
 	go func() {
@@ -90,43 +66,61 @@ func TestGateAForwardedEventLeavesTheHost(t *testing.T) {
 		}
 	}()
 
-	forwarder := siem.NewForwarder("panel.test")
-	defer forwarder.Close()
-
-	// The daemon reconnects on its own schedule, so the event is repeated
-	// until the receiver has it or the window closes.
-	deadline := time.After(forwardWindow)
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-
-	send := func() {
-		err := forwarder.Forward(audit.Entry{
-			UID: 1001, Username: "dnsadmin", Action: audit.ActionLogin,
-			Details: "gate_forward_probe", IPAddress: "203.0.113.5",
-		})
-		if err != nil {
-			t.Errorf("cannot forward the event: %v", err)
-		}
+	db, err := database.Open(ctx, filepath.Join(t.TempDir(), "panel.db"))
+	if err != nil {
+		t.Fatalf("cannot open the database: %v", err)
 	}
-	send()
+	defer db.Close()
 
-	for {
-		select {
-		case line := <-lines:
-			if !strings.Contains(line, "CEF:0|JBound|JBoundDNSPanel") {
-				t.Errorf("the receiver got a line that is not CEF: %q", line)
-			}
-			if !strings.Contains(line, "jbound") {
-				t.Errorf("the line carries no panel tag: %q", line)
-			}
-			if !strings.Contains(line, "suser=dnsadmin") {
-				t.Errorf("the line names no user: %q", line)
-			}
-			return
-		case <-ticker.C:
-			send()
-		case <-deadline:
-			t.Fatal("no forwarded event reached the receiver")
+	host, portText, err := net.SplitHostPort(listener.Addr().String())
+	if err != nil {
+		t.Fatalf("cannot read the receiver address: %v", err)
+	}
+	port, err := net.LookupPort("tcp", portText)
+	if err != nil {
+		t.Fatalf("cannot read the receiver port: %v", err)
+	}
+
+	sender := siem.NewSender("panel.test",
+		func() string { return siem.ProtocolTCP },
+		func() string { return host },
+		func() int { return port })
+	defer sender.Close()
+
+	rows := store.NewAuditLogs(db.DB)
+	queue := siem.NewQueue(rows, store.NewSIEMCursor(db.DB), sender, "panel.test",
+		func() bool { return true })
+
+	// The first round places the cursor at the present, which is what keeps a
+	// newly named receiver from being handed months of history. Nothing is sent
+	// here, and everything after it is.
+	queue.Drain(ctx)
+
+	// The entry goes in the way the panel writes it, so the row the queue reads
+	// back is the row a handler would have produced.
+	logger := audit.NewLogger(rows)
+	err = logger.Write(ctx, audit.Entry{
+		UID: 1001, Username: "dnsadmin", Action: audit.ActionLogin,
+		Details: "gate_forward_probe", IPAddress: "203.0.113.5",
+	})
+	if err != nil {
+		t.Fatalf("cannot write the audit entry: %v", err)
+	}
+
+	queue.Drain(ctx)
+
+	select {
+	case line := <-lines:
+		if !strings.Contains(line, "CEF:0|JBound|JBoundDNSPanel") {
+			t.Errorf("the receiver got a line that is not CEF: %q", line)
 		}
+		if !strings.Contains(line, siem.Tag) {
+			t.Errorf("the line carries no panel tag: %q", line)
+		}
+		if !strings.Contains(line, "suser=dnsadmin") {
+			t.Errorf("the line names no user: %q", line)
+		}
+	case <-time.After(forwardWindow):
+		t.Fatal("no event reached the receiver")
 	}
 }

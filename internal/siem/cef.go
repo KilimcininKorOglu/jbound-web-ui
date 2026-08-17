@@ -1,9 +1,10 @@
-// Package siem forwards audit entries to a security information and event
+// Package siem forwards the audit trail to a security information and event
 // management system.
 //
-// The panel writes CEF over syslog. The database stays the primary record,
-// because the panel must still answer "who added this record" when the SIEM is
-// unreachable.
+// The panel sends CEF over syslog to a receiver it reaches itself, with no
+// daemon on the host in between and no privilege for it. The database stays the
+// primary record and the queue: every row is durable before it is sent, so a
+// receiver that is down costs a backlog rather than events.
 package siem
 
 import (
@@ -22,6 +23,17 @@ const (
 	product    = "JBoundDNSPanel"
 	release    = "1.0"
 )
+
+// Facility is the syslog facility every event is sent with. A receiver that
+// collects more than the panel selects on it.
+const Facility = syslog.LOG_LOCAL6
+
+// FacilityName is the same facility written the way a collector filter names
+// it. The number is what the wire carries, and this is what an operator types.
+const FacilityName = "local6"
+
+// Tag is the program name of every line the panel sends.
+const Tag = "jbound"
 
 // Class is how one action is reported.
 type Class struct {

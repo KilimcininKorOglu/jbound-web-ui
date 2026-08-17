@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -11,6 +12,8 @@ import (
 	"jbound/internal/fleet"
 	"jbound/internal/i18n"
 	"jbound/internal/server"
+	appsettings "jbound/internal/settings"
+	"jbound/internal/siem"
 	"jbound/internal/transport"
 )
 
@@ -32,7 +35,7 @@ const (
 type systemPageData struct {
 	Session sessionCard
 	Panel   panelCard
-	Syslog  syslogCard
+	Trail   trailCard
 	Status  systemStatus
 }
 
@@ -53,17 +56,28 @@ type panelCard struct {
 	DatabaseSize string
 }
 
-// syslogCard is where the panel's own trail goes.
-type syslogCard struct {
-	Status     string
-	Facility   string
-	LogFile    string
+// trailCard is where the panel's own audit trail goes.
+//
+// It names no collector address, because this page is readable by the lowest
+// privileged account and the address is an infrastructure coordinate. The SIEM
+// page, which is admin only, is where the receiver is named and changed.
+type trailCard struct {
+	// Forwarding is the mirror switch, and Configured says whether a receiver
+	// was named at all. A switch that is on with no receiver sends nothing,
+	// which is what makes the two worth showing apart.
 	Forwarding bool
+	Configured bool
 
-	// Problem carries the reason the configuration could not be read. The card
-	// is still shown, because a panel whose syslog cannot be inspected is
-	// exactly when an operator needs to know.
-	Problem string
+	// Connected is the state of the connection to the receiver, and Pending how
+	// many rows it has not been given. A backlog is what tells a reader the
+	// trail is waiting rather than lost.
+	Connected bool
+	Pending   int
+
+	// Facility and Tag are what every line carries. They are constants, and a
+	// receiver filters on them.
+	Facility string
+	Tag      string
 }
 
 // systemStatus is the part of the page that refreshes on its own.
@@ -145,7 +159,7 @@ func (a *App) systemPageData(r *http.Request) (systemPageData, error) {
 			LastActive: session.LastActive,
 		},
 		Panel:  a.panelCard(),
-		Syslog: a.syslogCard(r),
+		Trail:  a.trailCard(r.Context()),
 		Status: status,
 	}, nil
 }
@@ -276,17 +290,16 @@ func (a *App) panelCard() panelCard {
 	}
 }
 
-func (a *App) syslogCard(r *http.Request) syslogCard {
-	settings, err := a.SIEM.Settings(r.Context())
-	if err != nil {
-		return syslogCard{Status: "unknown", Problem: userMessage(r.Context(), a.catalog(r), err)}
-	}
+func (a *App) trailCard(ctx context.Context) trailCard {
+	receiver := a.receiverData(ctx)
 
-	return syslogCard{
-		Status:     settings.Status,
-		Facility:   settings.Facility,
-		LogFile:    settings.LogFile,
-		Forwarding: settings.HasActiveRules,
+	return trailCard{
+		Forwarding: a.Settings.Bool(appsettings.SIEMForwardingEnabled),
+		Configured: receiver.Protocol != siem.ProtocolOff && receiver.Host != "",
+		Connected:  receiver.Connected,
+		Pending:    receiver.Pending,
+		Facility:   siem.FacilityName,
+		Tag:        siem.Tag,
 	}
 }
 

@@ -2,6 +2,7 @@ package siem
 
 import (
 	"log/syslog"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -154,5 +155,25 @@ func TestAPipeInTheHeaderIsEscaped(t *testing.T) {
 	line := Format(record, "panel.example.net")
 	if !strings.Contains(line, `|odd\|action|odd\|action|3|`) {
 		t.Errorf("the pipe was not escaped:\n%s", line)
+	}
+}
+
+func TestTheFacilityNameMatchesTheFacilityOnTheWire(t *testing.T) {
+	// The name is what an operator writes in a collector filter and the number
+	// is what the line carries. A pair that disagreed would leave the filter
+	// watching a stream the panel never sends on.
+	digits, ok := strings.CutPrefix(FacilityName, "local")
+	if !ok {
+		t.Fatalf("FacilityName = %q, want a local facility", FacilityName)
+	}
+	number, err := strconv.Atoi(digits)
+	if err != nil {
+		t.Fatalf("FacilityName = %q, want it to end in a number", FacilityName)
+	}
+
+	// local0 is facility 16 in RFC 5424, and the facilities run upwards to
+	// local7.
+	if want := 16 + number; int(Facility)>>3 != want {
+		t.Errorf("Facility = %d, want %d for %s", int(Facility)>>3, want, FacilityName)
 	}
 }

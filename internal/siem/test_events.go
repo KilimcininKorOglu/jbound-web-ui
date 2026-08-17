@@ -1,8 +1,8 @@
 package siem
 
 import (
-	"context"
 	"fmt"
+	"time"
 
 	"jbound/internal/audit"
 )
@@ -25,12 +25,21 @@ var testEvents = []struct {
 // TestEventCount is how many events one test run sends.
 var TestEventCount = len(testEvents)
 
-// SendTestEvents writes the test events through the forwarder.
+// SendTestEvents writes the test events straight to the receiver.
 //
-// They go out as ordinary events, so what arrives at the receiver is exactly
-// what a real one looks like. They are marked in the message rather than in
-// the format, because a special format would prove nothing about the real one.
-func SendTestEvents(ctx context.Context, forwarder audit.Forwarder, actor audit.Entry) (string, error) {
+// They go out as ordinary events, so what arrives is exactly what a real one
+// looks like. They are marked in the message rather than in the format, because
+// a special format would prove nothing about the real one.
+//
+// They are not audit rows and they never become any. That is why they bypass the
+// queue: an operator checking a receiver must not be writing to the trail every
+// time they press the button.
+func SendTestEvents(sender *Sender, panelHost string, actor audit.Entry) (string, error) {
+
+	if !sender.Configured() {
+		return "", ErrNoReceiver
+	}
+
 	for _, event := range testEvents {
 		entry := audit.Entry{
 			UID:       actor.UID,
@@ -41,11 +50,10 @@ func SendTestEvents(ctx context.Context, forwarder audit.Forwarder, actor audit.
 		}
 		entry.Defaults()
 
-		if err := forwarder.Forward(entry); err != nil {
+		if err := sender.Send(entry.Action, Format(entry, panelHost), time.Now()); err != nil {
 			return "", fmt.Errorf("cannot send the test events: %w", err)
 		}
 	}
 
-	return fmt.Sprintf("%d test events sent to syslog (facility local6).",
-		TestEventCount), nil
+	return fmt.Sprintf("%d test events sent to the receiver.", TestEventCount), nil
 }

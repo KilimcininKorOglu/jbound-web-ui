@@ -1,8 +1,8 @@
 // Package audit records who changed what, from where.
 //
-// Faz 10 adds the syslog mirror and the SIEM configuration. The database
-// remains the primary record, because the panel must still answer "who added
-// this record" when the SIEM is unreachable.
+// The database is the primary record and the queue the receiver reads from, so
+// the panel can still answer "who added this record" when the SIEM is
+// unreachable.
 package audit
 
 import (
@@ -96,42 +96,20 @@ type Repository interface {
 	List(ctx context.Context, query Query) (Page, error)
 }
 
-// Forwarder mirrors an entry to a system outside the panel.
-type Forwarder interface {
-	Forward(entry Entry) error
-}
-
 // Logger writes audit entries.
 type Logger struct {
-	repo      Repository
-	forwarder Forwarder
+	repo Repository
 
 	// notify tells the receiver queue that a row has landed. It is nil on a
 	// panel that forwards nothing, and on every caller that has no queue.
 	notify func()
 
-	// forwarding reports whether the mirror is switched on. It is read per
-	// entry, so an operator can stop the flow to a noisy receiver without
-	// touching the forwarding rules and without a restart. A nil accessor
-	// means on, which is what every caller with no settings service wants.
-	forwarding func() bool
-
 	now func() time.Time
 }
 
-// NewLogger builds the audit logger. A nil forwarder keeps the database as the
-// only record, which is what a panel without a SIEM runs with.
-func NewLogger(repo Repository, forwarder Forwarder) *Logger {
-	return &Logger{repo: repo, forwarder: forwarder, now: time.Now}
-}
-
-// WithForwarding returns the logger with the mirror switch attached.
-//
-// It is a separate call rather than a constructor parameter, because the
-// panel builds the logger before it knows whether the settings are readable.
-func (l *Logger) WithForwarding(enabled func() bool) *Logger {
-	l.forwarding = enabled
-	return l
+// NewLogger builds the audit logger.
+func NewLogger(repo Repository) *Logger {
+	return &Logger{repo: repo, now: time.Now}
 }
 
 // WithNotify returns the logger with a wake-up attached.
@@ -140,36 +118,22 @@ func (l *Logger) WithForwarding(enabled func() bool) *Logger {
 // handed each entry, so all it needs is to be told that there is something new.
 // The call must not block: an entry that waited on a receiver would make the
 // action that caused it wait too.
+//
+// Whether an entry is forwarded is not decided here. The queue reads the switch
+// when it picks the row up, which is what lets it keep its place while the
+// mirror is off.
 func (l *Logger) WithNotify(notify func()) *Logger {
 	l.notify = notify
 	return l
 }
 
-// forwards reports whether this entry should reach the mirror.
-func (l *Logger) forwards() bool {
-	return l.forwarder != nil && (l.forwarding == nil || l.forwarding())
-}
-
-// Write stores one entry and mirrors it.
+// Write stores one entry.
 //
 // A database failure is returned rather than swallowed. An action that cannot
 // be recorded is an action nobody can account for later, so the caller decides
 // whether to continue.
-//
-// The mirror runs either way. It sits off the panel host, which is exactly
-// where a record is worth having when the panel database is the thing that
-// went wrong.
 func (l *Logger) Write(ctx context.Context, entry Entry) error {
-	return l.write(ctx, entry, l.forwards())
-}
-
-// WriteMirrored stores one entry and mirrors it whatever the switch says.
-//
-// The action that turns the mirror off is the one entry a receiver cannot
-// afford to miss, because everything after it is silence. By the time it is
-// written the switch already answers false, so it needs its own way in.
-func (l *Logger) WriteMirrored(ctx context.Context, entry Entry) error {
-	return l.write(ctx, entry, l.forwarder != nil)
+	return l.write(ctx, entry)
 }
 
 // storeTimeout bounds an audit insert once it is detached from the request.
@@ -179,7 +143,7 @@ func (l *Logger) WriteMirrored(ctx context.Context, entry Entry) error {
 // caller longer would not change the outcome.
 const storeTimeout = 10 * time.Second
 
-func (l *Logger) write(ctx context.Context, entry Entry, mirror bool) error {
+func (l *Logger) write(ctx context.Context, entry Entry) error {
 	if entry.Action == "" {
 		return fmt.Errorf("audit entry has no action")
 	}
@@ -196,15 +160,6 @@ func (l *Logger) write(ctx context.Context, entry Entry, mirror bool) error {
 	if err != nil {
 		logging.From(ctx).Error("cannot write the audit entry",
 			"action", entry.Action, "username", entry.Username, "error", err)
-	}
-
-	if mirror {
-		if forwardErr := l.forwarder.Forward(entry); forwardErr != nil {
-			// The entry is in the database. Failing the action over a syslog
-			// socket would be worse than reporting that the mirror is down.
-			logging.From(ctx).Error("cannot forward the audit entry",
-				"action", entry.Action, "error", forwardErr)
-		}
 	}
 
 	// The queue reads the row rather than this entry, so it is only worth

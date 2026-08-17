@@ -113,8 +113,6 @@ func (a *App) handleSettingsSave(w http.ResponseWriter, r *http.Request) {
 	// The same goes for the audit entry: what changed is only knowable against
 	// the values this save is about to replace.
 	before := a.Settings.Values().All()
-	silencing := a.Settings.Bool(settings.SIEMForwardingEnabled) &&
-		submitted[settings.SIEMForwardingEnabled] == boolValue(false)
 
 	if err := a.Settings.Save(r.Context(), submitted); err != nil {
 		var refusal *settings.Refusal
@@ -126,7 +124,7 @@ func (a *App) handleSettingsSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.auditSettings(r, settingsChanges(before, submitted), silencing)
+	a.auditSettings(r, settingsChanges(before, submitted))
 	SetToast(w, ToastSuccess, a.catalog(r).T("toast.settings_saved"))
 	a.RenderPartial(w, r, http.StatusOK, "settings-panel", a.settingsPageData(r.Context(), a.catalog(r), nil, nil))
 }
@@ -260,9 +258,9 @@ func settingsChanges(before, submitted map[string]string) []string {
 // among them the mirror switch and the login rate limit. An entry that says
 // only that something changed cannot tell those apart from a new theme.
 //
-// mirrored asks for the entry to reach the receiver even though the switch
-// this save turned off already answers false.
-func (a *App) auditSettings(r *http.Request, changes []string, mirrored bool) {
+// The entry reaches the receiver even when this save is the one that turned the
+// mirror off, because the queue forwards this action whatever the switch says.
+func (a *App) auditSettings(r *http.Request, changes []string) {
 	actor := a.actor(r)
 
 	details := "Panel settings updated: " + strings.Join(changes, ", ")
@@ -278,10 +276,6 @@ func (a *App) auditSettings(r *http.Request, changes []string, mirrored bool) {
 		IPAddress: actor.IPAddress,
 	}
 
-	if mirrored {
-		_ = a.Audit.WriteMirrored(r.Context(), entry)
-		return
-	}
 	_ = a.Audit.Write(r.Context(), entry)
 }
 

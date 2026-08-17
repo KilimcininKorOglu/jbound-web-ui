@@ -215,19 +215,22 @@ func TestTheMirrorSwitchStopsTheFlowAndTheCursorKeepsUp(t *testing.T) {
 func TestTheEntryThatTurnsForwardingOffStillGoesOut(t *testing.T) {
 	// Everything after it is silence rather than quiet, and a receiver that was
 	// not told cannot tell the two apart.
-	cursor := &fakeCursor{last: 0, newest: 0}
-	queue, _, socket := queueOver(
-		trail(3, audit.ActionLogin, audit.ActionSIEMConfig, audit.ActionLogin),
-		cursor, false)
+	// The switch is reachable from two pages, and each writes its own action.
+	for _, action := range []string{audit.ActionSIEMConfig, audit.ActionSettingsUpdate} {
+		cursor := &fakeCursor{last: 0, newest: 0}
+		queue, _, socket := queueOver(
+			trail(3, audit.ActionLogin, action, audit.ActionLogin), cursor, false)
 
-	queue.Drain(context.Background())
+		queue.Drain(context.Background())
 
-	lines := socket.lines()
-	if len(lines) != 1 {
-		t.Fatalf("got %d rows, want the configuration change alone", len(lines))
-	}
-	if !strings.Contains(lines[0], audit.ActionSIEMConfig) {
-		t.Errorf("the wrong row went out: %q", lines[0])
+		lines := socket.lines()
+		if len(lines) != 1 {
+			t.Fatalf("%s: got %d rows, want the configuration change alone",
+				action, len(lines))
+		}
+		if !strings.Contains(lines[0], action) {
+			t.Errorf("%s: the wrong row went out: %q", action, lines[0])
+		}
 	}
 }
 

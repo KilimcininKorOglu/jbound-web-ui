@@ -117,7 +117,7 @@ func run() error {
 	defer pool.Close()
 
 	service := server.NewService(servers, store.NewGroups(db.DB), keys, pool,
-		audit.NewLogger(store.NewAuditLogs(db.DB), nil), dataDir, timeouts)
+		audit.NewLogger(store.NewAuditLogs(db.DB)), dataDir, timeouts)
 
 	// The actor is the administrator of the stack, so the audit trail reads
 	// the way it would if somebody had added these by hand.

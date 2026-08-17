@@ -114,18 +114,36 @@ func TestThePanelCardNamesTheHostAndTheDatabase(t *testing.T) {
 	}
 }
 
-func TestTheSyslogCardNamesTheFacilityAndTheFile(t *testing.T) {
+func TestTheTrailCardNamesTheFacilityAndTheState(t *testing.T) {
 	env := newFleetEnv(t)
 
 	body := env.systemPage(t)
 	for _, want := range []string{
 		`data-field="facility">local6<`,
-		`data-field="log-file">`,
-		`data-field="rsyslog">`,
+		`data-field="tag">jbound<`,
 		`data-field="forwarding">`,
+		`data-field="receiver">`,
+		`data-field="pending">`,
 	} {
 		if !strings.Contains(body, want) {
-			t.Errorf("the syslog card does not carry %s:\n%s", want, body)
+			t.Errorf("the trail card does not carry %s:\n%s", want, body)
+		}
+	}
+}
+
+func TestTheTrailCardNamesNoCollectorAddress(t *testing.T) {
+	// Every signed in account reads this page, and where the trail is sent is an
+	// infrastructure coordinate. The SIEM page names it, and that page is admin
+	// territory.
+	env := newFleetEnv(t)
+	if recorder := env.saveReceiver(t, "tcp", "collector.example.net", "6514"); recorder.Code != http.StatusOK {
+		t.Fatalf("cannot name the receiver: %d", recorder.Code)
+	}
+
+	body := env.systemPage(t)
+	for _, secret := range []string{"collector.example.net", "6514"} {
+		if strings.Contains(body, secret) {
+			t.Errorf("the page names %q:\n%s", secret, body)
 		}
 	}
 }

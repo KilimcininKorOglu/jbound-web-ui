@@ -17,10 +17,10 @@ import (
 // WarnIfRoot says what running as uid 0 costs, and lets the process run.
 //
 // The install puts the panel under its own account and nothing here needs root:
-// PAM authentication goes through the setuid helper, and the rsyslog file goes
-// through one sudoers rule. An operator who starts it as root anyway gets the
-// sentence rather than a refusal, because which account this runs under is
-// their decision to make.
+// PAM authentication goes through the setuid helper, and the panel reaches its
+// receiver over an ordinary socket. An operator who starts it as root anyway
+// gets the sentence rather than a refusal, because which account this runs
+// under is their decision to make.
 //
 // consequence names what root costs at this particular entry point, because
 // what the panel risks and what a one shot command risks are different things.

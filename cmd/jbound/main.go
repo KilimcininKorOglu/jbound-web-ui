@@ -199,9 +199,6 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("cannot read the host name: %w", err)
 	}
-	forwarder := siem.NewForwarder(panelHost)
-	defer forwarder.Close()
-
 	// An upgrade from the release that forwarded through rsyslog has its
 	// collector named in the rules file and nowhere else. Carrying it over here
 	// is what keeps the trail flowing across that upgrade.
@@ -223,9 +220,7 @@ func run() error {
 		options.BoolOf(settings.SIEMForwardingEnabled))
 	go queue.RunLoop(ctx)
 
-	auditLog := audit.NewLogger(auditLogs, forwarder).
-		WithForwarding(options.BoolOf(settings.SIEMForwardingEnabled)).
-		WithNotify(queue.Notify)
+	auditLog := audit.NewLogger(auditLogs).WithNotify(queue.Notify)
 
 	keys, err := server.NewKeyStore(cfg.DataDir)
 	if err != nil {
@@ -265,25 +260,20 @@ func run() error {
 		queries, auditLog, options.DurationOf(settings.CacheStaleAfter),
 		options.IntOf(settings.RecordsPerPage))
 
-	rsyslog := siem.NewManager(cfg.SIEMRulesPath, cfg.SyslogLogPath,
-		cfg.RsyslogApplyCmd, cfg.RsyslogRestartCmd, cfg.RsyslogStatusCmd)
-
 	app, err := web.NewApp(web.Deps{
-		Config:    cfg,
-		Settings:  options,
-		Auth:      authService,
-		Sessions:  sessions,
-		Limiter:   limiter,
-		Audit:     auditLog,
-		Servers:   serverService,
-		Records:   recordService,
-		SIEM:      rsyslog,
-		Forwarder: forwarder,
-		Receiver:  sender,
-		Backlog:   queue,
-		Health:    db.Probe,
-		Hostname:  panelHost,
-		Started:   time.Now(),
+		Config:   cfg,
+		Settings: options,
+		Auth:     authService,
+		Sessions: sessions,
+		Limiter:  limiter,
+		Audit:    auditLog,
+		Servers:  serverService,
+		Records:  recordService,
+		Receiver: sender,
+		Backlog:  queue,
+		Health:   db.Probe,
+		Hostname: panelHost,
+		Started:  time.Now(),
 	})
 	if err != nil {
 		return err

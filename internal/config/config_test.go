@@ -6,72 +6,6 @@ import (
 	"testing"
 )
 
-func TestParseCommandSplitsIntoArgv(t *testing.T) {
-	cases := []struct {
-		name string
-		in   string
-		want []string
-	}{
-		{"single word", "rsyslogd", []string{"rsyslogd"}},
-		{"with flags", "rsyslogd -N1", []string{"rsyslogd", "-N1"}},
-		{"sudo prefix", "sudo /usr/bin/systemctl restart rsyslog",
-			[]string{"sudo", "/usr/bin/systemctl", "restart", "rsyslog"}},
-		{"collapses runs of spaces", "systemctl   is-active    rsyslog",
-			[]string{"systemctl", "is-active", "rsyslog"}},
-		{"trims the edges", "  systemctl is-active rsyslog  ",
-			[]string{"systemctl", "is-active", "rsyslog"}},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got, err := ParseCommand(tc.in)
-			if err != nil {
-				t.Fatalf("ParseCommand(%q) returned an error: %v", tc.in, err)
-			}
-			if len(got) != len(tc.want) {
-				t.Fatalf("ParseCommand(%q) = %v, want %v", tc.in, got, tc.want)
-			}
-			for i := range got {
-				if got[i] != tc.want[i] {
-					t.Fatalf("ParseCommand(%q) = %v, want %v", tc.in, got, tc.want)
-				}
-			}
-		})
-	}
-}
-
-// Commands are handed to exec, never to a shell. A metacharacter therefore
-// signals a misconfiguration or an injection attempt, and the panel must
-// refuse to start rather than run it.
-func TestParseCommandRejectsShellMetacharacters(t *testing.T) {
-	cases := []string{
-		"systemctl restart rsyslog; rm -rf /",
-		"systemctl restart rsyslog && id",
-		"cat /etc/shadow | mail me",
-		"echo `id`",
-		"echo $HOME",
-		"cat < /etc/passwd",
-		"echo hi > /tmp/x",
-		"systemctl restart rsyslog\nid",
-	}
-
-	for _, in := range cases {
-		t.Run(in, func(t *testing.T) {
-			if _, err := ParseCommand(in); err == nil {
-				t.Fatalf("ParseCommand(%q) accepted a shell metacharacter", in)
-			}
-		})
-	}
-}
-
-func TestParseCommandRejectsEmpty(t *testing.T) {
-	for _, in := range []string{"", "   ", "\t"} {
-		if _, err := ParseCommand(in); err == nil {
-			t.Fatalf("ParseCommand(%q) accepted an empty command", in)
-		}
-	}
-}
-
 // settableKeys is every variable Load reads. Load treats an empty value as
 // unset, so blanking them all is how a test asks for the pure defaults.
 var settableKeys = []string{
@@ -79,8 +13,6 @@ var settableKeys = []string{
 	"AUTH_HELPER_PATH", "PAM_SERVICE", "ADMIN_GROUP", "ALLOWED_GROUP",
 	"MIN_UID", "AUTH_MAX_CONCURRENT",
 	"COOKIE_SECURE", "DIG_PATH", "LOG_LEVEL",
-	"RSYSLOG_APPLY_CMD", "RSYSLOG_RESTART_CMD", "RSYSLOG_STATUS_CMD",
-	"SYSLOG_LOG_PATH",
 }
 
 // clearEnvironment removes every configured value for the duration of a test.
@@ -120,16 +52,6 @@ func TestLoadUsesProductionDefaults(t *testing.T) {
 	if cfg.LogLevel != slog.LevelInfo {
 		t.Errorf("LogLevel = %v, want info", cfg.LogLevel)
 	}
-	// The defaults decide production behaviour when nothing is configured, so
-	// they are asserted rather than assumed. Both of these are sudoers rules
-	// the install writes, and a default that dropped the sudo would be refused
-	// by systemd on the first save and by nothing before it.
-	if got := cfg.RsyslogApplyCmd.String(); got != "sudo /usr/local/sbin/jbound-siem-apply" {
-		t.Errorf("RsyslogApplyCmd = %q, want it to go through sudo", got)
-	}
-	if got := cfg.RsyslogRestartCmd.String(); got != "sudo systemctl restart rsyslog" {
-		t.Errorf("RsyslogRestartCmd = %q, want sudo systemctl restart rsyslog", got)
-	}
 	if cfg.SIEMRulesPath != cfg.DataDir+"/siem-rules.conf" {
 		t.Errorf("SIEMRulesPath = %q, want it under DataDir", cfg.SIEMRulesPath)
 	}
@@ -154,8 +76,6 @@ func TestLoadRejectsBadValues(t *testing.T) {
 		// A typo here would otherwise leave the panel logging at a level
 		// nobody chose, which is only noticed when the output is needed.
 		{"unknown log level", map[string]string{"LOG_LEVEL": "verbose"}, "log level"},
-		{"injected command", map[string]string{"RSYSLOG_RESTART_CMD": "systemctl restart rsyslog; id"},
-			"RSYSLOG_RESTART_CMD"},
 	}
 
 	for _, tc := range cases {
@@ -181,13 +101,13 @@ func TestLoadReportsEveryProblemAtOnce(t *testing.T) {
 	clearEnvironment(t)
 	t.Setenv("MIN_UID", "abc")
 	t.Setenv("AUTH_MAX_CONCURRENT", "nope")
-	t.Setenv("RSYSLOG_STATUS_CMD", "id; whoami")
+	t.Setenv("COOKIE_SECURE", "yes please")
 
 	_, err := Load()
 	if err == nil {
 		t.Fatal("Load accepted three broken values")
 	}
-	for _, want := range []string{"MIN_UID", "AUTH_MAX_CONCURRENT", "RSYSLOG_STATUS_CMD"} {
+	for _, want := range []string{"MIN_UID", "AUTH_MAX_CONCURRENT", "COOKIE_SECURE"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error does not mention %s:\n%v", want, err)
 		}

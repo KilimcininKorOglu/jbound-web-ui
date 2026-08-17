@@ -1,10 +1,12 @@
 package web
 
 import (
+	"bufio"
 	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -60,9 +62,11 @@ type testEnv struct {
 	keyDir    string
 	// transport lets a test choose what a managed server answers.
 	transport *stubTransport
-	// forwarder holds what was sent to the SIEM.
-	forwarder *recordingForwarder
-	siemDir   string
+	// receiver is the collector the panel sends to, and backlog is the queue
+	// that feeds it. A test that wants delivery names the receiver and drains
+	// the queue itself, so nothing depends on a loop finishing in time.
+	receiver *testReceiver
+	backlog  *siem.Queue
 	// queries lets a test choose what a resolver replies to a name query.
 	queries *stubQuerier
 	// settingsStore is the same store the application reads, so a test can
@@ -115,9 +119,21 @@ func newTestEnv(t *testing.T) *testEnv {
 	}
 
 	sessions := store.NewSessions(db.DB)
-	forwarder := &recordingForwarder{}
-	auditLog := audit.NewLogger(store.NewAuditLogs(db.DB), forwarder).
-		WithForwarding(options.BoolOf(settings.SIEMForwardingEnabled))
+
+	// The receiver is a listener inside the test and the sender is the real one,
+	// so what a test reads back is what left over a socket. It stays unused
+	// until a test names it, because the panel starts with no receiver.
+	receiver := newTestReceiver(t)
+	sender := siem.NewSender("panel.test",
+		options.StringOf(settings.SIEMProtocol),
+		options.StringOf(settings.SIEMReceiverHost),
+		options.IntOf(settings.SIEMReceiverPort))
+	t.Cleanup(func() { sender.Close() })
+
+	auditLogs := store.NewAuditLogs(db.DB)
+	backlog := siem.NewQueue(auditLogs, store.NewSIEMCursor(db.DB), sender, "panel.test",
+		options.BoolOf(settings.SIEMForwardingEnabled))
+	auditLog := audit.NewLogger(auditLogs)
 
 	dataDir := t.TempDir()
 	keys, err := server.NewKeyStore(dataDir)
@@ -149,11 +165,6 @@ func newTestEnv(t *testing.T) *testEnv {
 		queries, auditLog, settings.Fixed(15*time.Minute),
 		options.IntOf(settings.RecordsPerPage))
 
-	siemDir := t.TempDir()
-	rsyslog := siem.NewManager(
-		filepath.Join(siemDir, "siem-rules.conf"), filepath.Join(siemDir, "panel.log"),
-		[]string{"true"}, []string{"true"}, []string{"true"})
-
 	// The probe is held rather than passed straight through, so a test can
 	// decide what the health route finds without a second application.
 	probe := &healthProbe{check: db.Probe}
@@ -170,12 +181,13 @@ func newTestEnv(t *testing.T) *testEnv {
 		Limiter: auth.NewRateLimiter(store.NewLoginAttempts(db.DB),
 			options.DurationOf(settings.LoginRateWindow),
 			options.IntOf(settings.LoginRateMaxAttempts)),
-		Audit:     auditLog,
-		Servers:   servers,
-		Records:   records,
-		SIEM:      rsyslog,
-		Forwarder: forwarder,
-		Health:    probe.run,
+		Audit:    auditLog,
+		Servers:  servers,
+		Records:  records,
+		Receiver: sender,
+		Backlog:  backlog,
+		Health:   probe.run,
+		Hostname: "panel.test",
 	})
 	if err != nil {
 		t.Fatalf("cannot build the application: %v", err)
@@ -195,36 +207,80 @@ func newTestEnv(t *testing.T) *testEnv {
 		keyDir:    keys.Dir(),
 		transport: remote,
 		queries:   queries,
-		forwarder: forwarder,
-		siemDir:   siemDir,
+		receiver:  receiver,
+		backlog:   backlog,
 		health:    probe,
 
 		settingsStore: settingsStore,
 	}
 }
 
-// recordingForwarder keeps what the panel sent to the SIEM.
-type recordingForwarder struct {
-	mu      sync.Mutex
-	entries []audit.Entry
-	err     error
+// testReceiver is a collector inside the test. It reads whole lines, which is
+// how the panel frames one event, and keeps them for the assertion.
+type testReceiver struct {
+	address string
+
+	mu       sync.Mutex
+	received []string
 }
 
-func (f *recordingForwarder) Forward(entry audit.Entry) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
+func newTestReceiver(t *testing.T) *testReceiver {
+	t.Helper()
 
-	if f.err != nil {
-		return f.err
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("cannot open the test receiver: %v", err)
 	}
-	f.entries = append(f.entries, entry)
-	return nil
+	t.Cleanup(func() { listener.Close() })
+
+	receiver := &testReceiver{address: listener.Addr().String()}
+
+	go func() {
+		for {
+			connection, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			go receiver.read(connection)
+		}
+	}()
+	return receiver
 }
 
-func (f *recordingForwarder) sent() []audit.Entry {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return append([]audit.Entry(nil), f.entries...)
+func (r *testReceiver) read(connection net.Conn) {
+	defer connection.Close()
+
+	reader := bufio.NewReader(connection)
+	for {
+		line, err := reader.ReadString('\n')
+		if line != "" {
+			r.mu.Lock()
+			r.received = append(r.received, strings.TrimSuffix(line, "\n"))
+			r.mu.Unlock()
+		}
+		if err != nil {
+			return
+		}
+	}
+}
+
+// lines returns what the receiver has been given so far. The sender writes and
+// the receiver reads on different goroutines, so a caller that has just drained
+// the queue may have to wait for the last line to arrive.
+func (r *testReceiver) lines(t *testing.T, want int) []string {
+	t.Helper()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		r.mu.Lock()
+		got := append([]string(nil), r.received...)
+		r.mu.Unlock()
+
+		if len(got) >= want || time.Now().After(deadline) {
+			return got
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 }
 
 // stubQuerier answers a name query, so the record page can be covered without

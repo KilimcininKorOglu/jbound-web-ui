@@ -71,7 +71,7 @@ func newHarness(t *testing.T) *harness {
 	states := store.NewStates(db.DB)
 	timeouts := settings.Fixed(server.Timeouts{Connect: 5 * time.Second, Command: 15 * time.Second})
 
-	auditLog := audit.NewLogger(store.NewAuditLogs(db.DB), nil)
+	auditLog := audit.NewLogger(store.NewAuditLogs(db.DB))
 	service := server.NewService(servers, store.NewGroups(db.DB), keys, pool,
 		auditLog, dataDir, timeouts)
 

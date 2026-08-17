@@ -62,38 +62,37 @@
   <div class="col-lg-4">
     <div class="card h-100">
       <div class="card-header">
-        <h2 class="h6 mb-0">{{t "system.syslog"}}</h2>
+        <h2 class="h6 mb-0">{{t "system.trail"}}</h2>
       </div>
       <div class="card-body">
-        {{if .Data.Syslog.Problem}}
-        {{template "alert" (alert "error" .Data.Syslog.Problem)}}
-        {{end}}
-
         <dl class="row mb-0">
-          <dt class="col-5">{{t "system.rsyslog"}}</dt>
-          <dd class="col-7">
-            {{if eq .Data.Syslog.Status "active"}}
-            <span class="badge bg-label-success" data-field="rsyslog">{{t "system.rsyslog_active"}}</span>
-            {{else}}
-            <span class="badge bg-label-danger" data-field="rsyslog">{{.Data.Syslog.Status}}</span>
-            {{end}}
-          </dd>
-
           <dt class="col-5">{{t "system.forwarding"}}</dt>
           <dd class="col-7">
-            {{if .Data.Syslog.Forwarding}}
+            {{if .Data.Trail.Forwarding}}
             <span class="badge bg-label-success" data-field="forwarding">{{t "system.on"}}</span>
             {{else}}
             <span class="badge bg-label-secondary" data-field="forwarding">{{t "system.off"}}</span>
             {{end}}
           </dd>
 
-          <dt class="col-5">{{t "system.facility"}}</dt>
-          <dd class="col-7"><code data-field="facility">{{.Data.Syslog.Facility}}</code></dd>
+          <dt class="col-5">{{t "system.receiver"}}</dt>
+          <dd class="col-7">
+            {{if not .Data.Trail.Configured}}
+            <span class="badge bg-label-secondary" data-field="receiver">{{t "system.receiver_none"}}</span>
+            {{else if .Data.Trail.Connected}}
+            <span class="badge bg-label-success" data-field="receiver">{{t "system.receiver_connected"}}</span>
+            {{else}}
+            <span class="badge bg-label-danger" data-field="receiver">{{t "system.receiver_down"}}</span>
+            {{end}}
+          </dd>
 
-          <dt class="col-5">{{t "system.log_file"}}</dt>
-          <dd class="col-7 mb-0 text-break">
-            <code data-field="log-file">{{.Data.Syslog.LogFile}}</code>
+          <dt class="col-5">{{t "system.waiting"}}</dt>
+          <dd class="col-7" data-field="pending">{{.Data.Trail.Pending}}</dd>
+
+          <dt class="col-5">{{t "system.facility"}}</dt>
+          <dd class="col-7 mb-0">
+            <code data-field="facility">{{.Data.Trail.Facility}}</code>,
+            <code data-field="tag">{{.Data.Trail.Tag}}</code>
           </dd>
         </dl>
       </div>

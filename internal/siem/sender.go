@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/syslog"
 	"net"
+	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -35,6 +36,12 @@ var ErrNoReceiver = errors.New("no receiver is configured")
 // hold the sender until the kernel gives up, and the audit rows behind it wait
 // that long too.
 const dialTimeout = 10 * time.Second
+
+// keepAlivePeriod is how often the connection is probed at the protocol level.
+//
+// Short, because the point is to notice a collector that stopped answering
+// before too many events have been written into a socket that goes nowhere.
+const keepAlivePeriod = 15 * time.Second
 
 // writeTimeout bounds one write.
 //
@@ -157,6 +164,14 @@ func (s *Sender) Send(action, line string, at time.Time) error {
 // write sends one frame, opening the connection when it is not open yet. The
 // caller holds the lock.
 func (s *Sender) write(frame []byte) error {
+	if s.conn != nil && s.peerHasGone() {
+		// Measured: a collector that shuts down leaves this socket in
+		// CLOSE_WAIT, and a write to a socket in CLOSE_WAIT succeeds. Without
+		// this check the panel reports an event it delivered to nothing, and
+		// the cursor moves past it.
+		s.reset()
+	}
+
 	if s.conn == nil {
 		conn, err := s.dial(s.protocol(), s.address())
 		if err != nil {
@@ -172,6 +187,46 @@ func (s *Sender) write(frame []byte) error {
 		return fmt.Errorf("cannot write to the receiver: %w", err)
 	}
 	return nil
+}
+
+// probeTimeout is how long the connection check waits for the nothing a
+// healthy collector sends.
+//
+// A collector speaks only to say goodbye, so this is a check for a closed
+// socket rather than a read. It has to be short enough to sit in front of every
+// batch and long enough to survive a scheduler that was busy.
+const probeTimeout = 20 * time.Millisecond
+
+// peerHasGone reports whether the far end has closed the connection. The caller
+// holds the lock.
+//
+// A collector that stopped sends a FIN, which puts this socket in CLOSE_WAIT.
+// Writes to a socket in CLOSE_WAIT still succeed, so the only way to notice is
+// to read: a closed peer answers immediately with the end of the stream. A
+// healthy one answers with nothing, which is the deadline expiring.
+//
+// A collector that vanished without closing, because the machine lost power or
+// the network partitioned, cannot be told from a healthy one here. The keepalive
+// on the connection is what eventually notices that, and until it does the
+// events written into the socket are gone. Plain syslog over a stream has no
+// acknowledgement, so that hole cannot be closed from this side.
+func (s *Sender) peerHasGone() bool {
+	if err := s.conn.SetReadDeadline(time.Now().Add(probeTimeout)); err != nil {
+		return true
+	}
+	defer func() { _ = s.conn.SetReadDeadline(time.Time{}) }()
+
+	var discard [1]byte
+	_, err := s.conn.Read(discard[:])
+	switch {
+	case err == nil:
+		// A collector that sent something is a collector that is there.
+		return false
+	case errors.Is(err, os.ErrDeadlineExceeded):
+		return false
+	default:
+		return true
+	}
 }
 
 // address renders host:port. The caller holds the lock.
@@ -204,16 +259,21 @@ func (s *Sender) Close() error {
 // which is a decision made once and visible on disk rather than a checkbox in
 // a table.
 func dialReceiver(protocol, address string) (net.Conn, error) {
+	// The keepalive is what notices a collector that vanished without closing.
+	// Nothing else does: this connection is idle most of the time, and an idle
+	// socket to a machine that is gone looks exactly like an idle socket to one
+	// that is fine.
+	dialer := &net.Dialer{Timeout: dialTimeout, KeepAlive: keepAlivePeriod}
+
 	switch protocol {
 	case ProtocolUDP, ProtocolTCP:
-		conn, err := net.DialTimeout(protocol, address, dialTimeout)
+		conn, err := dialer.Dial(protocol, address)
 		if err != nil {
 			return nil, fmt.Errorf("cannot reach the receiver: %w", err)
 		}
 		return conn, nil
 
 	case ProtocolTLS:
-		dialer := &net.Dialer{Timeout: dialTimeout}
 		conn, err := tls.DialWithDialer(dialer, "tcp", address, nil)
 		if err != nil {
 			return nil, fmt.Errorf("cannot reach the receiver over TLS: %w", err)

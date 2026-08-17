@@ -2,8 +2,10 @@ package siem
 
 import (
 	"errors"
+	"io"
 	"log/syslog"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,6 +29,11 @@ type fakeSocket struct {
 	// a batch rather than between two of them.
 	failFrom int
 	attempts int
+
+	// peerClosed makes a read report the end of the stream, which is what a
+	// collector that shut down leaves behind. A write to that socket would
+	// still succeed, which is the whole reason the sender reads before writing.
+	peerClosed bool
 }
 
 func (s *fakeSocket) Write(p []byte) (int, error) {
@@ -58,7 +65,18 @@ func (s *fakeSocket) lines() []string {
 	return append([]string(nil), s.written...)
 }
 
-func (s *fakeSocket) Read([]byte) (int, error)         { return 0, nil }
+// Read answers the way an idle collector does, which is not at all, unless the
+// far end has closed.
+func (s *fakeSocket) Read([]byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.peerClosed {
+		return 0, io.EOF
+	}
+	return 0, os.ErrDeadlineExceeded
+}
+
 func (s *fakeSocket) LocalAddr() net.Addr              { return nil }
 func (s *fakeSocket) RemoteAddr() net.Addr             { return nil }
 func (s *fakeSocket) SetDeadline(time.Time) error      { return nil }
@@ -235,5 +253,71 @@ func TestAHostWithNoNameReadsAsTheReservedField(t *testing.T) {
 	line := string(frame(syslog.LOG_INFO, time.Now(), "", "CEF:0|x"))
 	if !strings.Contains(line, " - "+Tag+" ") {
 		t.Errorf("the empty host was not replaced: %q", line)
+	}
+}
+
+func TestACollectorThatClosedIsNotWrittenTo(t *testing.T) {
+	// Measured on the development stack: a collector that shuts down leaves
+	// this socket in CLOSE_WAIT, and a write to a socket in CLOSE_WAIT
+	// succeeds. Reporting that as a delivery loses the event and moves the
+	// cursor past it.
+	closed := &fakeSocket{peerClosed: true}
+	fresh := &fakeSocket{}
+
+	dials := 0
+	sender := NewSender("panel.example",
+		func() string { return ProtocolTCP },
+		func() string { return "siem.example" },
+		func() int { return 514 })
+	sender.dial = func(string, string) (net.Conn, error) {
+		dials++
+		if dials == 1 {
+			return closed, nil
+		}
+		return fresh, nil
+	}
+
+	// The first send opens the connection and writes to it.
+	if err := sender.Send("login", "CEF:0|first", time.Now()); err != nil {
+		t.Fatalf("the first send failed: %v", err)
+	}
+	// By the second the collector has gone. The line has to land on a new
+	// connection rather than on the dead one.
+	closed.mu.Lock()
+	closed.peerClosed = true
+	closed.mu.Unlock()
+
+	if err := sender.Send("login", "CEF:0|second", time.Now()); err != nil {
+		t.Fatalf("the second send failed: %v", err)
+	}
+
+	if len(fresh.lines()) != 1 {
+		t.Errorf("the second line did not land on a fresh connection: %v", fresh.lines())
+	}
+	if got := len(closed.lines()); got != 1 {
+		t.Errorf("the closed connection took %d lines, want the first one only", got)
+	}
+	if !closed.closed {
+		t.Error("the closed connection was not dropped")
+	}
+}
+
+func TestAnIdleCollectorIsNotMistakenForAClosedOne(t *testing.T) {
+	// A collector says nothing while it is healthy. Reading that as a closed
+	// socket would open a new connection for every event.
+	socket := &fakeSocket{}
+	sender, dials := senderOver(socket, ProtocolTCP, "siem.example", 514)
+
+	for range 3 {
+		if err := sender.Send("login", "CEF:0|x", time.Now()); err != nil {
+			t.Fatalf("Send returned an error: %v", err)
+		}
+	}
+
+	if *dials != 1 {
+		t.Errorf("dials = %d, want one connection kept across three events", *dials)
+	}
+	if len(socket.lines()) != 3 {
+		t.Errorf("got %d lines, want 3", len(socket.lines()))
 	}
 }

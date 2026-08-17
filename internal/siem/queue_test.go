@@ -321,3 +321,39 @@ func TestAWakeUpNeverBlocksTheCallerThatWritesTheRow(t *testing.T) {
 		t.Fatal("Notify blocked")
 	}
 }
+
+func TestACollectorThatClosedDoesNotAdvanceTheCursor(t *testing.T) {
+	// The failure this whole design exists to prevent, and the one measured on
+	// the development stack: the collector shuts down, the socket goes to
+	// CLOSE_WAIT, writes to it keep succeeding, and the cursor walks past
+	// events nothing received.
+	cursor := &fakeCursor{last: 0, newest: 0}
+	queue, reader, socket := queueOver(trail(1), cursor, true)
+
+	// One row goes out while the collector is up, which is what leaves the
+	// sender holding a connection.
+	queue.Drain(context.Background())
+	if cursor.last != 1 || len(socket.lines()) != 1 {
+		t.Fatalf("the first row did not go out: cursor %d, %d lines",
+			cursor.last, len(socket.lines()))
+	}
+
+	// Now the collector shuts down. The socket it left behind still takes
+	// writes, and a new connection is refused.
+	socket.mu.Lock()
+	socket.peerClosed = true
+	socket.mu.Unlock()
+	queue.sender.dial = func(string, string) (net.Conn, error) {
+		return nil, errors.New("connection refused")
+	}
+	reader.rows = trail(4)
+
+	queue.Drain(context.Background())
+
+	if cursor.last != 1 {
+		t.Errorf("cursor = %d, want it to stay at 1", cursor.last)
+	}
+	if got := len(socket.lines()); got != 1 {
+		t.Errorf("%d lines were written in total, want the first one only", got)
+	}
+}

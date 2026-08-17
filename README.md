@@ -26,8 +26,9 @@ an agent that runs on it, and the choice is made per server.
 - Reloads the resolvers without losing their cache where it can, restarts them
   where it must, and proves each one is running afterwards.
 - Asks each resolver what it answers for a name.
-- Records every action with the user, the address and the result, and can mirror
-  the trail to syslog in CEF.
+- Records every action with the user, the address and the result, and sends the
+  trail to a SIEM collector in CEF, in order, with nothing lost while the
+  collector is down.
 - Writes a consistent backup of its own database and keys with one command.
 - Signs users in against the local accounts of the panel host through PAM.
 - Speaks English and Turkish, follows a light or dark theme or the one the
@@ -37,7 +38,7 @@ an agent that runs on it, and the choice is made per server.
 
 Panel host:
 
-- Linux with systemd, PAM and rsyslog.
+- Linux with systemd and PAM.
 - Go 1.26 to build the panel, and a C compiler with the PAM development headers
   (`libpam0g-dev` on Debian) to build the helper.
 - `dig` for the query page.
@@ -76,17 +77,15 @@ sudo make install
 
 `deploy/install.sh` does the work and can be re-run at any time. It creates the
 `jbound` system account, the state directory, the panel binary and the setuid
-helper, the PAM service file, the environment file, the rsyslog file and the
-script that writes it, two sudoers rules for applying the forwarding rules and
-restarting rsyslog, the third-party licences and the systemd unit. It never
-overwrites the environment file, and it reads back the three modes the whole
-design rests on:
+helper, the PAM service file, the environment file, the third-party licences and
+the systemd unit. It creates no sudoers rule: the setuid helper is the only
+privileged part. It never overwrites the environment file, and it reads back the
+two modes the whole design rests on:
 
 | Path | Mode | Why |
 | --- | --- | --- |
 | `/usr/local/libexec/jbound-authhelper` | `4750 root:jbound` | setuid root so PAM can read the shadow database, group-only so no other account can use it as a password oracle |
 | `/var/lib/jbound` | `0700 jbound` | the SSH private keys and the agent tokens live under it |
-| `/etc/rsyslog.d/60-jbound.conf` | `0644 root:root` | rsyslog reads it as root and its configuration can name a program to run, so an account that could write it would hold the machine |
 
 Then review `/etc/jbound/jbound.env` and start the service:
 
@@ -94,9 +93,8 @@ Then review `/etc/jbound/jbound.env` and start the service:
 sudo systemctl enable --now jbound
 ```
 
-`install.sh -n` leaves out the systemd unit and the two sudoers rules, which are
-what reach rsyslog. That is the way in for a host that has no systemd, and the
-SIEM page is the part that stops working there.
+`install.sh -n` leaves out the systemd unit. That is the way in for a host that
+has no systemd, and nothing else in the panel depends on it.
 
 ### Who may sign in
 
@@ -335,17 +333,27 @@ reach.
 Every action is written to the database with the user, the uid, the address, the
 target and the result. The **Audit Logs** page filters it.
 
-The **SIEM Config** page manages the rsyslog rules of the panel host and a
-switch that turns the mirror on and off. With the switch off the panel keeps
-writing its own trail and stops sending it, which is what an operator wants
-while a receiver is being repaired. The rules stay where they are.
+The **SIEM Config** page names the collector, the protocol (UDP, TCP or TLS)
+and the port, and carries a switch that turns the mirror on and off. With the
+switch off the panel keeps writing its own trail and stops sending it, which is
+what an operator wants while a collector is being repaired. The collector stays
+where it is, and the entry that turned the mirror off is sent anyway, because a
+receiver that was never told cannot tell a silenced panel from a quiet one.
 
-The panel does not write the rsyslog configuration. It writes the forwarding
-rules to `/var/lib/jbound/siem-rules.conf`, and `deploy/jbound-siem-apply`
-renders the configuration from them as root, refusing every line that is not a
-forwarding rule. rsyslog reads its configuration as root and that configuration
-can name a program to execute, so the check has to sit on the root side of the
-boundary rather than inside the panel.
+The panel reaches the collector itself. There is no syslog daemon on the panel
+host in between, no file for it to read and no privilege for any of it. Every
+event is durable in the database before it is sent, and a cursor records how far
+the collector has been caught up, so a collector that is down builds a backlog
+rather than losing events: the page shows how many rows are waiting, and they go
+out in order once it answers. A newly named collector is given what happens from
+then on rather than the whole history.
+
+Plain syslog over a stream carries no acknowledgement. A collector that
+disappears without closing the connection can lose what was in flight, which is
+the same limit rsyslog has when it forwards with `@@`.
+
+TLS uses the trust store of the panel host. Add a private CA there rather than
+to the panel.
 
 ### Log level
 
@@ -366,9 +374,9 @@ usually the state an incident is about.
 The **Settings** page stores its values in the database and every change takes
 effect on the next read, without a restart. It covers five groups: timings
 (session, cache, SSH, DNS and fleet operation timeouts), limits (login attempts,
-fleet concurrency, page size), the SIEM switch, the fleet source server that a
-synchronisation copies from, and the interface defaults a browser gets before
-anybody picks a language or a theme.
+fleet concurrency, page size), the SIEM switch and its collector, the fleet
+source server that a synchronisation copies from, and the interface defaults a
+browser gets before anybody picks a language or a theme.
 
 The language and the theme of one browser are its own choice and live in a
 cookie. Nothing about a reader is stored server side.
@@ -509,9 +517,9 @@ host.
 
 The development stack runs the panel and six Unbound targets in containers.
 Three are reached over SSH and three through the agent, so one record written to
-the group proves both transports rather than proving each on its own. The panel
-container carries its own rsyslog, so the SIEM page works there as well. No part
-of it touches the host.
+the group proves both transports rather than proving each on its own. A seventh
+container stands in for the SIEM collector: point the SIEM page at `tcp`
+`siem-sink` port `514`. No part of it touches the host.
 
 ```
 make dev-up        # build and start the stack
@@ -613,8 +621,8 @@ internal/agentapi    the protocol both ends of the agent speak
 internal/dnsfile     the records format
 internal/fleet       actions that touch more than one server
 internal/dnsquery    the query page, which runs dig on the panel host
-internal/audit       the audit trail and the CEF mirror
-internal/siem        the rsyslog configuration the panel owns
+internal/audit       the audit trail
+internal/siem        the CEF rendering, the sender and the delivery queue
 internal/settings    the settings registry and their storage
 internal/store       the SQL statements, with no business rules of their own
 internal/database    the connection, the pragmas and the migrations

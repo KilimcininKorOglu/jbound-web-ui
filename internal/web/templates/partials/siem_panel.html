@@ -64,6 +64,69 @@
   </div>
 
   <div class="col-lg-5">
+    {{/* The receiver the panel reaches itself. It needs no daemon on this host
+         and no privilege, and the backlog below is what says a collector that
+         is down is costing a wait rather than the trail. */}}
+    <div class="card mb-4">
+      <div class="card-header d-flex flex-wrap align-items-center justify-content-between">
+        <h2 class="h6 mb-0">{{t "siem.receiver_title"}}</h2>
+        <div>
+          {{if eq .Receiver.Protocol "off"}}
+          <span class="badge bg-label-secondary" data-field="receiver-state">{{t "siem.receiver_off"}}</span>
+          {{else if .Receiver.LastError}}
+          <span class="badge bg-label-danger" data-field="receiver-state">{{t "siem.receiver_failing"}}</span>
+          {{else if .Receiver.Connected}}
+          <span class="badge bg-label-success" data-field="receiver-state">{{t "siem.receiver_connected"}}</span>
+          {{else}}
+          <span class="badge bg-label-secondary" data-field="receiver-state">{{t "siem.receiver_idle"}}</span>
+          {{end}}
+          {{if .Receiver.Pending}}
+          <span class="badge bg-label-warning ms-1" data-field="receiver-pending">
+            {{tf "siem.receiver_pending" .Receiver.Pending}}
+          </span>
+          {{end}}
+        </div>
+      </div>
+
+      <div class="card-body">
+        <form hx-post="/siem/receiver" hx-target="#siem-panel" hx-swap="innerHTML">
+          <div class="mb-3">
+            <label class="form-label" for="protocol">{{t "siem.receiver_protocol"}}</label>
+            <select class="form-select" id="protocol" name="protocol" data-field="protocol">
+              {{$current := .Receiver.Protocol}}
+              {{range .Receiver.Protocols}}
+              <option value="{{.}}" {{if eq . $current}}selected{{end}}>{{t (printf "siem.protocol_%s" .)}}</option>
+              {{end}}
+            </select>
+          </div>
+
+          <div class="row g-3">
+            <div class="col-8">
+              <label class="form-label" for="receiver_host">{{t "siem.receiver_host"}}</label>
+              <input class="form-control" type="text" id="receiver_host" name="receiver_host"
+                     data-field="receiver-host" value="{{.Receiver.Host}}"
+                     spellcheck="false" autocapitalize="none"
+                     placeholder="siem.example.net">
+            </div>
+            <div class="col-4">
+              <label class="form-label" for="receiver_port">{{t "siem.receiver_port"}}</label>
+              <input class="form-control" type="number" id="receiver_port" name="receiver_port"
+                     data-field="receiver-port" value="{{.Receiver.Port}}" min="1" max="65535">
+            </div>
+          </div>
+
+          {{if .Receiver.LastError}}
+          <div class="form-text text-danger" data-field="receiver-error">{{.Receiver.LastError}}</div>
+          {{end}}
+          <div class="form-text">{{t "siem.receiver_help"}}</div>
+
+          <div class="dns-toolbar mt-4">
+            <button class="btn btn-primary" type="submit">{{t "siem.receiver_save"}}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <div class="card mb-4">
       <div class="card-header">
         <h2 class="h6 mb-0">{{t "siem.how_title"}}</h2>

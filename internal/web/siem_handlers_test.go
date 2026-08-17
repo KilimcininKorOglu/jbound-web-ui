@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"jbound/internal/audit"
+	"jbound/internal/i18n"
 	appsettings "jbound/internal/settings"
 )
 
@@ -345,5 +346,131 @@ func TestTheSettingsPageCannotSilenceTheMirrorUnnoticed(t *testing.T) {
 	}
 	if !forwarded {
 		t.Error("the save that silenced the mirror never reached it")
+	}
+}
+
+// --- The receiver the panel reaches itself --------------------------------
+
+// saveReceiver submits the receiver card.
+func (e *fleetEnv) saveReceiver(t *testing.T, protocol, host, port string) *httptest.ResponseRecorder {
+	t.Helper()
+
+	return e.adminForm(t, http.MethodPost, "/siem/receiver", e.cookie, url.Values{
+		"protocol":      {protocol},
+		"receiver_host": {host},
+		"receiver_port": {port},
+	})
+}
+
+func TestTheReceiverCardOffersEveryProtocol(t *testing.T) {
+	env := newFleetEnv(t)
+	body := env.siemPanel(t)
+
+	for _, field := range []string{"protocol", "receiver-host", "receiver-port"} {
+		if !strings.Contains(body, `data-field="`+field+`"`) {
+			t.Errorf("the card has no %s control:\n%s", field, body)
+		}
+	}
+	for _, protocol := range []string{"off", "udp", "tcp", "tls"} {
+		if !strings.Contains(body, `value="`+protocol+`"`) {
+			t.Errorf("the card does not offer %q", protocol)
+		}
+	}
+}
+
+func TestAReceiverWithNoProtocolReadsAsOff(t *testing.T) {
+	// The default, and what every existing install starts as.
+	env := newFleetEnv(t)
+	body := env.siemPanel(t)
+
+	if !strings.Contains(body, `data-field="receiver-state"`) {
+		t.Fatalf("the card does not report its state:\n%s", body)
+	}
+	catalog := env.app.Catalogs.Catalog(i18n.Default)
+	if !strings.Contains(body, catalog.T("siem.receiver_off")) {
+		t.Errorf("a receiver that was never configured does not read as off:\n%s", body)
+	}
+}
+
+func TestTheSavedReceiverComesBackInTheCard(t *testing.T) {
+	env := newFleetEnv(t)
+
+	if recorder := env.saveReceiver(t, "tcp", "siem.example.net", "6514"); recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200:\n%s", recorder.Code, recorder.Body.String())
+	}
+
+	body := env.siemPanel(t)
+	if !strings.Contains(body, `value="siem.example.net"`) {
+		t.Errorf("the host was not kept:\n%s", body)
+	}
+	if !strings.Contains(body, `value="6514"`) {
+		t.Errorf("the port was not kept:\n%s", body)
+	}
+	if !strings.Contains(body, `value="tcp" selected`) {
+		t.Errorf("the protocol was not kept:\n%s", body)
+	}
+
+	// The settings page holds the same three values, so a change here is a
+	// change there.
+	if got := env.app.Settings.String(appsettings.SIEMReceiverHost); got != "siem.example.net" {
+		t.Errorf("the stored host is %q", got)
+	}
+	if got := env.app.Settings.Int(appsettings.SIEMReceiverPort); got != 6514 {
+		t.Errorf("the stored port is %d", got)
+	}
+}
+
+func TestAPortOutsideTheRangeComesBackWithTheReason(t *testing.T) {
+	// The operator typed it, so it is a form to correct rather than a server
+	// error nobody can act on.
+	env := newFleetEnv(t)
+
+	recorder := env.saveReceiver(t, "tcp", "siem.example.net", "70000")
+	if recorder.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422", recorder.Code)
+	}
+	if !strings.Contains(recorder.Body.String(), "65535") {
+		t.Errorf("the reason does not name the bound:\n%s", recorder.Body.String())
+	}
+	if got := env.app.Settings.String(appsettings.SIEMReceiverHost); got != "" {
+		t.Errorf("a refused submission stored the host anyway: %q", got)
+	}
+}
+
+func TestAnUnknownProtocolIsRefused(t *testing.T) {
+	env := newFleetEnv(t)
+
+	recorder := env.saveReceiver(t, "carrier-pigeon", "siem.example.net", "514")
+	if recorder.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422", recorder.Code)
+	}
+}
+
+func TestTheReceiverGoesBackToOffWithNoHost(t *testing.T) {
+	// Off is a state an operator chooses, so the host may be emptied.
+	env := newFleetEnv(t)
+
+	if recorder := env.saveReceiver(t, "tcp", "siem.example.net", "514"); recorder.Code != http.StatusOK {
+		t.Fatalf("the first save returned %d", recorder.Code)
+	}
+	if recorder := env.saveReceiver(t, "off", "", "514"); recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+
+	if got := env.app.Settings.String(appsettings.SIEMProtocol); got != "off" {
+		t.Errorf("the protocol is %q, want off", got)
+	}
+}
+
+func TestSavingTheReceiverIsAudited(t *testing.T) {
+	// It decides where the panel's own trail goes, which is exactly the kind of
+	// change the trail has to carry.
+	env := newFleetEnv(t)
+
+	env.saveReceiver(t, "tls", "siem.example.net", "6514")
+
+	body := env.logTable(t, "action="+audit.ActionSIEMConfig)
+	if !strings.Contains(body, "tls siem.example.net:6514") {
+		t.Errorf("the trail does not name the receiver:\n%s", body)
 	}
 }

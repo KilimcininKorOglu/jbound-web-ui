@@ -271,6 +271,8 @@ func run() error {
 		Records:   recordService,
 		SIEM:      rsyslog,
 		Forwarder: forwarder,
+		Receiver:  sender,
+		Backlog:   queue,
 		Health:    db.Probe,
 		Hostname:  panelHost,
 		Started:   time.Now(),

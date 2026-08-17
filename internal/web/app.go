@@ -43,6 +43,13 @@ type Deps struct {
 	SIEM      *siem.Manager
 	Forwarder audit.Forwarder
 
+	// Receiver is the collector the panel sends its trail to itself, and
+	// Backlog is how far behind that collector is. Both are nil on a panel
+	// built without them, which is what the handler tests do, and the page then
+	// reports a receiver that is off.
+	Receiver *siem.Sender
+	Backlog  *siem.Queue
+
 	// Health answers whether the process can still serve. It is what the
 	// public status route reports, so it has to reach the database rather than
 	// describe the goroutine that answers the request.
@@ -199,6 +206,7 @@ func (a *App) Router() http.Handler {
 		"POST /diff/sync": a.withFleetDeadline(a.handleDiffSync),
 
 		"POST /siem/forwarding": a.handleSIEMForwarding,
+		"POST /siem/receiver":   a.handleSIEMReceiver,
 
 		"GET /groups/new":       a.handleGroupForm,
 		"POST /groups":          a.handleGroupCreate,

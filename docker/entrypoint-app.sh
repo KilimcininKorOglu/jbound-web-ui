@@ -1,7 +1,7 @@
 #!/bin/bash
 # Starts the development panel container.
 #
-# Order matters: accounts, helper, rsyslog, then the panel itself. Every step
+# Order matters: accounts, helper, then the panel itself. Every step
 # fails loudly, because a container that comes up half configured makes later
 # test failures point at the wrong layer.
 
@@ -10,8 +10,6 @@ set -euo pipefail
 SRC_DIR=${SRC_DIR:-/src}
 DATA_DIR=${DATA_DIR:-/var/lib/jbound}
 AUTH_HELPER_PATH=${AUTH_HELPER_PATH:-/usr/local/libexec/jbound-authhelper}
-RSYSLOG_CONF_PATH=${RSYSLOG_CONF_PATH:-/etc/rsyslog.d/60-jbound.conf}
-SYSLOG_LOG_PATH=${SYSLOG_LOG_PATH:-/var/log/jbound.log}
 KEY_DIR=${KEY_DIR:-/keys}
 
 log() { printf '[entrypoint-app] %s\n' "$*"; }
@@ -52,26 +50,9 @@ else
     exit 1
 fi
 
-# --- rsyslog -----------------------------------------------------------------
-# The panel never writes this file. jbound-siem-apply does, as root, from the
-# rules the panel wrote into its own data directory. The mode mirrors the
-# production install step, and a group writable one here would hide the whole
-# point of that split.
-touch "$RSYSLOG_CONF_PATH"
-chown root:root "$RSYSLOG_CONF_PATH"
-chmod 0644 "$RSYSLOG_CONF_PATH"
-
-# Removed rather than created, so rsyslog creates it through the action
-# jbound-siem-apply writes, with the group that action names.
-rm -f "$SYSLOG_LOG_PATH"
-
-# The same first run the production install does, so the panel has a log file
-# before anybody opens the SIEM page.
-/usr/local/sbin/jbound-siem-apply
-log "rendered $RSYSLOG_CONF_PATH"
-
-/usr/sbin/rsyslogd -i /run/rsyslogd.pid
-log "rsyslogd started"
+# No syslog daemon runs here. The panel sends its audit trail to the sink
+# container itself, over a socket, which is what a production panel does to its
+# collector.
 
 # --- Known hosts -------------------------------------------------------------
 # Host key pinning lives in the database. This file only keeps the ssh client

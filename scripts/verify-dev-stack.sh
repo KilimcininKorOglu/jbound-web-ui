@@ -134,14 +134,27 @@ for name in dns4 dns5 dns6; do
     fi
 done
 
-# --- 10. SIEM sink listens ---------------------------------------------------
+# --- 10. The panel account holds no root command -----------------------------
+# The setuid helper is the one privileged piece. Everything else the panel does,
+# including sending its audit trail to the collector, runs as the service
+# account, so a sudo binary or a sudoers file here would be a privilege nothing
+# asks for.
+found=$("${COMPOSE[@]}" exec -T app sh -c \
+    'command -v sudo; ls /etc/sudoers.d/jbound' 2>/dev/null | tr -d '\r')
+if [ -z "$found" ]; then
+    pass "the panel container carries no sudo and no sudoers rule"
+else
+    fail "the panel container holds a root command: $found"
+fi
+
+# --- 11. SIEM sink listens ---------------------------------------------------
 if "${COMPOSE[@]}" exec -T siem-sink pgrep -x rsyslogd >/dev/null 2>&1; then
     pass "siem-sink is listening"
 else
     fail "siem-sink is not running"
 fi
 
-# --- 11. Panel HTTP endpoint -------------------------------------------------
+# --- 12. Panel HTTP endpoint -------------------------------------------------
 # The binary arrives in Faz 1. Until then this check is pending, not failing.
 if [ -f go.mod ]; then
     if curl -fsS -o /dev/null --max-time 5 http://127.0.0.1:8330/; then

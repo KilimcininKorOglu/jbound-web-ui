@@ -1,6 +1,6 @@
 # Stands in for a SIEM collector during development.
 #
-# The panel forwards CEF events here over TCP so the integration test can
+# The panel sends CEF events here over TCP itself, so the integration test can
 # assert that forwarding actually leaves the panel host.
 
 FROM debian:bookworm-slim

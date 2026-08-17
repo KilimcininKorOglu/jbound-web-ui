@@ -1,7 +1,8 @@
 # Development image for the JBound panel.
 #
-# The panel runs unprivileged. Only the setuid helper touches PAM. No Unbound
-# runs here, because the panel manages remote targets over SSH.
+# The panel runs unprivileged and holds no root command. Only the setuid helper
+# touches PAM. No Unbound runs here, because the panel manages remote targets
+# over SSH.
 
 # Pinned to the patch level, not to 1.26. A floating tag would ship whatever
 # the base image happens to resolve to, which is the same hole the toolchain
@@ -17,9 +18,7 @@ RUN apt-get update \
         libpam-runtime \
         passwd \
         dnsutils \
-        rsyslog \
         openssh-client \
-        sudo \
         gcc \
         make \
         cppcheck \
@@ -34,35 +33,19 @@ RUN groupadd --system jbound \
         --home-dir /home/jbound --shell /usr/sbin/nologin jbound
 
 COPY deploy/pam.d-jbound /etc/pam.d/jbound
-COPY docker/rsyslog-app.conf /etc/rsyslog.conf
-RUN mkdir -p /var/spool/rsyslog /etc/rsyslog.d /usr/local/libexec
+RUN mkdir -p /usr/local/libexec
 
-# The apply script is the production one. It is what keeps the panel account
-# out of /etc/rsyslog.d, so a development stack that stood in for it would
-# prove nothing about the boundary it draws.
-COPY deploy/jbound-siem-apply /usr/local/sbin/jbound-siem-apply
-RUN chmod 0755 /usr/local/sbin/jbound-siem-apply
-
-# The container has no systemd, so this stands in for "systemctl restart
-# rsyslog" alone.
-COPY docker/rsyslog-restart /usr/local/bin/rsyslog-restart
-RUN chmod 0755 /usr/local/bin/rsyslog-restart
-
-# Mirrors the production sudoers rules for the panel account.
-RUN printf '%s\n' \
-        'jbound ALL=(ALL) NOPASSWD: /usr/local/sbin/jbound-siem-apply' \
-        'jbound ALL=(ALL) NOPASSWD: /usr/local/bin/rsyslog-restart' \
-        > /etc/sudoers.d/jbound \
-    && chmod 0440 /etc/sudoers.d/jbound \
-    && visudo -c -f /etc/sudoers.d/jbound
+# No sudo and no sudoers file. The panel account holds no root command at all:
+# PAM goes through the setuid helper, and the audit trail goes to the sink over
+# a socket. A development stack that carried a rule production does not would
+# hide the boundary rather than prove it.
 
 # Hot reload for the Go binary. Installed as root, used by the service account.
 #
 # Pinned like every analyser in the Makefile. This is the process the panel
-# runs under, in a container that bind mounts the host source tree read write,
-# holds the development SSH key and carries two NOPASSWD sudoers rules, so an
-# unpinned reference would let whatever the proxy serves that day reach all
-# three.
+# runs under, in a container that bind mounts the host source tree read write
+# and holds the development SSH key, so an unpinned reference would let
+# whatever the proxy serves that day reach both.
 RUN go install github.com/air-verse/air@v1.67.4 \
     && install -m 0755 /go/bin/air /usr/local/bin/air
 

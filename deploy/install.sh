@@ -11,9 +11,8 @@
 #   -b  Panel binary to install.    Default: dist/jbound
 #   -a  Helper binary to install.   Default: authhelper/jbound-authhelper
 #   -p  Install prefix.             Default: /usr/local
-#   -n  No systemd on this host. Skips the unit and the two sudoers rules,
-#       because both of them drive rsyslog through systemctl. For a container
-#       or an image build.
+#   -n  No systemd on this host. Skips the unit. For a container or an image
+#       build.
 #
 # Build both binaries first:
 #   make build build-helper
@@ -25,9 +24,12 @@ SERVICE_GROUP=jbound
 DATA_DIR=/var/lib/jbound
 CONF_DIR=/etc/jbound
 ENV_FILE="$CONF_DIR/jbound.env"
-RSYSLOG_CONF=/etc/rsyslog.d/60-jbound.conf
-SUDOERS_FILE=/etc/sudoers.d/jbound
 UNIT_FILE=/etc/systemd/system/jbound.service
+
+# What an earlier release installed to forward through rsyslog. The panel
+# reaches its receiver itself now, so these are removed rather than updated.
+OLD_RSYSLOG_CONF=/etc/rsyslog.d/60-jbound.conf
+OLD_SUDOERS_FILE=/etc/sudoers.d/jbound
 DOC_DIR=/usr/local/share/doc/jbound/licenses
 
 PANEL_BINARY=dist/jbound
@@ -44,7 +46,7 @@ while getopts 'b:a:p:nh' opt; do
         a) HELPER_BINARY=$OPTARG ;;
         p) PREFIX=$OPTARG ;;
         n) USE_SYSTEMD=no ;;
-        h) sed -n '2,19p' "$0"; exit 0 ;;
+        h) sed -n '2,18p' "$0"; exit 0 ;;
         *) echo "run with -h for usage" >&2; exit 2 ;;
     esac
 done
@@ -75,13 +77,12 @@ if ! id -u "$SERVICE_USER" >/dev/null 2>&1; then
     echo "created account: $SERVICE_USER"
 fi
 
-# The panel reads its own syslog file back for the SIEM page, and the rsyslog
-# configuration jbound-siem-apply writes gives that one file to this group. An
-# earlier install joined the adm group for the same purpose, which also handed
-# over every other service's records.
+# The panel reads nothing under /var/log. An earlier install joined the adm
+# group so the SIEM page could read the panel's own log file back, which handed
+# over every other service's records with it.
 if id -nG "$SERVICE_USER" 2>/dev/null | grep -qw adm; then
     gpasswd -d "$SERVICE_USER" adm > /dev/null
-    echo "removed $SERVICE_USER from the adm group, its own log carries group $SERVICE_GROUP"
+    echo "removed $SERVICE_USER from the adm group, the panel reads no host logs"
 fi
 
 # --- State directory ---------------------------------------------------------
@@ -129,73 +130,32 @@ else
     echo "kept the existing $ENV_FILE"
 fi
 
-# --- rsyslog file, and the only thing that writes it -------------------------
-# rsyslog runs as root and its configuration can name a program to execute, so
-# this file belongs to root and the panel never writes it. The panel writes
-# forwarding rules into its own data directory, and the script below is what
-# turns them into configuration. An earlier install left this file group
-# writable, which is why the mode is set rather than only created.
-install -m 0755 -o root -g root \
-    "$SOURCE_DIR/jbound-siem-apply" "$PREFIX/sbin/jbound-siem-apply"
-echo "installed $PREFIX/sbin/jbound-siem-apply"
-
-if [ -e "$RSYSLOG_CONF" ]; then
-    chown root:root "$RSYSLOG_CONF"
-    chmod 0644 "$RSYSLOG_CONF"
-    echo "took $RSYSLOG_CONF back to root:root 0644"
-fi
-
-# Run it once, so the panel has a log file before anybody opens the SIEM page.
-# Without this the configuration that routes the panel's own trail would not
-# exist until the first save, and the trail before that would be lost.
-if command -v rsyslogd > /dev/null 2>&1; then
-    "$PREFIX/sbin/jbound-siem-apply"
-else
-    echo "rsyslogd is not installed, skipped the first apply"
-fi
-
-# --- Sudoers rules and the systemd unit --------------------------------------
-# Two exact rules, no wildcards. One applies the forwarding rules the panel
-# wrote, the other restarts the daemon that reads the result. Neither takes an
-# argument from the panel. The restart drives systemctl, so a host without
-# systemd gets neither rule.
-resolve() {
-    _found=$(command -v "$1" 2>/dev/null || true)
-    if [ -z "$_found" ]; then
-        echo "error: required command not found: $1" >&2
-        exit 1
+# --- What the rsyslog path left behind ---------------------------------------
+# The panel sends its trail to the receiver itself, over an ordinary socket. It
+# needs no sudoers rule, no daemon on this host and no file under /etc/rsyslog.d,
+# so an upgrade takes all three away. Leaving the sudoers rule in place would
+# leave the panel account able to run a root script it no longer calls.
+for stale in "$OLD_SUDOERS_FILE" "$OLD_RSYSLOG_CONF" "$PREFIX/sbin/jbound-siem-apply"; do
+    if [ -e "$stale" ]; then
+        rm -f "$stale"
+        echo "removed $stale, the panel forwards without rsyslog"
     fi
-    printf '%s\n' "$_found"
-}
+done
 
+# No rsyslog restart is needed. The panel writes to no local syslog socket any
+# more, so the rule that was removed had nothing left to match.
+#
+# The rules the panel used to write stay where they are. The panel reads them
+# once at startup to carry the collector they name into its own settings, and an
+# operator who wants them gone can delete the file afterwards.
+
+# --- The systemd unit --------------------------------------------------------
 if [ "$USE_SYSTEMD" = yes ]; then
-    SYSTEMCTL_PATH=$(resolve systemctl)
-
-    TMP_SUDOERS=$(mktemp)
-    trap 'rm -f "$TMP_SUDOERS"' EXIT
-
-    cat > "$TMP_SUDOERS" <<EOF
-# Managed by jbound install.sh. Do not edit by hand.
-$SERVICE_USER ALL=(ALL) NOPASSWD: $PREFIX/sbin/jbound-siem-apply
-$SERVICE_USER ALL=(ALL) NOPASSWD: $SYSTEMCTL_PATH restart rsyslog
-EOF
-
-    chmod 440 "$TMP_SUDOERS"
-
-    # Validate before installing. A broken sudoers file can lock out the host.
-    if ! visudo -c -f "$TMP_SUDOERS" >/dev/null; then
-        echo "error: generated sudoers file failed validation, nothing installed" >&2
-        exit 1
-    fi
-
-    install -m 440 -o root -g root "$TMP_SUDOERS" "$SUDOERS_FILE"
-    echo "installed $SUDOERS_FILE"
-
     install -m 0644 -o root -g root "$SOURCE_DIR/jbound.service" "$UNIT_FILE"
     systemctl daemon-reload
     echo "installed $UNIT_FILE"
 else
-    echo "skipped the systemd unit and the sudoers rules, both need systemctl"
+    echo "skipped the systemd unit, it needs systemctl"
 fi
 
 # --- Verify ------------------------------------------------------------------
@@ -213,11 +173,10 @@ if [ "$DATA_MODE" != "700 $SERVICE_USER" ]; then
     exit 1
 fi
 
-# A file rsyslog reads as root, writable by the panel account, is the panel
-# account holding root.
-CONF_MODE=$(stat -c '%a %U %G' "$RSYSLOG_CONF")
-if [ "$CONF_MODE" != "644 root root" ]; then
-    echo "error: $RSYSLOG_CONF is $CONF_MODE, want 644 root root" >&2
+# Nothing may grant the panel account a root command. The setuid helper is the
+# one privileged piece left, and it is checked above.
+if [ -e "$OLD_SUDOERS_FILE" ]; then
+    echo "error: $OLD_SUDOERS_FILE still grants the panel account a root command" >&2
     exit 1
 fi
 
@@ -226,11 +185,11 @@ cat <<EOF
 Installed. What is left:
 
   1. Review $ENV_FILE. ADMIN_GROUP decides who administers the panel.
-  2. Pick the panel's log up:
-       systemctl restart rsyslog
-  3. Start the service:
+  2. Start the service:
        systemctl enable --now jbound
-  4. Put a reverse proxy in front of $(grep -s '^LISTEN_ADDR=' "$ENV_FILE" | cut -d= -f2-) and terminate TLS there.
+  3. Put a reverse proxy in front of $(grep -s '^LISTEN_ADDR=' "$ENV_FILE" | cut -d= -f2-) and terminate TLS there.
+  4. Name a receiver on the SIEM page if the trail is to reach a collector. The
+     panel sends to it directly, so nothing else on this host is involved.
   5. Prepare every DNS server with deploy/setup-target.sh and add it in the
      panel. The panel generates the key pair; the setup script takes the public
      half.

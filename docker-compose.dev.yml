@@ -188,6 +188,9 @@ services:
     networks:
       - jbound-net
 
+  # The collector the panel sends its audit trail to. The panel reaches it
+  # directly, so nothing on the panel container is involved in the delivery.
+  # Point the SIEM page at tcp siem-sink:514.
   siem-sink:
     build:
       context: .

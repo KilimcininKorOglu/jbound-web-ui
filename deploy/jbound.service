@@ -1,7 +1,7 @@
 [Unit]
 Description=JBound Unbound DNS management panel
 Documentation=file:/usr/local/share/doc/jbound/README.md
-After=network-online.target rsyslog.service
+After=network-online.target
 Wants=network-online.target
 
 [Service]
@@ -20,10 +20,9 @@ RestartSec=5
 CapabilityBoundingSet=
 AmbientCapabilities=
 
-# The setuid helper is how the panel reaches PAM, and two sudoers rules are how
-# it applies its forwarding rules and restarts rsyslog. Both need a privilege
-# the process does not hold, so the usual no-new-privileges hardening cannot be
-# turned on here.
+# The setuid helper is how the panel reaches PAM, and it needs a privilege the
+# process does not hold. That is the one remaining reason the usual
+# no-new-privileges hardening cannot be turned on here.
 NoNewPrivileges=no
 RestrictSUIDSGID=no
 
@@ -42,13 +41,13 @@ RestrictRealtime=yes
 RestrictNamespaces=yes
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 
-# The database, the SSH keys and the forwarding rules. Nothing else on the
-# system is writable, and that includes the rsyslog configuration: the panel
-# writes rules and jbound-siem-apply is what turns them into configuration.
+# The database and the SSH keys. Nothing else on the system is writable, and
+# the panel needs nothing else: it sends its trail to the receiver over a
+# socket rather than through a file anything else reads.
 ReadWritePaths=/var/lib/jbound
 
-# The panel writes its own log through syslog and its audit trail into the
-# database, so stdout carries the startup diagnostics alone.
+# The panel keeps its audit trail in the database and sends it from there, so
+# stdout carries the operational log alone.
 StandardOutput=journal
 StandardError=journal
 

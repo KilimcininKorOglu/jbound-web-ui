@@ -38,6 +38,9 @@ func DataDir(dataDir, keyDir string) error {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return fmt.Errorf("cannot create %s: %w", dir, err)
 		}
+		// A directory, not a file. 0700 is what keeps the SSH keys unreadable,
+		// and 0600 would leave the panel unable to enter its own data directory.
+		// #nosec G302 -- this is a directory and 0700 is the point of it.
 		if err := os.Chmod(dir, 0o700); err != nil {
 			return fmt.Errorf("cannot set mode 0700 on %s: %w", dir, err)
 		}

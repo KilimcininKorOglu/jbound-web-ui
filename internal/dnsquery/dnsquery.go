@@ -132,6 +132,9 @@ func lines(output []byte) []string {
 func runCommand(ctx context.Context, name string, args ...string) ([]byte, error) {
 	var stdout, stderr bytes.Buffer
 
+	// The program comes from DIG_PATH and every argument is built here from a
+	// validated host, domain and type. No shell runs.
+	// #nosec G204 -- the path is configuration and the arguments are validated.
 	command := exec.CommandContext(ctx, name, args...)
 	command.Stdout = &stdout
 	command.Stderr = &stderr

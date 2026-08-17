@@ -107,6 +107,10 @@ func (h *HelperAuthenticator) Authenticate(ctx context.Context,
 		return Account{}, ctx.Err()
 	}
 
+	// The helper path comes from AUTH_HELPER_PATH and the user name has been
+	// matched against usernamePattern above. No shell runs, so the name is one
+	// argv element rather than a command line.
+	// #nosec G204 -- the path is configuration and the name is validated.
 	cmd := exec.CommandContext(ctx, h.path, username)
 	cmd.Stdin = strings.NewReader(password)
 	// No inherited environment. A setuid binary must not be handed one.

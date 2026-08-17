@@ -82,10 +82,17 @@ func replaceFile(path string, data []byte, keepReadable bool) error {
 
 	mode, uid, gid := previousOwnership(path, keepReadable)
 
+	// 0755 is the mode /etc/unbound carries on a Debian host. The resolver
+	// reads that directory as root and the panel account has to list it, so
+	// tightening it here would break the software this manages.
+	// #nosec G301 -- the resolver owns this directory and needs it listable.
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("cannot create %s: %w", dir, err)
 	}
 
+	// The staging name is derived from the configured records path, which only
+	// root writes. No request names a file here.
+	// #nosec G304 -- the path is configuration, never request input.
 	file, err := os.OpenFile(staging, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, recordsMode)
 	if err != nil {
 		return fmt.Errorf("cannot create %s: %w", staging, err)
@@ -228,6 +235,7 @@ func (a *Agent) ensureHeader() error {
 // include of a different file whose name contains this one does not count as
 // this one.
 func includesRecords(mainConfig, recordsPath string) (bool, error) {
+	// #nosec G304 -- the path is configuration, never request input.
 	file, err := os.Open(mainConfig)
 	if err != nil {
 		return false, fmt.Errorf("cannot read %s: %w", mainConfig, err)

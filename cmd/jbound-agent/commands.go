@@ -61,6 +61,9 @@ func (a *Agent) run(ctx context.Context, command Command) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, a.cfg.CommandTimeout)
 	defer cancel()
 
+	// The command comes from the agent's own configuration file, which only
+	// root writes. No part of a request reaches this argv.
+	// #nosec G204 -- the argv is configuration, never request input.
 	cmd := exec.CommandContext(ctx, command[0], command[1:]...)
 
 	// The environment is emptied rather than inherited. A step runs as root,

@@ -50,6 +50,8 @@ func NewKeyStore(dataDir string) (*KeyStore, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("cannot create the key directory %s: %w", dir, err)
 	}
+	// A directory, not a file. 0600 would leave the panel unable to enter it.
+	// #nosec G302 -- this is a directory and 0700 is the point of it.
 	if err := os.Chmod(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("cannot set mode 0700 on %s: %w", dir, err)
 	}
@@ -193,6 +195,9 @@ func (k *KeyStore) Import(id int64, material string) (KeyPair, error) {
 // cannot belong to a live server. An existing file is a leftover from a
 // deleted one, which is why the write truncates instead of refusing.
 func createKeyFile(path string) (*os.File, error) {
+	// Every caller passes a path from KeyStore.resolve, which refuses anything
+	// outside <DATA_DIR>/keys.
+	// #nosec G304 -- the path is resolved and bounded before it gets here.
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("cannot create the key file %s: %w", path, err)
@@ -210,6 +215,9 @@ func (k *KeyStore) PublicKey(relPath string) (string, string, error) {
 		return "", "", err
 	}
 
+	// resolve refuses a stored path outside <DATA_DIR>/keys, which is what
+	// stops a tampered row from naming any file on the host.
+	// #nosec G304 -- the path is resolved and bounded above.
 	material, err := os.ReadFile(path)
 	if err != nil {
 		return "", "", fmt.Errorf("cannot read the key file: %w", err)

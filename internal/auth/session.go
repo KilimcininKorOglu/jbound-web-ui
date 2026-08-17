@@ -287,6 +287,9 @@ func (m *SessionManager) destroy(ctx context.Context, w http.ResponseWriter, id 
 }
 
 func (m *SessionManager) setCookie(w http.ResponseWriter, id string) {
+	// HttpOnly and SameSite=Strict are set below, and Secure follows
+	// COOKIE_SECURE so a development stack over plain HTTP can still sign in.
+	// #nosec G124 -- Secure is an operator decision, the other two are not.
 	http.SetCookie(w, &http.Cookie{
 		Name:     SessionCookieName,
 		Value:    id,
@@ -302,6 +305,7 @@ func (m *SessionManager) setCookie(w http.ResponseWriter, id string) {
 }
 
 func (m *SessionManager) clearCookie(w http.ResponseWriter) {
+	// #nosec G124 -- Secure follows COOKIE_SECURE, as it does on the way in.
 	http.SetCookie(w, &http.Cookie{
 		Name:     SessionCookieName,
 		Value:    "",

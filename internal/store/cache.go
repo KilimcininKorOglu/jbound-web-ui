@@ -93,6 +93,9 @@ SELECT COUNT(*) FROM (SELECT 1
 		return page, nil
 	}
 
+	// The concatenated text is the WHERE fragment recordFilter built, which
+	// carries placeholders only. Every value travels in args.
+	// #nosec G202 -- no value is concatenated, only the placeholder fragment.
 	rows, err := r.db.QueryContext(ctx, `
 SELECT c.fqdn, c.type, c.value, c.priority, MIN(c.raw), MIN(c.line),
        GROUP_CONCAT(DISTINCT c.server_id), GROUP_CONCAT(DISTINCT s.name)
@@ -156,6 +159,7 @@ func (r *Records) ByServer(ctx context.Context, query fleet.Query) (map[int64][]
 	query.Normalise()
 	where, args := recordFilter(query)
 
+	// #nosec G202 -- no value is concatenated, only the placeholder fragment.
 	rows, err := r.db.QueryContext(ctx, `
 SELECT c.server_id, c.line, c.fqdn, c.type, c.value, c.priority, c.raw
   FROM record_cache c

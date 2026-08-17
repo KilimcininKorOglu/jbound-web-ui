@@ -39,6 +39,10 @@ func runBackup(target string) error {
 	}
 	defer func() { _ = db.Close() }()
 
+	// The target is the directory the operator named on the command line, and
+	// the command runs as the account that owns the data directory. There is no
+	// traversal to prevent: the caller already reaches every path it can name.
+	// #nosec G703 -- the path is the operator's own argument.
 	if err := os.Mkdir(target, 0o700); err != nil {
 		return fmt.Errorf("cannot create %s: %w", target, err)
 	}
@@ -59,6 +63,7 @@ func runBackup(target string) error {
 
 // copyKeys copies the private keys and reports how many it wrote.
 func copyKeys(source, target string) (int, error) {
+	// #nosec G703 -- the path is the operator's own argument.
 	if err := os.Mkdir(target, 0o700); err != nil {
 		return 0, fmt.Errorf("cannot create %s: %w", target, err)
 	}
@@ -84,10 +89,13 @@ func copyKeys(source, target string) (int, error) {
 
 // copyKey writes one key with the mode the original has to keep.
 func copyKey(source, target string) error {
+	// Both paths are built from the data directory and the operator's target.
+	// #nosec G304,G703 -- the paths are configuration and the operator's argument.
 	content, err := os.ReadFile(source)
 	if err != nil {
 		return fmt.Errorf("cannot read %s: %w", source, err)
 	}
+	// #nosec G703 -- the path is the operator's own argument.
 	if err := os.WriteFile(target, content, fs.FileMode(0o600)); err != nil {
 		return fmt.Errorf("cannot write %s: %w", target, err)
 	}

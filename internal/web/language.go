@@ -62,6 +62,7 @@ func (a *App) handleLanguageChange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// #nosec G124 -- Secure follows COOKIE_SECURE; HttpOnly and SameSite are set.
 	http.SetCookie(w, &http.Cookie{
 		Name:     LanguageCookieName,
 		Value:    choice,

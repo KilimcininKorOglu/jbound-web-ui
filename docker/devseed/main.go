@@ -99,6 +99,7 @@ func run() error {
 		return nil
 	}
 
+	// #nosec G304 -- the path is built from DATA_DIR in the development stack.
 	material, err := os.ReadFile(filepath.Join(dataDir, server.KeySubdir, "dev_ed25519"))
 	if err != nil {
 		return fmt.Errorf("cannot read the development key: %w", err)
@@ -221,6 +222,7 @@ func addAgentTarget(ctx context.Context, service *server.Service,
 	}
 
 	tokenPath := filepath.Join(dataDir, record.SSHKeyPath)
+	// #nosec G703 -- the path comes from the record the service just created.
 	if err := os.WriteFile(tokenPath, []byte(token+"\n"), 0o600); err != nil {
 		return 0, fmt.Errorf("cannot write the token of %s: %w", name, err)
 	}

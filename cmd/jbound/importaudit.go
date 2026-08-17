@@ -56,6 +56,9 @@ func runImportAudit(path string) error {
 	preflight.WarnIfRoot("the rows will belong to root, " +
 		"and the service account may no longer write the database")
 
+	// The file is the one the operator named on the command line, read by the
+	// account they ran the command as.
+	// #nosec G304,G703 -- the path is the operator's own argument.
 	file, err := os.Open(path)
 	if err != nil {
 		return fmt.Errorf("cannot open %s: %w", path, err)

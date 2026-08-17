@@ -138,6 +138,9 @@ func readToken(path string) (string, error) {
 			"the token file %s is mode %o, which lets other accounts read it", path, mode)
 	}
 
+	// The path is the configured token path, and the mode check above is what
+	// guards it.
+	// #nosec G304 -- the path is configuration, and its mode is checked first.
 	material, err := os.ReadFile(path)
 	if err != nil {
 		return "", fmt.Errorf("cannot read the token file %s: %w", path, err)

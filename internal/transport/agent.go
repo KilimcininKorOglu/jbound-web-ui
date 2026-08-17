@@ -177,9 +177,13 @@ func matchesPin(observed, approved string) error {
 func ScanAgentCertificate(ctx context.Context, cfg Config) (string, error) {
 	dialer := &tls.Dialer{
 		NetDialer: &net.Dialer{Timeout: cfg.ConnectTimeout},
+		// This is the scan, not a connection the panel trusts. It exists to show
+		// an operator the fingerprint the agent offers, so verifying it against
+		// anything would defeat the purpose.
+		// #nosec G402 -- reading the fingerprint is the whole operation.
 		Config: &tls.Config{
 			MinVersion:         tls.VersionTLS12,
-			InsecureSkipVerify: true, //nolint:gosec // the fingerprint is the point
+			InsecureSkipVerify: true,
 		},
 	}
 

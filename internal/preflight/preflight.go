@@ -9,21 +9,26 @@ package preflight
 import (
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 )
 
-// NotRoot rejects a panel process running as uid 0.
+// WarnIfRoot says what running as uid 0 costs, and lets the process run.
 //
-// The panel stores SSH keys to every managed DNS server. Running it as root
-// would mean one HTTP flaw gives away the whole fleet. PAM authentication does
-// not need root here, because the setuid helper carries that privilege.
-func NotRoot() error {
-	if os.Geteuid() == 0 {
-		return fmt.Errorf(
-			"the panel must not run as root, start it as the jbound service account")
+// The install puts the panel under its own account and nothing here needs root:
+// PAM authentication goes through the setuid helper, and the rsyslog file goes
+// through one sudoers rule. An operator who starts it as root anyway gets the
+// sentence rather than a refusal, because which account this runs under is
+// their decision to make.
+//
+// consequence names what root costs at this particular entry point, because
+// what the panel risks and what a one shot command risks are different things.
+func WarnIfRoot(consequence string) {
+	if os.Geteuid() != 0 {
+		return
 	}
-	return nil
+	slog.Warn("running as root", "consequence", consequence)
 }
 
 // DataDir creates the data directory and its key subdirectory with 0700 and

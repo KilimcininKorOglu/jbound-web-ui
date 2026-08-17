@@ -137,9 +137,9 @@ func run() error {
 	}
 	logging.SetLevel(cfg.LogLevel)
 
-	if err := preflight.NotRoot(); err != nil {
-		return err
-	}
+	preflight.WarnIfRoot("the panel holds an SSH key to every managed server, " +
+		"so one flaw in the HTTP layer would hand over the whole fleet")
+
 	if err := preflight.DataDir(cfg.DataDir, cfg.KeyDir); err != nil {
 		return err
 	}

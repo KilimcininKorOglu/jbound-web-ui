@@ -53,11 +53,8 @@ func runImportAudit(path string) error {
 		return err
 	}
 
-	// The same check the panel makes. Rows written as root leave a database
-	// the service account may no longer be able to write.
-	if err := preflight.NotRoot(); err != nil {
-		return err
-	}
+	preflight.WarnIfRoot("the rows will belong to root, " +
+		"and the service account may no longer write the database")
 
 	file, err := os.Open(path)
 	if err != nil {

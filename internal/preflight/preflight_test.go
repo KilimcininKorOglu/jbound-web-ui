@@ -1,18 +1,30 @@
 package preflight
 
 import (
+	"bytes"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
-func TestNotRootAcceptsAnUnprivilegedProcess(t *testing.T) {
+func TestAnUnprivilegedProcessIsNotWarned(t *testing.T) {
+	// The warning is for the operator who chose root. Raising it on every
+	// start would teach them to read past it.
 	if os.Geteuid() == 0 {
 		t.Skip("test suite is running as root")
 	}
-	if err := NotRoot(); err != nil {
-		t.Fatalf("NotRoot rejected uid %d: %v", os.Geteuid(), err)
+
+	var written bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&written, nil)))
+	defer slog.SetDefault(previous)
+
+	WarnIfRoot("the fleet would be handed over")
+
+	if written.Len() != 0 {
+		t.Errorf("an unprivileged process was warned: %s", written.String())
 	}
 }
 

@@ -27,11 +27,8 @@ func runBackup(target string) error {
 		return err
 	}
 
-	// The same check the panel makes. A backup taken as root leaves an
-	// artefact the service account cannot read back.
-	if err := preflight.NotRoot(); err != nil {
-		return err
-	}
+	preflight.WarnIfRoot("the backup will belong to root, " +
+		"and the service account will not read it back")
 
 	// The database is opened before the directory is created, so a run that
 	// cannot read it leaves no empty directory behind for the next attempt to

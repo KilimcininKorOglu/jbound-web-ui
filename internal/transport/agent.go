@@ -80,11 +80,7 @@ func NewAgent(cfg Config) (*AgentTransport, error) {
 		// private authority or turning verification off. Pinning gives the same
 		// answer the SSH path gives: the operator approves a fingerprint once
 		// and a change after that stops the connection.
-		TLSClientConfig: &tls.Config{
-			MinVersion:            tls.VersionTLS12,
-			InsecureSkipVerify:    true, //nolint:gosec // VerifyPeerCertificate pins instead
-			VerifyPeerCertificate: pinnedCertificate(cfg.HostKey),
-		},
+		TLSClientConfig: pinnedTLSConfig(cfg.HostKey),
 	}
 
 	return &AgentTransport{
@@ -104,6 +100,24 @@ func CertFingerprint(der []byte) string {
 	return "SHA256:" + base64.RawStdEncoding.EncodeToString(sum[:])
 }
 
+// pinnedTLSConfig builds the client configuration that pins one fingerprint.
+//
+// Both callbacks carry the same check, because a resumed session runs only the
+// second one. This configuration asks for no session cache, so nothing resumes
+// today, but a cache added later would otherwise skip the pin on every
+// connection after the first and nothing would say so.
+func pinnedTLSConfig(hostKey string) *tls.Config {
+	// The panel verifies the certificate itself rather than through a chain, so
+	// turning the chain check off is what lets the pin be the whole answer.
+	// #nosec G402 -- the fingerprint pin below is the verification.
+	return &tls.Config{
+		MinVersion:            tls.VersionTLS12,
+		InsecureSkipVerify:    true,
+		VerifyPeerCertificate: pinnedCertificate(hostKey),
+		VerifyConnection:      pinnedConnection(hostKey),
+	}
+}
+
 // pinnedCertificate builds the verification callback for one approved
 // fingerprint.
 //
@@ -115,20 +129,44 @@ func pinnedCertificate(approved string) func([][]byte, [][]*x509.Certificate) er
 		if len(rawCerts) == 0 {
 			return fmt.Errorf("%w: the agent offered no certificate", ErrUnreachable)
 		}
-		observed := CertFingerprint(rawCerts[0])
-
-		if strings.TrimSpace(approved) == "" {
-			return &HostKeyError{Observed: observed, Err: ErrHostKeyUnknown}
-		}
-
-		// Constant time, for the same reason the token comparison is. The
-		// fingerprint is public, but a comparison that leaks its prefix is a
-		// free gift to anyone standing in the middle.
-		if subtle.ConstantTimeCompare([]byte(observed), []byte(strings.TrimSpace(approved))) != 1 {
-			return &HostKeyError{Observed: observed, Err: ErrHostKeyMismatch}
-		}
-		return nil
+		return matchesPin(CertFingerprint(rawCerts[0]), approved)
 	}
+}
+
+// pinnedConnection builds the same check for the whole connection.
+//
+// crypto/tls runs VerifyPeerCertificate on a full handshake only. A resumed
+// session presents the certificate of the session it resumes and skips that
+// callback, so a client with a session cache would verify the pin once and
+// never again. This callback runs on both, which is what keeps the pin true for
+// the life of the transport.
+func pinnedConnection(approved string) func(tls.ConnectionState) error {
+	return func(state tls.ConnectionState) error {
+		if len(state.PeerCertificates) == 0 {
+			return fmt.Errorf("%w: the agent offered no certificate", ErrUnreachable)
+		}
+		return matchesPin(CertFingerprint(state.PeerCertificates[0].Raw), approved)
+	}
+}
+
+// matchesPin compares what the server offered against what the operator
+// approved.
+//
+// An empty fingerprint is not "accept anything". It is a server no operator has
+// approved yet, and the connection stops with the fingerprint it saw so they
+// can approve it.
+func matchesPin(observed, approved string) error {
+	if strings.TrimSpace(approved) == "" {
+		return &HostKeyError{Observed: observed, Err: ErrHostKeyUnknown}
+	}
+
+	// Constant time, for the same reason the token comparison is. The
+	// fingerprint is public, but a comparison that leaks its prefix is a free
+	// gift to anyone standing in the middle.
+	if subtle.ConstantTimeCompare([]byte(observed), []byte(strings.TrimSpace(approved))) != 1 {
+		return &HostKeyError{Observed: observed, Err: ErrHostKeyMismatch}
+	}
+	return nil
 }
 
 // ScanAgentCertificate opens a TLS connection and reports the fingerprint the

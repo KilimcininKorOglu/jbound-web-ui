@@ -142,6 +142,92 @@ func answerJSON(w http.ResponseWriter, value any) {
 	_ = json.NewEncoder(w).Encode(value)
 }
 
+// resumingClient dials the listener with the panel's own TLS configuration and
+// one shared session cache, so a second call resumes the first session.
+//
+// It reads a byte before returning, because a TLS 1.3 client only takes the
+// session ticket the server sent once it reads from the connection.
+func resumingClient(t *testing.T, address, pin string,
+	cache tls.ClientSessionCache) (tls.ConnectionState, error) {
+
+	t.Helper()
+
+	config := pinnedTLSConfig(pin)
+	config.ClientSessionCache = cache
+
+	conn, err := tls.Dial("tcp", address, config)
+	if err != nil {
+		return tls.ConnectionState{}, err
+	}
+	defer conn.Close()
+
+	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	_, _ = conn.Read(make([]byte, 1))
+	return conn.ConnectionState(), nil
+}
+
+func TestThePinIsCheckedOnAResumedSessionToo(t *testing.T) {
+	// crypto/tls runs VerifyPeerCertificate on a full handshake only. A client
+	// with a session cache would otherwise check the fingerprint once and accept
+	// every later connection on the strength of a ticket.
+	certificate := selfSigned(t)
+	approved := CertFingerprint(certificate.Certificate[0])
+
+	listener, err := tls.Listen("tcp", "127.0.0.1:0", &tls.Config{
+		Certificates: []tls.Certificate{certificate},
+		MinVersion:   tls.VersionTLS13,
+	})
+	if err != nil {
+		t.Fatalf("cannot open the TLS listener: %v", err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer conn.Close()
+				_, _ = conn.Write([]byte("x"))
+				// Held open briefly, so the client reads the byte and the
+				// session ticket that follows it.
+				time.Sleep(200 * time.Millisecond)
+			}()
+		}
+	}()
+
+	cache := tls.NewLRUClientSessionCache(8)
+	address := listener.Addr().String()
+
+	first, err := resumingClient(t, address, approved, cache)
+	if err != nil {
+		t.Fatalf("the first handshake failed: %v", err)
+	}
+	if first.DidResume {
+		t.Fatal("the first handshake resumed a session that did not exist")
+	}
+
+	second, err := resumingClient(t, address, approved, cache)
+	if err != nil {
+		t.Fatalf("the second handshake failed: %v", err)
+	}
+	if !second.DidResume {
+		t.Fatal("the second handshake did not resume, so this test proves nothing")
+	}
+
+	// The same cache, and a fingerprint that no longer matches. The connection
+	// resumes and the pin has to stop it anyway.
+	_, err = resumingClient(t, address, "SHA256:"+strings.Repeat("A", 43), cache)
+	if err == nil {
+		t.Fatal("a resumed session was accepted with the wrong fingerprint")
+	}
+	if !errors.Is(err, ErrHostKeyMismatch) {
+		t.Errorf("the refusal is %v, want a host key mismatch", err)
+	}
+}
+
 func TestACertificateNobodyApprovedStopsTheConnection(t *testing.T) {
 	// The same rule the SSH path holds. There is no trust on first sight: an
 	// operator approves a fingerprint, and until they do the panel refuses to

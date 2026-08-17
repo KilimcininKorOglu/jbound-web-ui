@@ -19,23 +19,24 @@ type SIEMCursor struct {
 // NewSIEMCursor builds the cursor store.
 func NewSIEMCursor(db *sql.DB) *SIEMCursor { return &SIEMCursor{db: db} }
 
-// Read returns the last identifier that reached the receiver.
+// Read returns the last identifier that reached the receiver, and whether the
+// cursor has been placed at all.
 //
-// A panel that has never forwarded anything has no row, and zero is what that
-// reads as. The sender turns that into "start at the newest row" rather than
-// "send the whole history", because the decision of where to begin belongs to
-// the sender and not to the schema.
-func (c *SIEMCursor) Read(ctx context.Context) (int64, error) {
+// The two are separate because a cursor of zero is a real state: a panel whose
+// trail was empty when the receiver was named has sent nothing and owes nothing
+// before row one. Reading that as "not placed yet" would make the sender place
+// it again at the first row that arrives, and skip it.
+func (c *SIEMCursor) Read(ctx context.Context) (int64, bool, error) {
 	var last int64
 	err := c.db.QueryRowContext(ctx,
 		"SELECT last_sent_id FROM siem_cursor WHERE id = 1").Scan(&last)
 	if errors.Is(err, sql.ErrNoRows) {
-		return 0, nil
+		return 0, false, nil
 	}
 	if err != nil {
-		return 0, fmt.Errorf("cannot read the SIEM cursor: %w", err)
+		return 0, false, fmt.Errorf("cannot read the SIEM cursor: %w", err)
 	}
-	return last, nil
+	return last, true, nil
 }
 
 // Write records how far the receiver has been caught up.

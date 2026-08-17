@@ -350,16 +350,27 @@ func TestARowKeepsItsServerNameForTheReceiver(t *testing.T) {
 
 // --- The cursor -----------------------------------------------------------
 
-func TestACursorNobodyWroteReadsAsZero(t *testing.T) {
+func TestACursorNobodyWroteReadsAsUnplaced(t *testing.T) {
+	// Unplaced and zero are different states. A panel whose trail was empty when
+	// the receiver was named has a placed cursor of zero, and the first row that
+	// arrives is owed to the receiver rather than treated as history.
 	f := newFixture(t)
 	cursor := store.NewSIEMCursor(f.db)
+	ctx := context.Background()
 
-	last, err := cursor.Read(context.Background())
+	last, placed, err := cursor.Read(ctx)
 	if err != nil {
 		t.Fatalf("Read returned an error: %v", err)
 	}
-	if last != 0 {
-		t.Errorf("last = %d, want 0", last)
+	if last != 0 || placed {
+		t.Errorf("last = %d, placed = %v, want 0 and false", last, placed)
+	}
+
+	if err := cursor.Write(ctx, 0); err != nil {
+		t.Fatalf("Write returned an error: %v", err)
+	}
+	if last, placed, _ = cursor.Read(ctx); last != 0 || !placed {
+		t.Errorf("last = %d, placed = %v, want 0 and true", last, placed)
 	}
 }
 
@@ -371,7 +382,7 @@ func TestTheCursorComesBackTheWayItWasWritten(t *testing.T) {
 	if err := cursor.Write(ctx, 42); err != nil {
 		t.Fatalf("Write returned an error: %v", err)
 	}
-	if last, _ := cursor.Read(ctx); last != 42 {
+	if last, _, _ := cursor.Read(ctx); last != 42 {
 		t.Errorf("last = %d, want 42", last)
 	}
 
@@ -380,7 +391,7 @@ func TestTheCursorComesBackTheWayItWasWritten(t *testing.T) {
 	if err := cursor.Write(ctx, 43); err != nil {
 		t.Fatalf("the second write returned an error: %v", err)
 	}
-	if last, _ := cursor.Read(ctx); last != 43 {
+	if last, _, _ := cursor.Read(ctx); last != 43 {
 		t.Errorf("last = %d, want 43", last)
 	}
 }
@@ -399,7 +410,7 @@ func TestTheCursorNeverMovesBackwards(t *testing.T) {
 		t.Fatalf("Write returned an error: %v", err)
 	}
 
-	if last, _ := cursor.Read(ctx); last != 100 {
+	if last, _, _ := cursor.Read(ctx); last != 100 {
 		t.Errorf("last = %d, want it to stay at 100", last)
 	}
 }

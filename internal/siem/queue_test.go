@@ -40,12 +40,20 @@ type fakeCursor struct {
 	last   int64
 	newest int64
 	writes int
+
+	// placed says the cursor has been written at least once. A test that starts
+	// with a non zero last is a test about a panel that has already forwarded,
+	// so that counts as placed.
+	placed bool
 }
 
-func (c *fakeCursor) Read(context.Context) (int64, error) { return c.last, nil }
+func (c *fakeCursor) Read(context.Context) (int64, bool, error) {
+	return c.last, c.placed || c.last > 0, nil
+}
 
 func (c *fakeCursor) Write(_ context.Context, lastSent int64) error {
 	c.writes++
+	c.placed = true
 	if lastSent > c.last {
 		c.last = lastSent
 	}
@@ -137,6 +145,29 @@ func TestForwardingStartsAtThePresentRatherThanTheBeginning(t *testing.T) {
 	}
 	if cursor.last != 5 {
 		t.Errorf("cursor = %d, want it placed at the newest row", cursor.last)
+	}
+}
+
+func TestTheFirstRowOfAnEmptyTrailIsNotSkipped(t *testing.T) {
+	// A panel whose trail was empty when the receiver was named. The placement
+	// has to be recorded even at zero, or the next round places it again at the
+	// first row that arrives and treats that row as history nobody asked for.
+	cursor := &fakeCursor{last: 0, newest: 0}
+	queue, _, socket := queueOver(nil, cursor, true)
+
+	queue.Drain(context.Background())
+
+	// Now the first event of the panel's life happens.
+	queue.rows = &fakeRows{rows: trail(1)}
+	cursor.newest = 1
+
+	queue.Drain(context.Background())
+
+	if got := len(socket.lines()); got != 1 {
+		t.Fatalf("got %d rows, want the first event of the trail", got)
+	}
+	if cursor.last != 1 {
+		t.Errorf("cursor = %d, want 1", cursor.last)
 	}
 }
 

@@ -30,7 +30,10 @@ type RowReader interface {
 
 // CursorStore remembers how far the receiver has been caught up.
 type CursorStore interface {
-	Read(ctx context.Context) (int64, error)
+	// Read returns the cursor and whether it has been placed. A cursor of zero
+	// that has been placed means nothing has been sent and nothing before row
+	// one is owed, which is not the same as a receiver nobody has configured.
+	Read(ctx context.Context) (int64, bool, error)
 	Write(ctx context.Context, lastSent int64) error
 	NewestAuditID(ctx context.Context) (int64, error)
 	Pending(ctx context.Context, cursor int64) (int, error)
@@ -180,20 +183,20 @@ func (q *Queue) send(row audit.Row) error {
 // zero would empty all of it into a receiver that asked for none of it, and the
 // operator who configured the receiver today wants what happens from today.
 func (q *Queue) start(ctx context.Context) (int64, error) {
-	cursor, err := q.cursor.Read(ctx)
+	cursor, placed, err := q.cursor.Read(ctx)
 	if err != nil {
 		return 0, err
 	}
-	if cursor > 0 {
+	if placed {
 		return cursor, nil
 	}
 
+	// The placement is recorded even when the trail is empty. Leaving it
+	// unplaced would place it again at the first row that arrives, and treat
+	// that row as history nobody asked for.
 	newest, err := q.cursor.NewestAuditID(ctx)
 	if err != nil {
 		return 0, err
-	}
-	if newest == 0 {
-		return 0, nil
 	}
 	if err := q.cursor.Write(ctx, newest); err != nil {
 		return 0, err
@@ -202,10 +205,17 @@ func (q *Queue) start(ctx context.Context) (int64, error) {
 }
 
 // Pending reports how many rows the receiver has not been given.
+//
+// A cursor nobody has placed owes nothing: the first round starts at the
+// present, so the trail behind it was never going to be sent. Counting it would
+// report a backlog that will never move.
 func (q *Queue) Pending(ctx context.Context) (int, error) {
-	cursor, err := q.cursor.Read(ctx)
+	cursor, placed, err := q.cursor.Read(ctx)
 	if err != nil {
 		return 0, err
+	}
+	if !placed {
+		return 0, nil
 	}
 	return q.cursor.Pending(ctx, cursor)
 }

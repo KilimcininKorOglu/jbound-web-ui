@@ -86,7 +86,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("cannot open %s: %w", dbPath, err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	servers := store.NewServers(db.DB)
 	existing, err := servers.List(ctx)

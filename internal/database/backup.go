@@ -45,7 +45,7 @@ func verifySnapshot(ctx context.Context, target string) error {
 	if err != nil {
 		return fmt.Errorf("cannot reopen the snapshot: %w", err)
 	}
-	defer snapshot.Close()
+	defer func() { _ = snapshot.Close() }()
 
 	var result string
 	if err := snapshot.QueryRowContext(ctx, "PRAGMA integrity_check").Scan(&result); err != nil {

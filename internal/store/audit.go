@@ -121,7 +121,7 @@ SELECT l.id, l.user_id, l.username, l.server_id, COALESCE(s.name, ''),
 
 // scanAuditRows reads a result set of auditColumns and closes it.
 func scanAuditRows(rows *sql.Rows) ([]audit.Row, error) {
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []audit.Row
 	for rows.Next() {

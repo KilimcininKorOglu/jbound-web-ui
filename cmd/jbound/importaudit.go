@@ -60,7 +60,7 @@ func runImportAudit(path string) error {
 	if err != nil {
 		return fmt.Errorf("cannot open %s: %w", path, err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	rows, err := readExport(file)
 	if err != nil {
@@ -76,7 +76,7 @@ func runImportAudit(path string) error {
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	written, err := writeRows(ctx, db, rows, path)
 	if err != nil {

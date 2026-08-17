@@ -617,7 +617,7 @@ func TestEveryServerActionIsAudited(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cannot read the audit table: %v", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var actions []string
 	for rows.Next() {

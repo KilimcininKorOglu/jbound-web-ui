@@ -55,7 +55,7 @@ func newHarness(t *testing.T) *harness {
 	if err != nil {
 		t.Fatalf("cannot open the test database: %v", err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 
 	dataDir := t.TempDir()
 	keys, err := server.NewKeyStore(dataDir)

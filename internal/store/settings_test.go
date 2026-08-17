@@ -17,7 +17,7 @@ func newSettingsStore(t *testing.T) *store.Settings {
 	if err != nil {
 		t.Fatalf("cannot open the test database: %v", err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 
 	return store.NewSettings(db.DB)
 }

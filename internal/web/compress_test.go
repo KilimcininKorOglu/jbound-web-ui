@@ -17,7 +17,7 @@ func gunzip(t *testing.T, recorder *httptest.ResponseRecorder) string {
 	if err != nil {
 		t.Fatalf("the body is not gzip: %v", err)
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	body, err := io.ReadAll(reader)
 	if err != nil {

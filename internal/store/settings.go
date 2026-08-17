@@ -24,7 +24,7 @@ func (s *Settings) Load(ctx context.Context) (map[string]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the settings: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	values := map[string]string{}
 	for rows.Next() {
@@ -50,7 +50,7 @@ func (s *Settings) Save(ctx context.Context, values map[string]string) error {
 	if err != nil {
 		return fmt.Errorf("cannot start the transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	const query = `
 INSERT INTO settings (key, value, updated_at)
@@ -63,7 +63,7 @@ ON CONFLICT (key) DO UPDATE
 	if err != nil {
 		return fmt.Errorf("cannot prepare the setting statement: %w", err)
 	}
-	defer statement.Close()
+	defer func() { _ = statement.Close() }()
 
 	for key, value := range values {
 		if _, err := statement.ExecContext(ctx, key, value); err != nil {

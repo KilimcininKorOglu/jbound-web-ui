@@ -106,7 +106,7 @@ func (h *agentHarness) transport(t *testing.T) *AgentTransport {
 	if err != nil {
 		t.Fatalf("NewAgent returned an error: %v", err)
 	}
-	t.Cleanup(func() { client.Close() })
+	t.Cleanup(func() { _ = client.Close() })
 	return client
 }
 
@@ -159,7 +159,7 @@ func resumingClient(t *testing.T, address, pin string,
 	if err != nil {
 		return tls.ConnectionState{}, err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 	_, _ = conn.Read(make([]byte, 1))
@@ -189,7 +189,7 @@ func TestThePinIsCheckedOnAResumedSessionToo(t *testing.T) {
 				return
 			}
 			go func() {
-				defer conn.Close()
+				defer func() { _ = conn.Close() }()
 				_, _ = conn.Write([]byte("x"))
 				// Held open briefly, so the client reads the byte and the
 				// session ticket that follows it.
@@ -243,7 +243,7 @@ func TestACertificateNobodyApprovedStopsTheConnection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewAgent returned an error: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	_, err = client.Info(context.Background())
 	if !errors.Is(err, ErrHostKeyUnknown) {
@@ -274,7 +274,7 @@ func TestACertificateThatChangedStopsTheConnection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewAgent returned an error: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	if _, err := client.Info(context.Background()); !errors.Is(err, ErrHostKeyMismatch) {
 		t.Fatalf("error = %v, want a mismatch", err)
@@ -300,7 +300,7 @@ func TestARefusedTokenIsReportedWithoutTheToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewAgent returned an error: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	_, err = client.Info(context.Background())
 	if !errors.Is(err, ErrAuth) {
@@ -327,7 +327,7 @@ func TestNoTokenReachesAnErrorMessage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewAgent returned an error: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	_, err = client.Info(context.Background())
 	if !errors.Is(err, ErrAuth) {
@@ -487,7 +487,7 @@ func TestAnAgentThatIsNotThereIsUnreachableRatherThanUnknown(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewAgent returned an error: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	if _, err := client.Info(context.Background()); !errors.Is(err, ErrUnreachable) {
 		t.Fatalf("error = %v, want unreachable", err)

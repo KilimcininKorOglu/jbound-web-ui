@@ -169,7 +169,7 @@ func (s *Servers) List(ctx context.Context) ([]server.Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot list the servers: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var servers []server.Server
 	for rows.Next() {

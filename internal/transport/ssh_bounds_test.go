@@ -53,7 +53,7 @@ func startFloodServer(t *testing.T, stdout, stderr int) *floodServer {
 	if err != nil {
 		t.Fatalf("cannot listen: %v", err)
 	}
-	t.Cleanup(func() { listener.Close() })
+	t.Cleanup(func() { _ = listener.Close() })
 
 	server := &floodServer{
 		address: listener.Addr().String(),
@@ -77,10 +77,10 @@ func startFloodServer(t *testing.T, stdout, stderr int) *floodServer {
 func (f *floodServer) serve(conn net.Conn, config *ssh.ServerConfig) {
 	sshConn, channels, requests, err := ssh.NewServerConn(conn, config)
 	if err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return
 	}
-	defer sshConn.Close()
+	defer func() { _ = sshConn.Close() }()
 	if f.silent {
 		// Drain without replying. The connection stays open and answers
 		// nothing, which is the case a keepalive exists to catch.
@@ -107,7 +107,7 @@ func (f *floodServer) serve(conn net.Conn, config *ssh.ServerConfig) {
 
 // session answers the first exec request with the configured stream.
 func (f *floodServer) session(channel ssh.Channel, requests <-chan *ssh.Request) {
-	defer channel.Close()
+	defer func() { _ = channel.Close() }()
 
 	for request := range requests {
 		if request.WantReply {
@@ -162,7 +162,7 @@ func transportTo(t *testing.T, server *floodServer) *SSHTransport {
 	if err != nil {
 		t.Fatalf("cannot build the transport: %v", err)
 	}
-	t.Cleanup(func() { transport.Close() })
+	t.Cleanup(func() { _ = transport.Close() })
 	return transport
 }
 

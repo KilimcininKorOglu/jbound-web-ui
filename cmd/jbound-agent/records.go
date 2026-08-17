@@ -91,20 +91,20 @@ func replaceFile(path string, data []byte, keepReadable bool) error {
 		return fmt.Errorf("cannot create %s: %w", staging, err)
 	}
 	if _, err := file.Write(data); err != nil {
-		file.Close()
-		os.Remove(staging)
+		_ = file.Close()
+		_ = os.Remove(staging)
 		return fmt.Errorf("cannot write %s: %w", staging, err)
 	}
 
 	// The bytes have to be on the disk before the rename. A crash between the
 	// two would otherwise leave the resolver including an empty file.
 	if err := file.Sync(); err != nil {
-		file.Close()
-		os.Remove(staging)
+		_ = file.Close()
+		_ = os.Remove(staging)
 		return fmt.Errorf("cannot flush %s: %w", staging, err)
 	}
 	if err := file.Close(); err != nil {
-		os.Remove(staging)
+		_ = os.Remove(staging)
 		return fmt.Errorf("cannot finish %s: %w", staging, err)
 	}
 
@@ -112,13 +112,13 @@ func replaceFile(path string, data []byte, keepReadable bool) error {
 	// umask of whatever started this process is not something to inherit for a
 	// file a resolver has to open.
 	if err := os.Chmod(staging, mode); err != nil {
-		os.Remove(staging)
+		_ = os.Remove(staging)
 		return fmt.Errorf("cannot set the mode on %s: %w", staging, err)
 	}
 	restoreOwnership(staging, uid, gid)
 
 	if err := os.Rename(staging, path); err != nil {
-		os.Remove(staging)
+		_ = os.Remove(staging)
 		return fmt.Errorf("cannot move %s into place: %w", path, err)
 	}
 	return nil
@@ -232,7 +232,7 @@ func includesRecords(mainConfig, recordsPath string) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("cannot read %s: %w", mainConfig, err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {

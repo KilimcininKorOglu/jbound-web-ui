@@ -83,7 +83,7 @@ func newTransport(t *testing.T) *SSHTransport {
 	if err != nil {
 		t.Fatalf("cannot build the transport: %v", err)
 	}
-	t.Cleanup(func() { transport.Close() })
+	t.Cleanup(func() { _ = transport.Close() })
 	return transport
 }
 
@@ -164,7 +164,7 @@ func TestAnApprovedKeyDecidesWhichOneTheServerOffers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cannot build the transport: %v", err)
 	}
-	defer transport.Close()
+	defer func() { _ = transport.Close() }()
 
 	if _, _, err := transport.ReadRecords(context.Background()); err != nil {
 		t.Fatalf("the approved ecdsa key was refused: %v", err)
@@ -188,7 +188,7 @@ func TestConnectingWithoutAnApprovedHostKeyIsRefused(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cannot build the transport: %v", err)
 	}
-	defer transport.Close()
+	defer func() { _ = transport.Close() }()
 
 	_, _, err = transport.ReadRecords(context.Background())
 	if !errors.Is(err, ErrHostKeyUnknown) {
@@ -210,7 +210,7 @@ func TestConnectingWithTheWrongHostKeyIsRefused(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cannot build the transport: %v", err)
 	}
-	defer transport.Close()
+	defer func() { _ = transport.Close() }()
 
 	_, _, err = transport.ReadRecords(context.Background())
 	if !errors.Is(err, ErrHostKeyMismatch) {
@@ -228,7 +228,7 @@ func TestAuthenticationFailureIsItsOwnClass(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cannot build the transport: %v", err)
 	}
-	defer transport.Close()
+	defer func() { _ = transport.Close() }()
 
 	_, _, err = transport.ReadRecords(context.Background())
 	if !errors.Is(err, ErrAuth) {
@@ -244,7 +244,7 @@ func TestUnreachableServerIsItsOwnClass(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cannot build the transport: %v", err)
 	}
-	defer transport.Close()
+	defer func() { _ = transport.Close() }()
 
 	_, _, err = transport.ReadRecords(context.Background())
 	if !errors.Is(err, ErrUnreachable) {
@@ -369,7 +369,7 @@ func TestReloadReportsAFailingCommand(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cannot build the transport: %v", err)
 	}
-	defer transport.Close()
+	defer func() { _ = transport.Close() }()
 
 	if _, err := transport.Reload(context.Background()); !errors.Is(err, ErrCommandFailed) {
 		t.Fatalf("got %v, want ErrCommandFailed", err)
@@ -398,7 +398,7 @@ func TestServiceStatusTreatsANonZeroExitAsAnAnswer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cannot build the transport: %v", err)
 	}
-	defer transport.Close()
+	defer func() { _ = transport.Close() }()
 
 	active, _, err := transport.ServiceStatus(context.Background())
 	if err != nil {
@@ -431,7 +431,7 @@ func TestProbeReportsTheWriteStepWhenSudoRefuses(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cannot build the transport: %v", err)
 	}
-	defer transport.Close()
+	defer func() { _ = transport.Close() }()
 
 	err = transport.Probe(context.Background())
 	if err == nil {
@@ -455,7 +455,7 @@ func TestProbeReportsTheReadStepWhenTheFileIsMissing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cannot build the transport: %v", err)
 	}
-	defer transport.Close()
+	defer func() { _ = transport.Close() }()
 
 	err = transport.Probe(context.Background())
 	probeErr, ok := errors.AsType[*ProbeError](err)
@@ -472,7 +472,7 @@ func TestProbeReportsTheConnectStepForAnUnapprovedServer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cannot build the transport: %v", err)
 	}
-	defer transport.Close()
+	defer func() { _ = transport.Close() }()
 
 	err = transport.Probe(context.Background())
 	probeErr, ok := errors.AsType[*ProbeError](err)
@@ -597,7 +597,7 @@ func TestDroppedConnectionIsReopened(t *testing.T) {
 	if client == nil {
 		t.Fatal("the transport holds no connection")
 	}
-	client.Close()
+	_ = client.Close()
 
 	if _, _, err := transport.ReadRecords(ctx); err != nil {
 		t.Fatalf("the transport did not reconnect: %v", err)
@@ -633,7 +633,7 @@ func TestACommandGivesUpAfterTheConfiguredTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cannot build the transport: %v", err)
 	}
-	t.Cleanup(func() { transport.Close() })
+	t.Cleanup(func() { _ = transport.Close() })
 
 	start := time.Now()
 	// context.Background() is what the timer path passes, so the only bound
@@ -658,7 +658,7 @@ func TestTheTransportMutexSurvivesAHungCommand(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cannot build the transport: %v", err)
 	}
-	t.Cleanup(func() { transport.Close() })
+	t.Cleanup(func() { _ = transport.Close() })
 
 	_, _, _ = transport.ServiceStatus(context.Background())
 
@@ -713,7 +713,7 @@ func TestAStepWithNoCommandIsSkippedRatherThanRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cannot build the transport: %v", err)
 	}
-	defer transport.Close()
+	defer func() { _ = transport.Close() }()
 
 	for name, step := range map[string]func(context.Context) (string, error){
 		"check":    transport.CheckConfig,
@@ -739,7 +739,7 @@ func TestProbeReportsTheCheckStepWhenSudoRefuses(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cannot build the transport: %v", err)
 	}
-	defer transport.Close()
+	defer func() { _ = transport.Close() }()
 
 	err = transport.Probe(context.Background())
 	if err == nil {

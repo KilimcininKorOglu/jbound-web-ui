@@ -94,7 +94,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	if err != nil {
 		t.Fatalf("cannot open the test database: %v", err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 
 	authenticator := &stubAuthenticator{accounts: map[string]auth.Account{
 		"dnsadmin": {UID: 1001, GID: 1001, Username: "dnsadmin",
@@ -128,7 +128,7 @@ func newTestEnv(t *testing.T) *testEnv {
 		options.StringOf(settings.SIEMProtocol),
 		options.StringOf(settings.SIEMReceiverHost),
 		options.IntOf(settings.SIEMReceiverPort))
-	t.Cleanup(func() { sender.Close() })
+	t.Cleanup(func() { _ = sender.Close() })
 
 	auditLogs := store.NewAuditLogs(db.DB)
 	backlog := siem.NewQueue(auditLogs, store.NewSIEMCursor(db.DB), sender, "panel.test",
@@ -231,7 +231,7 @@ func newTestReceiver(t *testing.T) *testReceiver {
 	if err != nil {
 		t.Fatalf("cannot open the test receiver: %v", err)
 	}
-	t.Cleanup(func() { listener.Close() })
+	t.Cleanup(func() { _ = listener.Close() })
 
 	receiver := &testReceiver{address: listener.Addr().String()}
 
@@ -248,7 +248,7 @@ func newTestReceiver(t *testing.T) *testReceiver {
 }
 
 func (r *testReceiver) read(connection net.Conn) {
-	defer connection.Close()
+	defer func() { _ = connection.Close() }()
 
 	reader := bufio.NewReader(connection)
 	for {

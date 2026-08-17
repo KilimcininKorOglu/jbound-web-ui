@@ -28,7 +28,7 @@ func seedDataDir(t *testing.T) string {
 		"dns1", "dns1.example", "dnsops", 22, "keys/1.key"); err != nil {
 		t.Fatalf("cannot seed a server: %v", err)
 	}
-	db.Close()
+	_ = db.Close()
 
 	for _, name := range []string{"1.key", "2.key"} {
 		if err := os.WriteFile(filepath.Join(keyDir, name),
@@ -57,7 +57,7 @@ func TestBackupWritesTheDatabaseAndTheKeys(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the backup database cannot be opened: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	var name string
 	if err := db.QueryRow("SELECT name FROM servers").Scan(&name); err != nil {

@@ -16,7 +16,7 @@ func hasColumn(t *testing.T, db *DB, table, column string) bool {
 	if err != nil {
 		t.Fatalf("cannot read the columns of %s: %v", table, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var name string
@@ -52,7 +52,7 @@ func TestAFailedMigrationLeavesTheSchemaAsItWas(t *testing.T) {
 		"DELETE FROM schema_migrations WHERE name = '0002_transfer_tools.sql'"); err != nil {
 		t.Fatalf("cannot clear the applied row: %v", err)
 	}
-	db.Close()
+	_ = db.Close()
 
 	_, err = Open(context.Background(), path)
 	if err == nil {
@@ -66,7 +66,7 @@ func TestAFailedMigrationLeavesTheSchemaAsItWas(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the database cannot be opened after the failure: %v", err)
 	}
-	defer after.Close()
+	defer func() { _ = after.Close() }()
 
 	if hasColumn(t, after, "servers", "sha256_path") {
 		t.Error("the first half of the migration survived the failure of the second")
@@ -106,20 +106,20 @@ func TestAnUpgradeKeepsACopyOfWhatItFound(t *testing.T) {
 		"DELETE FROM schema_migrations WHERE name = '0003_settings.sql'"); err != nil {
 		t.Fatalf("cannot clear the applied row: %v", err)
 	}
-	db.Close()
+	_ = db.Close()
 
 	upgraded, err := Open(context.Background(), path)
 	if err != nil {
 		t.Fatalf("the upgrade failed: %v", err)
 	}
-	defer upgraded.Close()
+	defer func() { _ = upgraded.Close() }()
 
 	copyPath := path + ".before-0003_settings.sql"
 	before, err := OpenExisting(context.Background(), copyPath)
 	if err != nil {
 		t.Fatalf("no copy was kept before the migration: %v", err)
 	}
-	defer before.Close()
+	defer func() { _ = before.Close() }()
 
 	var name string
 	if err := before.QueryRow("SELECT name FROM servers").Scan(&name); err != nil {
@@ -154,7 +154,7 @@ func TestASecondUpgradeAttemptKeepsTheFirstCopy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open returned an error: %v", err)
 	}
-	db.Close()
+	_ = db.Close()
 
 	if err := os.WriteFile(copyPath, []byte("the first attempt"), 0o600); err != nil {
 		t.Fatalf("cannot place the earlier copy: %v", err)
@@ -174,13 +174,13 @@ func TestASecondUpgradeAttemptKeepsTheFirstCopy(t *testing.T) {
 		"DELETE FROM schema_migrations WHERE name = '0003_settings.sql'"); err != nil {
 		t.Fatalf("cannot clear the applied row: %v", err)
 	}
-	db.Close()
+	_ = db.Close()
 
 	again, err := Open(context.Background(), path)
 	if err != nil {
 		t.Fatalf("the upgrade failed: %v", err)
 	}
-	defer again.Close()
+	defer func() { _ = again.Close() }()
 
 	content, err := os.ReadFile(copyPath)
 	if err != nil {
@@ -200,7 +200,7 @@ func TestAFreshDatabaseKeepsNoPreMigrationCopy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open returned an error: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -241,13 +241,13 @@ func TestTheLadderMigrationFillsTheServersThatWereAlreadyThere(t *testing.T) {
 			t.Fatalf("cannot undo the migration (%s): %v", statement, err)
 		}
 	}
-	db.Close()
+	_ = db.Close()
 
 	upgraded, err := Open(context.Background(), path)
 	if err != nil {
 		t.Fatalf("the upgrade failed: %v", err)
 	}
-	defer upgraded.Close()
+	defer func() { _ = upgraded.Close() }()
 
 	var check, fallback, restart string
 	if err := upgraded.QueryRow(
@@ -293,13 +293,13 @@ func TestTheLadderMigrationLeavesTheStoredReloadCommandAlone(t *testing.T) {
 			t.Fatalf("cannot undo the migration (%s): %v", statement, err)
 		}
 	}
-	db.Close()
+	_ = db.Close()
 
 	upgraded, err := Open(context.Background(), path)
 	if err != nil {
 		t.Fatalf("the upgrade failed: %v", err)
 	}
-	defer upgraded.Close()
+	defer func() { _ = upgraded.Close() }()
 
 	var reload string
 	if err := upgraded.QueryRow("SELECT reload_cmd FROM servers").Scan(&reload); err != nil {
@@ -339,13 +339,13 @@ func TestTheRenameKeepsTheStoredRecordsPath(t *testing.T) {
 		 VALUES ('dns1', 'dns1', 'dnsops', 'keys/1.key', ?)`, chosen); err != nil {
 		t.Fatalf("cannot seed a server: %v", err)
 	}
-	db.Close()
+	_ = db.Close()
 
 	upgraded, err := Open(context.Background(), path)
 	if err != nil {
 		t.Fatalf("the upgrade failed: %v", err)
 	}
-	defer upgraded.Close()
+	defer func() { _ = upgraded.Close() }()
 
 	if hasColumn(t, upgraded, "servers", "host_entries_path") {
 		t.Error("the old column is still there after the rename")
@@ -385,13 +385,13 @@ func TestTheIncludeMigrationFillsTheServersThatWereAlreadyThere(t *testing.T) {
 			t.Fatalf("cannot undo the migration (%s): %v", statement, err)
 		}
 	}
-	db.Close()
+	_ = db.Close()
 
 	upgraded, err := Open(context.Background(), path)
 	if err != nil {
 		t.Fatalf("the upgrade failed: %v", err)
 	}
-	defer upgraded.Close()
+	defer func() { _ = upgraded.Close() }()
 
 	var command string
 	if err := upgraded.QueryRow(
@@ -438,7 +438,7 @@ func TestTheAgentMigrationKeepsEveryRowThatPointsAtAServer(t *testing.T) {
 			t.Fatalf("cannot seed (%s): %v", statement, err)
 		}
 	}
-	db.Close()
+	_ = db.Close()
 
 	// Replay the migration against a database that already holds all of it.
 	db, err = Open(context.Background(), path)
@@ -452,13 +452,13 @@ func TestTheAgentMigrationKeepsEveryRowThatPointsAtAServer(t *testing.T) {
 	if _, err := db.Exec("ALTER TABLE servers DROP COLUMN agent_port"); err != nil {
 		t.Fatalf("cannot undo the column: %v", err)
 	}
-	db.Close()
+	_ = db.Close()
 
 	upgraded, err := Open(context.Background(), path)
 	if err != nil {
 		t.Fatalf("the upgrade failed: %v", err)
 	}
-	defer upgraded.Close()
+	defer func() { _ = upgraded.Close() }()
 
 	for table, want := range map[string]int{
 		"servers": 1, "server_group_members": 1, "server_state": 1,
@@ -497,7 +497,7 @@ func TestAnAgentServerCanBeStoredOnlyAfterTheRebuild(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open returned an error: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if _, err := db.Exec(
 		`INSERT INTO servers (name, host, transport, agent_port, ssh_key_path)
@@ -535,7 +535,7 @@ func TestTheRebuildCorrectsTheRecordsPathDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open returned an error: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if _, err := db.Exec(
 		`INSERT INTO servers (name, host, ssh_user, ssh_key_path)
@@ -578,13 +578,13 @@ func TestAnUpgradeThatBrokeAReferenceStopsTheStart(t *testing.T) {
 			t.Fatalf("cannot arrange the dangling row (%s): %v", statement, err)
 		}
 	}
-	db.Close()
+	_ = db.Close()
 
 	reopened, err := OpenExisting(context.Background(), path)
 	if err != nil {
 		t.Fatalf("cannot reopen: %v", err)
 	}
-	defer reopened.Close()
+	defer func() { _ = reopened.Close() }()
 
 	if err := reopened.checkForeignKeys(context.Background()); err == nil {
 		t.Fatal("the check passed a row pointing at nothing")

@@ -119,7 +119,7 @@ func ScanHostKey(cfg Config) (fingerprint, authorizedKey string, err error) {
 		return errHostKeyCaptured
 	})
 	if client != nil {
-		client.Close()
+		_ = client.Close()
 	}
 
 	if seen == nil {

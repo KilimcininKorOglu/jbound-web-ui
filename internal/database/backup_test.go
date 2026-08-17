@@ -34,7 +34,7 @@ func TestASnapshotCarriesWhatTheSourceHeld(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cannot open the snapshot: %v", err)
 	}
-	defer snapshot.Close()
+	defer func() { _ = snapshot.Close() }()
 
 	var count int
 	if err := snapshot.QueryRow("SELECT COUNT(*) FROM servers").Scan(&count); err != nil {
@@ -80,7 +80,7 @@ func TestASnapshotIsCheckedBeforeItIsCalledDone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cannot open the snapshot: %v", err)
 	}
-	defer snapshot.Close()
+	defer func() { _ = snapshot.Close() }()
 
 	var result string
 	if err := snapshot.QueryRow("PRAGMA integrity_check").Scan(&result); err != nil {
@@ -165,7 +165,7 @@ func TestASnapshotTakenDuringWritesIsStillSound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cannot open the snapshot: %v", err)
 	}
-	defer snapshot.Close()
+	defer func() { _ = snapshot.Close() }()
 
 	var servers int
 	if err := snapshot.QueryRow("SELECT COUNT(*) FROM servers").Scan(&servers); err != nil {
@@ -189,13 +189,13 @@ func TestOpenExistingLeavesTheSchemaAlone(t *testing.T) {
 	if _, err := db.Exec("DELETE FROM schema_migrations"); err != nil {
 		t.Fatalf("cannot clear the applied list: %v", err)
 	}
-	db.Close()
+	_ = db.Close()
 
 	again, err := OpenExisting(context.Background(), path)
 	if err != nil {
 		t.Fatalf("OpenExisting returned an error: %v", err)
 	}
-	defer again.Close()
+	defer func() { _ = again.Close() }()
 
 	var applied int
 	if err := again.QueryRow("SELECT COUNT(*) FROM schema_migrations").Scan(&applied); err != nil {

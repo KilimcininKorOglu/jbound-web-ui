@@ -93,7 +93,7 @@ func (h *harness) callWithToken(t *testing.T, method, path string,
 	if err != nil {
 		t.Fatalf("the request failed: %v", err)
 	}
-	t.Cleanup(func() { response.Body.Close() })
+	t.Cleanup(func() { _ = response.Body.Close() })
 	return response
 }
 
@@ -498,7 +498,7 @@ func TestABodyLargerThanTheLimitIsRefused(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the request failed: %v", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	if response.StatusCode != http.StatusRequestEntityTooLarge {
 		t.Errorf("status = %d, want 413", response.StatusCode)

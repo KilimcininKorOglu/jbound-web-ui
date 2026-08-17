@@ -19,7 +19,7 @@ func newSessionStore(t *testing.T) *store.Sessions {
 	if err != nil {
 		t.Fatalf("cannot open the test database: %v", err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 
 	return store.NewSessions(db.DB)
 }

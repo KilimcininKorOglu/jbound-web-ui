@@ -42,7 +42,7 @@ func TestGateAnAuditEntryReachesTheReceiver(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cannot open the receiver: %v", err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
 	lines := make(chan string, 1)
 	go func() {
@@ -50,7 +50,7 @@ func TestGateAnAuditEntryReachesTheReceiver(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer connection.Close()
+		defer func() { _ = connection.Close() }()
 
 		_ = connection.SetReadDeadline(time.Now().Add(forwardWindow))
 		reader := bufio.NewReader(connection)
@@ -70,7 +70,7 @@ func TestGateAnAuditEntryReachesTheReceiver(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cannot open the database: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	host, portText, err := net.SplitHostPort(listener.Addr().String())
 	if err != nil {
@@ -85,7 +85,7 @@ func TestGateAnAuditEntryReachesTheReceiver(t *testing.T) {
 		func() string { return siem.ProtocolTCP },
 		func() string { return host },
 		func() int { return port })
-	defer sender.Close()
+	defer func() { _ = sender.Close() }()
 
 	rows := store.NewAuditLogs(db.DB)
 	queue := siem.NewQueue(rows, store.NewSIEMCursor(db.DB), sender, "panel.test",

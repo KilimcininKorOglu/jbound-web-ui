@@ -188,7 +188,7 @@ func ScanAgentCertificate(ctx context.Context, cfg Config) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("%w: %v", ErrUnreachable, err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	state := conn.(*tls.Conn).ConnectionState()
 	if len(state.PeerCertificates) == 0 {
@@ -420,7 +420,7 @@ func (t *AgentTransport) call(ctx context.Context, method, path string,
 	if err != nil {
 		return dialFailure(err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	payload, err := io.ReadAll(io.LimitReader(response.Body, agentapi.MaxBodyBytes+1))
 	if err != nil {

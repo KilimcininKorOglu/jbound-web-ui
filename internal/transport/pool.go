@@ -96,7 +96,7 @@ func (p *Pool) Get(cfg Config) (Transport, error) {
 			entry.lastUsed = time.Now()
 			return entry.transport, nil
 		}
-		entry.transport.Close()
+		_ = entry.transport.Close()
 		delete(p.entries, cfg.ID)
 	}
 
@@ -133,7 +133,7 @@ func (p *Pool) Remove(id int64) {
 	if !ok {
 		return
 	}
-	entry.transport.Close()
+	_ = entry.transport.Close()
 	delete(p.entries, id)
 }
 
@@ -143,7 +143,7 @@ func (p *Pool) Close() {
 	defer p.mu.Unlock()
 
 	for id, entry := range p.entries {
-		entry.transport.Close()
+		_ = entry.transport.Close()
 		delete(p.entries, id)
 	}
 	p.closed = true
@@ -179,7 +179,7 @@ func (p *Pool) sweep() {
 
 	for id, entry := range p.entries {
 		if time.Since(entry.lastUsed) > p.idleTimeout() {
-			entry.transport.Close()
+			_ = entry.transport.Close()
 			delete(p.entries, id)
 			continue
 		}

@@ -83,7 +83,7 @@ func (b *Backups) ServerIDs(ctx context.Context) (map[int64]bool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot list the stored files: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	held := map[int64]bool{}
 	for rows.Next() {

@@ -194,7 +194,7 @@ SELECT uid, username, role, COUNT(*), MIN(created_at), MAX(last_active)
 	if err != nil {
 		return nil, fmt.Errorf("cannot list the sessions: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var summaries []auth.SessionSummary
 	for rows.Next() {

@@ -34,7 +34,7 @@ func (a *LoginAttempts) Admit(ctx context.Context, ip, username string,
 	if err != nil {
 		return false, fmt.Errorf("cannot start the login attempt transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	if _, err := tx.ExecContext(ctx,
 		"DELETE FROM login_attempts WHERE attempted_at < ?", formatTime(since)); err != nil {

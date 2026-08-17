@@ -159,7 +159,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	slog.Info("database ready", "path", db.Path())
 
 	// The settings the operator can change without a restart. Everything the
@@ -213,7 +213,7 @@ func run() error {
 		options.StringOf(settings.SIEMProtocol),
 		options.StringOf(settings.SIEMReceiverHost),
 		options.IntOf(settings.SIEMReceiverPort))
-	defer sender.Close()
+	defer func() { _ = sender.Close() }()
 
 	auditLogs := store.NewAuditLogs(db.DB)
 	queue := siem.NewQueue(auditLogs, store.NewSIEMCursor(db.DB), sender, panelHost,

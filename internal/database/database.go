@@ -51,12 +51,12 @@ func Open(ctx context.Context, path string) (*DB, error) {
 	}
 
 	if err := os.Chmod(path, 0o600); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("cannot set mode 0600 on %s: %w", path, err)
 	}
 
 	if err := db.migrate(ctx); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, err
 	}
 	return db, nil
@@ -91,7 +91,7 @@ func connect(ctx context.Context, path string) (*DB, error) {
 
 	for _, pragma := range pragmas {
 		if _, err := handle.ExecContext(ctx, pragma); err != nil {
-			handle.Close()
+			_ = handle.Close()
 			return nil, fmt.Errorf("cannot apply %q: %w", pragma, err)
 		}
 	}
@@ -193,7 +193,7 @@ func (db *DB) checkForeignKeys(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("cannot check the foreign keys: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var broken []string
 	for rows.Next() {
@@ -286,7 +286,7 @@ func (db *DB) apply(ctx context.Context, name string) error {
 	if err != nil {
 		return fmt.Errorf("cannot start migration %s: %w", name, err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	if _, err := tx.ExecContext(ctx, string(statements)); err != nil {
 		return fmt.Errorf("migration %s failed: %w", name, err)

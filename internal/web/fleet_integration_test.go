@@ -116,7 +116,7 @@ func (g *gateFleet) signIn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the login request failed: %v", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("login status = %d, want 200", response.StatusCode)
@@ -193,7 +193,7 @@ func (g *gateFleet) do(t *testing.T, method, path string,
 	if err != nil {
 		t.Fatalf("%s %s failed: %v", method, path, err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	content, err := io.ReadAll(response.Body)
 	if err != nil {

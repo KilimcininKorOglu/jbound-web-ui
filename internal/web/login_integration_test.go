@@ -99,7 +99,7 @@ func newLiveApp(t *testing.T) *App {
 	if err != nil {
 		t.Fatalf("cannot open the database: %v", err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 
 	authenticator, err := auth.NewHelperAuthenticator(cfg.AuthHelperPath, cfg.AuthMaxConcurrent)
 	if err != nil {
@@ -118,7 +118,7 @@ func newLiveApp(t *testing.T) *App {
 		options.StringOf(settings.SIEMProtocol),
 		options.StringOf(settings.SIEMReceiverHost),
 		options.IntOf(settings.SIEMReceiverPort))
-	t.Cleanup(func() { sender.Close() })
+	t.Cleanup(func() { _ = sender.Close() })
 
 	auditLogs := store.NewAuditLogs(db.DB)
 	auditLog := audit.NewLogger(auditLogs)
@@ -204,7 +204,7 @@ func postLogin(t *testing.T, app *App, username, password string) (int, string) 
 	if err != nil {
 		t.Fatalf("the login request failed: %v", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	body, err := io.ReadAll(response.Body)
 	if err != nil {

@@ -105,7 +105,7 @@ func (k *KeyStore) Rotate(id int64, relPath string) (KeyPair, error) {
 		return KeyPair{}, err
 	}
 	if err := os.Rename(staging, path); err != nil {
-		os.Remove(staging)
+		_ = os.Remove(staging)
 		return KeyPair{}, fmt.Errorf("cannot replace the key file %s: %w", path, err)
 	}
 	return describe(relPath, signer), nil
@@ -136,10 +136,10 @@ func writeKeyFile(path string, block *pem.Block) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	if err := pem.Encode(file, block); err != nil {
-		os.Remove(path)
+		_ = os.Remove(path)
 		return fmt.Errorf("cannot write the key file %s: %w", path, err)
 	}
 	return nil
@@ -172,10 +172,10 @@ func (k *KeyStore) Import(id int64, material string) (KeyPair, error) {
 	if err != nil {
 		return KeyPair{}, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	if _, err := file.WriteString(material); err != nil {
-		os.Remove(path)
+		_ = os.Remove(path)
 		return KeyPair{}, fmt.Errorf("cannot write the key file %s: %w", path, err)
 	}
 
@@ -305,12 +305,12 @@ func (k *KeyStore) GenerateToken(id int64) (string, string, error) {
 		return "", "", err
 	}
 	if _, err := file.WriteString(token + "\n"); err != nil {
-		file.Close()
-		os.Remove(path)
+		_ = file.Close()
+		_ = os.Remove(path)
 		return "", "", fmt.Errorf("cannot write the token file %s: %w", path, err)
 	}
 	if err := file.Close(); err != nil {
-		os.Remove(path)
+		_ = os.Remove(path)
 		return "", "", fmt.Errorf("cannot finish the token file %s: %w", path, err)
 	}
 	return token, relPath, nil

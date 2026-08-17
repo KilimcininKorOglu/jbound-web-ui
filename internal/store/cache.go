@@ -32,7 +32,7 @@ func (r *Records) Replace(ctx context.Context, serverID int64, records []dnsfile
 	if err != nil {
 		return fmt.Errorf("cannot start the transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	if _, err := tx.ExecContext(ctx,
 		"DELETE FROM record_cache WHERE server_id = ?", serverID); err != nil {
@@ -103,7 +103,7 @@ SELECT c.fqdn, c.type, c.value, c.priority, MIN(c.raw), MIN(c.line),
 	if err != nil {
 		return fleet.Page{}, fmt.Errorf("cannot read the cached records: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var (
@@ -164,7 +164,7 @@ SELECT c.server_id, c.line, c.fqdn, c.type, c.value, c.priority, c.raw
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the cached records: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	byServer := map[int64][]dnsfile.Record{}
 	for rows.Next() {
@@ -326,7 +326,7 @@ func (s *States) List(ctx context.Context) (map[int64]fleet.State, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot list the server states: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	states := map[int64]fleet.State{}
 	for rows.Next() {

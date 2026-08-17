@@ -15,7 +15,7 @@ func openTestDB(t *testing.T) *DB {
 	if err != nil {
 		t.Fatalf("Open returned an error: %v", err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	return db
 }
 
@@ -108,7 +108,7 @@ func TestOpenSetsFileMode0600(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open returned an error: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	info, err := os.Stat(path)
 	if err != nil {
@@ -132,13 +132,13 @@ func TestOpenIsIdempotent(t *testing.T) {
 		 VALUES ('dns1', 'dns1', 'dnsops', 'keys/1.key')`); err != nil {
 		t.Fatalf("insert failed: %v", err)
 	}
-	first.Close()
+	_ = first.Close()
 
 	second, err := Open(context.Background(), path)
 	if err != nil {
 		t.Fatalf("second Open failed: %v", err)
 	}
-	defer second.Close()
+	defer func() { _ = second.Close() }()
 
 	var count int
 	if err := second.QueryRow("SELECT COUNT(*) FROM servers").Scan(&count); err != nil {

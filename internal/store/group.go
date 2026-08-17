@@ -23,7 +23,7 @@ func (g *Groups) Create(ctx context.Context, group server.Group) (server.Group, 
 	if err != nil {
 		return server.Group{}, fmt.Errorf("cannot start the transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	result, err := tx.ExecContext(ctx,
 		"INSERT INTO server_groups (name, description) VALUES (?, ?)",
@@ -58,7 +58,7 @@ func (g *Groups) Update(ctx context.Context, group server.Group) error {
 	if err != nil {
 		return fmt.Errorf("cannot start the transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	result, err := tx.ExecContext(ctx,
 		"UPDATE server_groups SET name = ?, description = ? WHERE id = ?",
@@ -140,7 +140,7 @@ SELECT m.server_id
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the group membership: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var ids []int64
 	for rows.Next() {
@@ -163,7 +163,7 @@ func (g *Groups) List(ctx context.Context) ([]server.Group, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot list the groups: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var groups []server.Group
 	for rows.Next() {
@@ -206,7 +206,7 @@ SELECT`+serverColumns+`
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the group members: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var members []server.Server
 	for rows.Next() {

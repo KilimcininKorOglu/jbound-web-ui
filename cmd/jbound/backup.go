@@ -37,7 +37,7 @@ func runBackup(target string) error {
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if err := os.Mkdir(target, 0o700); err != nil {
 		return fmt.Errorf("cannot create %s: %w", target, err)

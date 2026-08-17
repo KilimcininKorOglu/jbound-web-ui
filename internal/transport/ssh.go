@@ -91,21 +91,21 @@ func dial(cfg Config, callback ssh.HostKeyCallback) (*ssh.Client, error) {
 	// would hold this call, and the per-server mutex above it, for good.
 	if cfg.ConnectTimeout > 0 {
 		if err := conn.SetDeadline(time.Now().Add(cfg.ConnectTimeout)); err != nil {
-			conn.Close()
+			_ = conn.Close()
 			return nil, classifyDialError(address, err)
 		}
 	}
 
 	sshConn, channels, requests, err := ssh.NewClientConn(conn, address, clientConfig)
 	if err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, classifyDialError(address, err)
 	}
 
 	// The deadline covered the handshake. Leaving it in place would fail every
 	// command that runs on this connection later.
 	if err := conn.SetDeadline(time.Time{}); err != nil {
-		sshConn.Close()
+		_ = sshConn.Close()
 		return nil, classifyDialError(address, err)
 	}
 
@@ -194,7 +194,7 @@ func (t *SSHTransport) newSession() (*ssh.Session, error) {
 // permanently dead server entry.
 func (t *SSHTransport) dropConnection() {
 	if t.client != nil {
-		t.client.Close()
+		_ = t.client.Close()
 		t.client = nil
 	}
 }
@@ -214,7 +214,7 @@ func (t *SSHTransport) run(ctx context.Context, command string,
 	if err != nil {
 		return "", "", err
 	}
-	defer session.Close()
+	defer func() { _ = session.Close() }()
 
 	if t.cfg.CommandTimeout > 0 {
 		var cancel context.CancelFunc
@@ -240,7 +240,7 @@ func (t *SSHTransport) run(ctx context.Context, command string,
 		// Closing the session asks the remote side to end the channel. The
 		// remote command may still be running, which is why a write is built
 		// so that an interrupted transfer leaves the target file untouched.
-		session.Close()
+		_ = session.Close()
 
 		select {
 		case <-done:

@@ -57,7 +57,7 @@ func silentPeer(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("cannot listen: %v", err)
 	}
-	t.Cleanup(func() { listener.Close() })
+	t.Cleanup(func() { _ = listener.Close() })
 
 	go func() {
 		for {
@@ -66,7 +66,7 @@ func silentPeer(t *testing.T) string {
 				return
 			}
 			// Hold it open. Closing would let the handshake fail on its own.
-			t.Cleanup(func() { conn.Close() })
+			t.Cleanup(func() { _ = conn.Close() })
 		}
 	}()
 	return listener.Addr().String()

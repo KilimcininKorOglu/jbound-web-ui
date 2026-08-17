@@ -201,8 +201,23 @@ func run() error {
 	forwarder := siem.NewForwarder(panelHost)
 	defer forwarder.Close()
 
-	auditLog := audit.NewLogger(store.NewAuditLogs(db.DB), forwarder).
-		WithForwarding(options.BoolOf(settings.SIEMForwardingEnabled))
+	// The receiver the panel talks to itself. It needs no daemon on the host and
+	// no privilege, and a receiver that is down costs a growing backlog rather
+	// than lost events, because the queue reads the trail out of the database.
+	sender := siem.NewSender(panelHost,
+		options.StringOf(settings.SIEMProtocol),
+		options.StringOf(settings.SIEMReceiverHost),
+		options.IntOf(settings.SIEMReceiverPort))
+	defer sender.Close()
+
+	auditLogs := store.NewAuditLogs(db.DB)
+	queue := siem.NewQueue(auditLogs, store.NewSIEMCursor(db.DB), sender, panelHost,
+		options.BoolOf(settings.SIEMForwardingEnabled))
+	go queue.RunLoop(ctx)
+
+	auditLog := audit.NewLogger(auditLogs, forwarder).
+		WithForwarding(options.BoolOf(settings.SIEMForwardingEnabled)).
+		WithNotify(queue.Notify)
 
 	keys, err := server.NewKeyStore(cfg.DataDir)
 	if err != nil {

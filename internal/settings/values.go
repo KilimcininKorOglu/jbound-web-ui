@@ -257,7 +257,7 @@ func Validate(definition Definition, value string) error {
 		}
 
 	case KindText:
-		if trimmed == "" {
+		if trimmed == "" && !definition.Optional {
 			return refuse(CodeTextEmpty)
 		}
 		if definition.MaxLen > 0 && utf8.RuneCountInString(trimmed) > definition.MaxLen {

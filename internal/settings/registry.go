@@ -66,6 +66,13 @@ const (
 
 	SIEMForwardingEnabled = "siem_forwarding_enabled"
 
+	// SIEMProtocol decides whether the panel sends its trail to a receiver
+	// itself, and how. Off is the default, because a panel that has not been
+	// told where to send has nowhere to send.
+	SIEMProtocol     = "siem_protocol"
+	SIEMReceiverHost = "siem_receiver_host"
+	SIEMReceiverPort = "siem_receiver_port"
+
 	SourceServerID = "source_server_id"
 
 	PanelName = "panel_name"
@@ -98,6 +105,11 @@ type Definition struct {
 
 	// MaxLen bounds a text setting.
 	MaxLen int
+
+	// Optional lets a text setting be empty. Most cannot: a panel with no name
+	// has nothing to put in a title. One that names a destination can, because
+	// having no destination is a state an operator chooses.
+	Optional bool
 }
 
 // registry is every setting the panel has, in the order the page shows them.
@@ -169,6 +181,25 @@ var registry = []Definition{
 	{
 		Key: SIEMForwardingEnabled, Group: GroupSIEM, Kind: KindBool,
 		Default: "true",
+	},
+	{
+		// tls verifies the receiver against the host trust store. A private
+		// certificate authority is added there rather than named here, because
+		// a path in this table would be a path the panel reads on somebody
+		// else's say-so.
+		Key: SIEMProtocol, Group: GroupSIEM, Kind: KindEnum,
+		Default: "off", Options: []string{"off", "udp", "tcp", "tls"},
+	},
+	{
+		// The longest legal host name. The value is not parsed here: a name
+		// that does not resolve fails at connect time, which is where the
+		// operator reads about it.
+		Key: SIEMReceiverHost, Group: GroupSIEM, Kind: KindText,
+		Default: "", MaxLen: 253, Optional: true,
+	},
+	{
+		Key: SIEMReceiverPort, Group: GroupSIEM, Kind: KindInt,
+		Default: "514", MinInt: 1, MaxInt: 65535,
 	},
 
 	{

@@ -106,6 +106,10 @@ type Logger struct {
 	repo      Repository
 	forwarder Forwarder
 
+	// notify tells the receiver queue that a row has landed. It is nil on a
+	// panel that forwards nothing, and on every caller that has no queue.
+	notify func()
+
 	// forwarding reports whether the mirror is switched on. It is read per
 	// entry, so an operator can stop the flow to a noisy receiver without
 	// touching the forwarding rules and without a restart. A nil accessor
@@ -127,6 +131,17 @@ func NewLogger(repo Repository, forwarder Forwarder) *Logger {
 // panel builds the logger before it knows whether the settings are readable.
 func (l *Logger) WithForwarding(enabled func() bool) *Logger {
 	l.forwarding = enabled
+	return l
+}
+
+// WithNotify returns the logger with a wake-up attached.
+//
+// The receiver queue reads the trail out of the database rather than being
+// handed each entry, so all it needs is to be told that there is something new.
+// The call must not block: an entry that waited on a receiver would make the
+// action that caused it wait too.
+func (l *Logger) WithNotify(notify func()) *Logger {
+	l.notify = notify
 	return l
 }
 
@@ -190,6 +205,12 @@ func (l *Logger) write(ctx context.Context, entry Entry, mirror bool) error {
 			logging.From(ctx).Error("cannot forward the audit entry",
 				"action", entry.Action, "error", forwardErr)
 		}
+	}
+
+	// The queue reads the row rather than this entry, so it is only worth
+	// waking when the row landed.
+	if err == nil && l.notify != nil {
+		l.notify()
 	}
 	return err
 }

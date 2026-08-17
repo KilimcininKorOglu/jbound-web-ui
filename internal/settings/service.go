@@ -112,6 +112,11 @@ func (s *Service) BoolOf(key string) func() bool {
 	return func() bool { return s.Bool(key) }
 }
 
+// StringOf returns an accessor for one text or enum setting.
+func (s *Service) StringOf(key string) func() string {
+	return func() string { return s.String(key) }
+}
+
 // Fixed turns a constant into an accessor.
 //
 // It exists for the callers that have no settings service: the tests, and any

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -201,6 +202,13 @@ func run() error {
 	forwarder := siem.NewForwarder(panelHost)
 	defer forwarder.Close()
 
+	// An upgrade from the release that forwarded through rsyslog has its
+	// collector named in the rules file and nowhere else. Carrying it over here
+	// is what keeps the trail flowing across that upgrade.
+	if err := adoptRsyslogRule(ctx, cfg, options); err != nil {
+		return err
+	}
+
 	// The receiver the panel talks to itself. It needs no daemon on the host and
 	// no privilege, and a receiver that is down costs a growing backlog rather
 	// than lost events, because the queue reads the trail out of the database.
@@ -332,5 +340,50 @@ func run() error {
 		return fmt.Errorf("graceful shutdown failed: %w", err)
 	}
 	slog.Info("shutdown complete")
+	return nil
+}
+
+// adoptRsyslogRule carries a forwarding rule the panel used to write into the
+// receiver settings, once.
+//
+// It runs only while no receiver is configured, so it cannot overwrite a choice
+// an operator made, and it never runs twice: the moment it writes the settings
+// the condition it tested stops holding.
+//
+// A rules file that cannot be read is not a failure. It means there is nothing
+// to carry over, which is what a fresh install looks like.
+func adoptRsyslogRule(ctx context.Context, cfg *config.Config,
+	options *settings.Service) error {
+
+	if options.String(settings.SIEMProtocol) != siem.ProtocolOff {
+		return nil
+	}
+
+	content, err := os.ReadFile(cfg.SIEMRulesPath)
+	if err != nil {
+		return nil
+	}
+
+	receiver, active, found := siem.AdoptRule(string(content))
+	if !found {
+		if active > 0 {
+			slog.Warn("the rsyslog forwarding rules name no receiver this panel can use",
+				"rules", active, "path", cfg.SIEMRulesPath)
+		}
+		return nil
+	}
+
+	err = options.Save(ctx, map[string]string{
+		settings.SIEMProtocol:     receiver.Protocol,
+		settings.SIEMReceiverHost: receiver.Host,
+		settings.SIEMReceiverPort: strconv.Itoa(receiver.Port),
+	})
+	if err != nil {
+		return fmt.Errorf("cannot carry the rsyslog rule into the receiver settings: %w", err)
+	}
+
+	slog.Warn("the rsyslog forwarding rule was carried into the receiver settings",
+		"protocol", receiver.Protocol, "host", receiver.Host, "port", receiver.Port,
+		"rules_found", active)
 	return nil
 }

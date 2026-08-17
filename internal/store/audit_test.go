@@ -237,3 +237,215 @@ func TestAnEntryWrittenInATransactionLeavesWithIt(t *testing.T) {
 		t.Errorf("the trail holds %d rows after a commit, want 1", page.Total)
 	}
 }
+
+// --- What the SIEM sender reads -------------------------------------------
+
+func TestTheRowsAfterACursorComeBackOldestFirst(t *testing.T) {
+	// A receiver has to be told what happened in the order it happened, which
+	// is the opposite of the order the page shows.
+	f := newAuditFixture(t)
+
+	for i, action := range []string{
+		audit.ActionLogin, audit.ActionDNSAdd, audit.ActionDNSDelete,
+	} {
+		f.write(t, audit.Entry{UID: 1000, Username: "dnsadmin", Action: action}, i)
+	}
+
+	rows, err := f.logs.After(context.Background(), 0, 10)
+	if err != nil {
+		t.Fatalf("After returned an error: %v", err)
+	}
+	if len(rows) != 3 {
+		t.Fatalf("got %d rows, want 3", len(rows))
+	}
+	if rows[0].Action != audit.ActionLogin || rows[2].Action != audit.ActionDNSDelete {
+		t.Errorf("the rows are not oldest first: %v", []string{
+			rows[0].Action, rows[1].Action, rows[2].Action})
+	}
+}
+
+func TestACursorSkipsTheRowsItAlreadyNames(t *testing.T) {
+	f := newAuditFixture(t)
+
+	for i, action := range []string{
+		audit.ActionLogin, audit.ActionDNSAdd, audit.ActionDNSDelete,
+	} {
+		f.write(t, audit.Entry{UID: 1000, Username: "dnsadmin", Action: action}, i)
+	}
+
+	all, err := f.logs.After(context.Background(), 0, 10)
+	if err != nil {
+		t.Fatalf("After returned an error: %v", err)
+	}
+
+	rest, err := f.logs.After(context.Background(), all[0].ID, 10)
+	if err != nil {
+		t.Fatalf("After returned an error: %v", err)
+	}
+	if len(rest) != 2 || rest[0].Action != audit.ActionDNSAdd {
+		t.Errorf("got %d rows starting with %q", len(rest), rest[0].Action)
+	}
+}
+
+func TestOneRoundReadsAContiguousRunOfIdentifiers(t *testing.T) {
+	// An audit import writes rows whose timestamps are older than rows already
+	// in the trail. Ordering a round by created_at would make the batch a
+	// scattered set of identifiers, and a sender that then remembers the last
+	// one it saw would step over everything in between.
+	f := newAuditFixture(t)
+
+	f.write(t, audit.Entry{UID: 1000, Username: "dnsadmin", Action: audit.ActionLogin}, 30)
+	f.write(t, audit.Entry{UID: 1000, Username: "dnsadmin", Action: audit.ActionDNSAdd}, 40)
+	// Written last, dated first, which is what an import looks like.
+	f.write(t, audit.Entry{UID: 1000, Username: "dnsadmin",
+		Action: audit.ActionAuditImport}, 1)
+
+	rows, err := f.logs.After(context.Background(), 0, 2)
+	if err != nil {
+		t.Fatalf("After returned an error: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("got %d rows, want 2", len(rows))
+	}
+	if rows[1].ID != rows[0].ID+1 {
+		t.Errorf("the round skipped an identifier: %d then %d", rows[0].ID, rows[1].ID)
+	}
+	if rows[0].Action != audit.ActionLogin || rows[1].Action != audit.ActionDNSAdd {
+		t.Errorf("the round was ordered by time rather than by identifier: %v",
+			[]string{rows[0].Action, rows[1].Action})
+	}
+}
+
+func TestTheLimitBoundsWhatOneRoundReads(t *testing.T) {
+	f := newAuditFixture(t)
+	for i := range 5 {
+		f.write(t, audit.Entry{UID: 1000, Username: "dnsadmin", Action: audit.ActionLogin}, i)
+	}
+
+	rows, err := f.logs.After(context.Background(), 0, 2)
+	if err != nil {
+		t.Fatalf("After returned an error: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Errorf("got %d rows, want the limit of 2", len(rows))
+	}
+}
+
+func TestARowKeepsItsServerNameForTheReceiver(t *testing.T) {
+	// The CEF dhost field carries it, so a receiver reads the target as a name
+	// rather than as a row identifier out of the panel database.
+	f := newAuditFixture(t)
+	id := f.first.ID
+	f.write(t, audit.Entry{UID: 1000, Username: "dnsadmin",
+		ServerID: &id, Action: audit.ActionDNSAdd}, 0)
+
+	rows, err := f.logs.After(context.Background(), 0, 10)
+	if err != nil {
+		t.Fatalf("After returned an error: %v", err)
+	}
+	if len(rows) != 1 || rows[0].ServerName != "dns1" {
+		t.Errorf("the server name did not travel with the row: %+v", rows)
+	}
+}
+
+// --- The cursor -----------------------------------------------------------
+
+func TestACursorNobodyWroteReadsAsZero(t *testing.T) {
+	f := newFixture(t)
+	cursor := store.NewSIEMCursor(f.db)
+
+	last, err := cursor.Read(context.Background())
+	if err != nil {
+		t.Fatalf("Read returned an error: %v", err)
+	}
+	if last != 0 {
+		t.Errorf("last = %d, want 0", last)
+	}
+}
+
+func TestTheCursorComesBackTheWayItWasWritten(t *testing.T) {
+	f := newFixture(t)
+	cursor := store.NewSIEMCursor(f.db)
+	ctx := context.Background()
+
+	if err := cursor.Write(ctx, 42); err != nil {
+		t.Fatalf("Write returned an error: %v", err)
+	}
+	if last, _ := cursor.Read(ctx); last != 42 {
+		t.Errorf("last = %d, want 42", last)
+	}
+
+	// Twice, because the second call takes the conflict branch rather than the
+	// insert, and a broken upsert would only show there.
+	if err := cursor.Write(ctx, 43); err != nil {
+		t.Fatalf("the second write returned an error: %v", err)
+	}
+	if last, _ := cursor.Read(ctx); last != 43 {
+		t.Errorf("last = %d, want 43", last)
+	}
+}
+
+func TestTheCursorNeverMovesBackwards(t *testing.T) {
+	// A caller that read a stale value would otherwise send the receiver rows
+	// it already holds.
+	f := newFixture(t)
+	cursor := store.NewSIEMCursor(f.db)
+	ctx := context.Background()
+
+	if err := cursor.Write(ctx, 100); err != nil {
+		t.Fatalf("Write returned an error: %v", err)
+	}
+	if err := cursor.Write(ctx, 40); err != nil {
+		t.Fatalf("Write returned an error: %v", err)
+	}
+
+	if last, _ := cursor.Read(ctx); last != 100 {
+		t.Errorf("last = %d, want it to stay at 100", last)
+	}
+}
+
+func TestTheNewestIdentifierIsWhereForwardingStarts(t *testing.T) {
+	// Enabling a receiver must not empty months of trail into it.
+	f := newAuditFixture(t)
+	cursor := store.NewSIEMCursor(f.db)
+	ctx := context.Background()
+
+	if newest, _ := cursor.NewestAuditID(ctx); newest != 0 {
+		t.Errorf("an empty trail reports %d, want 0", newest)
+	}
+
+	for i := range 3 {
+		f.write(t, audit.Entry{UID: 1000, Username: "dnsadmin", Action: audit.ActionLogin}, i)
+	}
+
+	newest, err := cursor.NewestAuditID(ctx)
+	if err != nil {
+		t.Fatalf("NewestAuditID returned an error: %v", err)
+	}
+	rows, _ := f.logs.After(ctx, 0, 10)
+	if newest != rows[len(rows)-1].ID {
+		t.Errorf("newest = %d, want the last row %d", newest, rows[len(rows)-1].ID)
+	}
+
+	if pending, _ := cursor.Pending(ctx, newest); pending != 0 {
+		t.Errorf("pending = %d after starting at the newest row, want 0", pending)
+	}
+}
+
+func TestThePendingCountIsWhatTheReceiverIsOwed(t *testing.T) {
+	f := newAuditFixture(t)
+	cursor := store.NewSIEMCursor(f.db)
+	ctx := context.Background()
+
+	for i := range 4 {
+		f.write(t, audit.Entry{UID: 1000, Username: "dnsadmin", Action: audit.ActionLogin}, i)
+	}
+
+	rows, _ := f.logs.After(ctx, 0, 10)
+	if pending, _ := cursor.Pending(ctx, rows[1].ID); pending != 2 {
+		t.Errorf("pending = %d, want 2", pending)
+	}
+	if pending, _ := cursor.Pending(ctx, 0); pending != 4 {
+		t.Errorf("pending = %d, want 4", pending)
+	}
+}

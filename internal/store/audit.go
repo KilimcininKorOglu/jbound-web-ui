@@ -78,18 +78,52 @@ func (a *AuditLogs) List(ctx context.Context, query audit.Query) (audit.Page, er
 		return page, nil
 	}
 
-	rows, err := a.db.QueryContext(ctx, `
-SELECT l.id, l.user_id, l.username, l.server_id, COALESCE(s.name, ''),
-       l.action, l.details, l.ip_address, l.created_at
-  FROM audit_logs l
-  LEFT JOIN servers s ON s.id = l.server_id`+where+`
+	rows, err := a.db.QueryContext(ctx, auditColumns+where+`
  ORDER BY l.created_at DESC, l.id DESC
  LIMIT ? OFFSET ?`, append(args, page.PerPage, page.Offset())...)
 	if err != nil {
 		return audit.Page{}, fmt.Errorf("cannot read the audit rows: %w", err)
 	}
+
+	if page.Rows, err = scanAuditRows(rows); err != nil {
+		return audit.Page{}, err
+	}
+	return page, nil
+}
+
+// After returns up to limit rows newer than the given identifier, oldest first.
+//
+// This is what the SIEM sender reads. The order is the opposite of the listing
+// on purpose: a receiver has to be told what happened in the order it happened,
+// and the identifier is what the sender remembers between runs.
+//
+// The ordering is by id alone rather than by created_at. Two rows written in
+// the same second are indistinguishable by time, and a sender that skipped one
+// of them would never come back for it.
+func (a *AuditLogs) After(ctx context.Context, cursor int64, limit int) ([]audit.Row, error) {
+	rows, err := a.db.QueryContext(ctx, auditColumns+`
+ WHERE l.id > ?
+ ORDER BY l.id
+ LIMIT ?`, cursor, limit)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the audit rows after %d: %w", cursor, err)
+	}
+	return scanAuditRows(rows)
+}
+
+// auditColumns is the select both readers share, so a column added for one of
+// them cannot be missing from the other.
+const auditColumns = `
+SELECT l.id, l.user_id, l.username, l.server_id, COALESCE(s.name, ''),
+       l.action, l.details, l.ip_address, l.created_at
+  FROM audit_logs l
+  LEFT JOIN servers s ON s.id = l.server_id`
+
+// scanAuditRows reads a result set of auditColumns and closes it.
+func scanAuditRows(rows *sql.Rows) ([]audit.Row, error) {
 	defer rows.Close()
 
+	var out []audit.Row
 	for rows.Next() {
 		var (
 			row     audit.Row
@@ -98,18 +132,18 @@ SELECT l.id, l.user_id, l.username, l.server_id, COALESCE(s.name, ''),
 		err := rows.Scan(&row.ID, &row.UID, &row.Username, &row.ServerID,
 			&row.ServerName, &row.Action, &row.Details, &row.IPAddress, &created)
 		if err != nil {
-			return audit.Page{}, fmt.Errorf("cannot read an audit row: %w", err)
+			return nil, fmt.Errorf("cannot read an audit row: %w", err)
 		}
 
 		if row.CreatedAt, err = parseTime(created); err != nil {
-			return audit.Page{}, err
+			return nil, err
 		}
-		page.Rows = append(page.Rows, row)
+		out = append(out, row)
 	}
 	if err := rows.Err(); err != nil {
-		return audit.Page{}, fmt.Errorf("cannot read the audit row set: %w", err)
+		return nil, fmt.Errorf("cannot read the audit row set: %w", err)
 	}
-	return page, nil
+	return out, nil
 }
 
 // auditFilter builds the shared WHERE clause of the count and the page, so the

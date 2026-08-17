@@ -111,14 +111,27 @@ readable without one.
 | `/etc/jbound/jbound.env` | `0640 root:jbound` | the environment file, never overwritten by a later run |
 | `/etc/pam.d/jbound` | `0644 root:root` | the PAM service the helper calls |
 | `/var/lib/jbound` | `0700 jbound:jbound` | the database, the SSH keys and the agent tokens |
-| `/etc/rsyslog.d/60-jbound.conf` | `0664 root:jbound` | the one rsyslog file the panel writes |
-| `/etc/sudoers.d/jbound` | `0440 root:root` | two rules that let the panel restart and validate rsyslog |
+| `/usr/local/sbin/jbound-siem-apply` | `0755 root:root` | turns the panel's forwarding rules into rsyslog configuration |
+| `/etc/rsyslog.d/60-jbound.conf` | `0644 root:root` | what that script writes, and the panel never does |
+| `/etc/sudoers.d/jbound` | `0440 root:root` | two rules: run that script, and restart rsyslog |
 | `/etc/systemd/system/jbound.service` | `0644 root:root` | the unit |
 | `/usr/local/src/jbound` | | the checkout, kept so a re-run can update it |
 | `/usr/local/go` | | only when the host had no Go 1.26 or newer |
 
-`install.sh` reads the first two modes back after writing them and refuses to
-finish if either is wrong. The whole privilege model rests on them.
+`install.sh` reads the helper mode, the data directory mode and the rsyslog file
+mode back after writing them, and refuses to finish if any is wrong. The whole
+privilege model rests on those three.
+
+The last one is why the panel does not write its own rsyslog file. rsyslog runs
+as root and its configuration can name a program to execute, so an account that
+could write that file could run anything as root the next time the daemon
+restarts. The panel writes forwarding rules to `/var/lib/jbound/siem-rules.conf`
+instead, and `jbound-siem-apply` refuses every line that is not a forwarding
+rule before it renders anything.
+
+Changing `SYSLOG_LOG_PATH` or `DATA_DIR` in `/etc/jbound/jbound.env` means
+changing the matching value at the top of `/usr/local/sbin/jbound-siem-apply`.
+The script takes no path from its caller, which is the point of it.
 
 ## Reverse proxy
 
@@ -274,6 +287,7 @@ systemctl disable --now jbound
 rm -f /etc/systemd/system/jbound.service /etc/sudoers.d/jbound
 rm -f /etc/pam.d/jbound /etc/rsyslog.d/60-jbound.conf
 rm -f /usr/local/bin/jbound /usr/local/libexec/jbound-authhelper
+rm -f /usr/local/sbin/jbound-siem-apply
 rm -rf /usr/local/share/doc/jbound /usr/local/src/jbound
 systemctl daemon-reload
 systemctl restart rsyslog

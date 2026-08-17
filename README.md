@@ -76,15 +76,17 @@ sudo make install
 
 `deploy/install.sh` does the work and can be re-run at any time. It creates the
 `jbound` system account, the state directory, the panel binary and the setuid
-helper, the PAM service file, the environment file, the rsyslog file the panel
-owns, two sudoers rules for restarting and validating rsyslog, the third-party
-licences and the systemd unit. It never overwrites the environment file, and it
-reads back the two modes the whole design rests on:
+helper, the PAM service file, the environment file, the rsyslog file and the
+script that writes it, two sudoers rules for applying the forwarding rules and
+restarting rsyslog, the third-party licences and the systemd unit. It never
+overwrites the environment file, and it reads back the three modes the whole
+design rests on:
 
 | Path | Mode | Why |
 | --- | --- | --- |
 | `/usr/local/libexec/jbound-authhelper` | `4750 root:jbound` | setuid root so PAM can read the shadow database, group-only so no other account can use it as a password oracle |
 | `/var/lib/jbound` | `0700 jbound` | the SSH private keys and the agent tokens live under it |
+| `/etc/rsyslog.d/60-jbound.conf` | `0644 root:root` | rsyslog reads it as root and its configuration can name a program to run, so an account that could write it would hold the machine |
 
 Then review `/etc/jbound/jbound.env` and start the service:
 
@@ -92,9 +94,9 @@ Then review `/etc/jbound/jbound.env` and start the service:
 sudo systemctl enable --now jbound
 ```
 
-`install.sh -n` leaves out the systemd unit and the two sudoers rules, both of
-which drive rsyslog through `systemctl`. That is the way in for a host that has
-no systemd, and the SIEM page is the part that stops working there.
+`install.sh -n` leaves out the systemd unit and the two sudoers rules, which are
+what reach rsyslog. That is the way in for a host that has no systemd, and the
+SIEM page is the part that stops working there.
 
 ### Who may sign in
 
@@ -337,6 +339,13 @@ The **SIEM Config** page manages the rsyslog rules of the panel host and a
 switch that turns the mirror on and off. With the switch off the panel keeps
 writing its own trail and stops sending it, which is what an operator wants
 while a receiver is being repaired. The rules stay where they are.
+
+The panel does not write the rsyslog configuration. It writes the forwarding
+rules to `/var/lib/jbound/siem-rules.conf`, and `deploy/jbound-siem-apply`
+renders the configuration from them as root, refusing every line that is not a
+forwarding rule. rsyslog reads its configuration as root and that configuration
+can name a program to execute, so the check has to sit on the root side of the
+boundary rather than inside the panel.
 
 ### Log level
 

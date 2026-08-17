@@ -411,8 +411,11 @@ func TestThePlainUserSeesNoSSHCoordinates(t *testing.T) {
 			t.Fatalf("GET %s = %d, want 200", path, recorder.Code)
 		}
 
+		// The login name and the host, not the port. The three are rendered by
+		// one Sprintf, so the port cannot arrive without the rest, and ":22" on
+		// its own also matches the clock in every timestamp on the page.
 		body := recorder.Body.String()
-		for _, secret := range []string{"dnsops@", "dns1.example", ":22"} {
+		for _, secret := range []string{"dnsops@", "dns1.example"} {
 			if strings.Contains(body, secret) {
 				t.Errorf("GET %s carries %q:\n%s", path, secret, body)
 			}

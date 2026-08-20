@@ -25,6 +25,21 @@ const (
 	// the file in one write, so a group of records either arrives together or
 	// not at all, and one reload follows all of them.
 	OpAddMany = "add_many"
+
+	// OpSet makes the target hold one value for a name, whatever it held
+	// before and whether or not it held anything. It is what closes the choice
+	// an operator is offered when the name they are writing already answers,
+	// and it runs unchanged against a server that has the old value and
+	// against one that has never heard the name.
+	OpSet = "set"
+
+	// OpCopy writes a line the way another server already holds it.
+	//
+	// It is an addition that asks no questions about the name, because a
+	// mirror reproduces a file rather than composing one. A source somebody
+	// gave two addresses by hand is copied as it stands, which is what keeps
+	// the remote file authoritative.
+	OpCopy = "copy"
 )
 
 // maxBatch bounds one submission. It is generous enough for the list an
@@ -67,8 +82,18 @@ type Operation struct {
 // single server.
 func (o Operation) Validate() error {
 	switch o.Kind {
-	case OpAdd:
+	case OpAdd, OpCopy:
 		return o.Record.Validate()
+	case OpSet:
+		if err := o.Record.Validate(); err != nil {
+			return err
+		}
+		if !dnsfile.OneValuePerName(o.Record.Type) {
+			return fmt.Errorf(
+				"%w: a %s name carries more than one value, so it cannot be set to one",
+				dnsfile.ErrInvalid, o.Record.Type)
+		}
+		return nil
 	case OpAddMany:
 		return o.validateBatch()
 	case OpDelete:
@@ -101,7 +126,11 @@ func (o Operation) validateBatch() error {
 			dnsfile.ErrInvalid, len(o.Records), maxBatch)
 	}
 
+	type nameKey struct{ fqdn, recordType string }
+
 	seen := make(map[dnsfile.Record]int, len(o.Records))
+	named := make(map[nameKey]int, len(o.Records))
+
 	for i, record := range o.Records {
 		if err := record.Validate(); err != nil {
 			return fmt.Errorf("row %d: %w", i+1, err)
@@ -111,6 +140,19 @@ func (o Operation) validateBatch() error {
 				dnsfile.ErrDuplicate, i+1, first)
 		}
 		seen[record] = i + 1
+
+		if !dnsfile.OneValuePerName(record.Type) {
+			continue
+		}
+		// Two rows giving one name two addresses is the conflict the file
+		// refuses as well. Catching it here names both rows, rather than
+		// leaving the operator with a message about a file they cannot see.
+		key := nameKey{record.FQDN, record.Type}
+		if first, ok := named[key]; ok {
+			return fmt.Errorf("%w: row %d gives %s another value, row %d already names it",
+				dnsfile.ErrNameTaken, i+1, record.FQDN, first)
+		}
+		named[key] = i + 1
 	}
 	return nil
 }
@@ -119,7 +161,20 @@ func (o Operation) validateBatch() error {
 func (o Operation) apply(content []byte) ([]byte, error) {
 	switch o.Kind {
 	case OpAdd:
+		updated, err := addRecord(content, o.Record)
+		if err != nil {
+			return nil, err
+		}
+		return checked(declareZone(updated, o.Record))
+	case OpCopy:
+		// No name check. The line comes from a file that already holds it.
 		updated, err := dnsfile.Add(content, o.Record)
+		if err != nil {
+			return nil, err
+		}
+		return checked(declareZone(updated, o.Record))
+	case OpSet:
+		updated, err := dnsfile.Set(content, o.Record)
 		if err != nil {
 			return nil, err
 		}
@@ -130,7 +185,7 @@ func (o Operation) apply(content []byte) ([]byte, error) {
 		// way through the batch.
 		updated := content
 		for i, record := range o.Records {
-			next, err := dnsfile.Add(updated, record)
+			next, err := addRecord(updated, record)
 			if err != nil {
 				return nil, fmt.Errorf("row %d: %w", i+1, err)
 			}
@@ -153,6 +208,21 @@ func (o Operation) apply(content []byte) ([]byte, error) {
 	default:
 		return nil, fmt.Errorf("%w: unknown operation %q", dnsfile.ErrInvalid, o.Kind)
 	}
+}
+
+// addRecord writes a record the operator asked for.
+//
+// A name the file already answers for is refused rather than given a second
+// value. The check is here rather than in dnsfile.Add, because a mirror uses
+// the same function to reproduce a file somebody may have given two addresses
+// by hand, and refusing that would make the panel unable to copy what the
+// remote file, which stays authoritative, actually holds.
+func addRecord(content []byte, record dnsfile.Record) ([]byte, error) {
+	if held, taken := dnsfile.TakenBy(content, record); taken {
+		return nil, fmt.Errorf("%w: %s %s already answers with %s",
+			dnsfile.ErrNameTaken, record.Type, record.FQDN, held.Value)
+	}
+	return dnsfile.Add(content, record)
 }
 
 // declareZone adds the parent zone a record needs.
@@ -183,9 +253,9 @@ func checked(content []byte) ([]byte, error) {
 // auditAction names the action written for one server.
 func (o Operation) auditAction() string {
 	switch o.Kind {
-	case OpAdd, OpAddMany:
+	case OpAdd, OpAddMany, OpCopy:
 		return audit.ActionDNSAdd
-	case OpEdit:
+	case OpEdit, OpSet:
 		return audit.ActionDNSEdit
 	default:
 		return audit.ActionDNSDelete
@@ -209,12 +279,15 @@ func (o Operation) auditDetails() string {
 	}
 
 	switch o.Kind {
-	case OpAdd:
+	case OpAdd, OpCopy:
 		return fmt.Sprintf("Added %s record: %s -> %s",
 			o.Record.Type, o.Record.FQDN, o.Record.Value)
 	case OpAddMany:
 		return fmt.Sprintf("Added %d records: %s",
 			len(o.Records), foldOutput(recordList(o.Records), maxBatchDetails))
+	case OpSet:
+		return fmt.Sprintf("Set %s record: %s -> %s",
+			o.Record.Type, o.Record.FQDN, o.Record.Value)
 	case OpEdit:
 		return fmt.Sprintf("Edited: %s (%s %s) -> %s (%s %s)",
 			o.Old.FQDN, o.Old.Type, o.Old.Value,
@@ -239,11 +312,11 @@ func (o Operation) message() string {
 	}
 
 	switch o.Kind {
-	case OpAdd:
+	case OpAdd, OpCopy:
 		return "Record added"
 	case OpAddMany:
 		return fmt.Sprintf("%d records added", len(o.Records))
-	case OpEdit:
+	case OpEdit, OpSet:
 		return "Record updated"
 	default:
 		return "Record deleted"
@@ -622,8 +695,8 @@ func failureMessage(err error) string {
 func failureSource(err error) string {
 	switch {
 	case errors.Is(err, dnsfile.ErrInvalid), errors.Is(err, dnsfile.ErrDuplicate),
-		errors.Is(err, dnsfile.ErrNotFound), errors.Is(err, context.DeadlineExceeded),
-		errors.Is(err, context.Canceled):
+		errors.Is(err, dnsfile.ErrNameTaken), errors.Is(err, dnsfile.ErrNotFound),
+		errors.Is(err, context.DeadlineExceeded), errors.Is(err, context.Canceled):
 		return SourcePanel
 	case errors.Is(err, ErrConfigRefused), errors.Is(err, transport.ErrCommandFailed),
 		errors.Is(err, transport.ErrConflict), errors.Is(err, transport.ErrRemoteOutput):

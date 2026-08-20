@@ -846,9 +846,9 @@ func TestAnAddDeclaresTheZoneOfTheRecordOnEveryServer(t *testing.T) {
 func TestASecondRecordOfTheSameZoneAddsNoSecondZoneLine(t *testing.T) {
 	h := newWriteHarness(t, 1)
 
-	for _, value := range []string{"192.0.2.20", "192.0.2.21"} {
+	for _, name := range []string{"new.example.net", "other.example.net"} {
 		op := Operation{Kind: OpAdd, Record: dnsfile.Record{
-			FQDN: "new.example.net", Type: "A", Value: value}}
+			FQDN: name, Type: "A", Value: "192.0.2.20"}}
 
 		report, err := h.writer.Apply(context.Background(), testActor(),
 			Target{Scope: ScopeServer, ServerID: 1}, op)
@@ -1310,5 +1310,117 @@ func TestTheTrailReadsAsABlockRatherThanARecord(t *testing.T) {
 	details := entries[len(entries)-1].Details
 	if !strings.Contains(details, "Blocked ads.example.net with NXDOMAIN") {
 		t.Errorf("details = %q", details)
+	}
+}
+
+func TestASecondValueForANameIsRefused(t *testing.T) {
+	// The name already answers. A second address would leave which of the two
+	// a client gets to the resolver, and the operator with two rows where they
+	// meant one.
+	h := newWriteHarness(t, 1)
+	h.targets["dns1"].content = []byte(
+		"local-data: \"www.example.net. A 192.0.2.10\"\n")
+
+	op := Operation{Kind: OpAdd, Record: dnsfile.Record{
+		FQDN: "www.example.net", Type: "A", Value: "192.0.2.99"}}
+
+	report, err := h.writer.Apply(context.Background(), testActor(), groupTarget(), op)
+	if err != nil {
+		t.Fatalf("Apply returned an error: %v", err)
+	}
+	if _, failed, _ := report.Counts(); failed != 1 {
+		t.Fatalf("got %+v, want the write refused", report.Results)
+	}
+	if source := report.Results[0].Source; source != SourcePanel {
+		t.Errorf("the refusal is attributed to %q, want the panel", source)
+	}
+	if file := h.targets["dns1"].file(); strings.Contains(file, "192.0.2.99") {
+		t.Errorf("the second value reached the server:\n%s", file)
+	}
+}
+
+func TestASecondValueOfATypeThatCarriesSeveralIsWritten(t *testing.T) {
+	// A name carries several mail exchangers, which is what a preference is
+	// for. The rule that keeps one address per name does not reach them.
+	h := newWriteHarness(t, 1)
+	h.targets["dns1"].content = []byte(
+		"local-data: \"example.net. MX 10 mx1.example.net\"\n")
+
+	op := Operation{Kind: OpAdd, Record: dnsfile.Record{
+		FQDN: "example.net", Type: "MX", Value: "mx2.example.net", Priority: 20}}
+
+	report, err := h.writer.Apply(context.Background(), testActor(), groupTarget(), op)
+	if err != nil {
+		t.Fatalf("Apply returned an error: %v", err)
+	}
+	if !report.OK() {
+		t.Fatalf("got %+v", report.Results)
+	}
+	if file := h.targets["dns1"].file(); !strings.Contains(file, "mx2.example.net") {
+		t.Errorf("the second mail exchanger was refused:\n%s", file)
+	}
+}
+
+func TestABatchThatNamesOneNameTwiceIsRefusedBeforeAnyServer(t *testing.T) {
+	// Both rows are in the same submission, so the message can name both. A
+	// file level refusal would talk about content the operator cannot see.
+	h := newWriteHarness(t, 1)
+
+	op := Operation{Kind: OpAddMany, Records: []dnsfile.Record{
+		{FQDN: "www.example.net", Type: "A", Value: "192.0.2.10"},
+		{FQDN: "second.example.net", Type: "A", Value: "192.0.2.20"},
+		{FQDN: "www.example.net", Type: "A", Value: "192.0.2.99"},
+	}}
+
+	_, err := h.writer.Apply(context.Background(), testActor(), groupTarget(), op)
+	if !errors.Is(err, dnsfile.ErrNameTaken) {
+		t.Fatalf("got %v, want ErrNameTaken", err)
+	}
+	if !strings.Contains(err.Error(), "row 3") || !strings.Contains(err.Error(), "row 1") {
+		t.Errorf("the message does not name both rows: %v", err)
+	}
+	if file := h.targets["dns1"].file(); strings.Contains(file, "second.example.net") {
+		t.Errorf("a row of a refused batch reached the server:\n%s", file)
+	}
+}
+
+func TestSettingANameWritesOneValueWhateverWasThere(t *testing.T) {
+	// The same operation covers a server that holds another value and one that
+	// has never heard the name, which is what lets a single answer close the
+	// choice for a whole group.
+	h := newWriteHarness(t, 2)
+	h.targets["dns1"].content = []byte(
+		"local-data: \"www.example.net. A 192.0.2.10\"\n")
+
+	op := Operation{Kind: OpSet, Record: dnsfile.Record{
+		FQDN: "www.example.net", Type: "A", Value: "192.0.2.99"}}
+
+	report, err := h.writer.Apply(context.Background(), testActor(), groupTarget(), op)
+	if err != nil {
+		t.Fatalf("Apply returned an error: %v", err)
+	}
+	if !report.OK() {
+		t.Fatalf("got %+v", report.Results)
+	}
+
+	for _, name := range []string{"dns1", "dns2"} {
+		file := h.targets[name].file()
+		if !strings.Contains(file, "192.0.2.99") {
+			t.Errorf("%s does not hold the value that was set:\n%s", name, file)
+		}
+		if strings.Contains(file, "192.0.2.10") {
+			t.Errorf("%s still holds the old value:\n%s", name, file)
+		}
+	}
+}
+
+func TestSettingIsRefusedForATypeThatCarriesSeveralValues(t *testing.T) {
+	h := newWriteHarness(t, 1)
+
+	op := Operation{Kind: OpSet, Record: dnsfile.Record{
+		FQDN: "example.net", Type: "MX", Value: "mx1.example.net", Priority: 10}}
+
+	if _, err := h.writer.Apply(context.Background(), testActor(), groupTarget(), op); !errors.Is(err, dnsfile.ErrInvalid) {
+		t.Fatalf("got %v, want ErrInvalid", err)
 	}
 }

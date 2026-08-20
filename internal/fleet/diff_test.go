@@ -176,10 +176,10 @@ func TestARepairAddsTheRecordWhereItIsMissing(t *testing.T) {
 	}
 }
 
-func TestARepairKeepsEveryOtherValueOfTheSameName(t *testing.T) {
-	// The row names one exact record. A second value of the same name is a row
-	// of its own, so a repair that rewrote it would destroy a live record the
-	// operator never named.
+func TestARepairReplacesTheValueInTheWay(t *testing.T) {
+	// The name already answers, with something else. Adding beside it would
+	// leave the server holding both values, which is the difference this
+	// button exists to close rather than a second one to open.
 	h := newWriteHarness(t, 2)
 	h.targets["dns2"].content = []byte(
 		"local-data: \"www.example.net. A 192.0.2.99\"\n")
@@ -190,11 +190,11 @@ func TestARepairKeepsEveryOtherValueOfTheSameName(t *testing.T) {
 	}
 
 	file := h.targets["dns2"].file()
-	if !strings.Contains(file, "192.0.2.99") {
-		t.Errorf("the other value of the name was lost:\n%s", file)
+	if strings.Contains(file, "192.0.2.99") {
+		t.Errorf("the value that was in the way is still there:\n%s", file)
 	}
 	if !strings.Contains(file, "192.0.2.10") {
-		t.Errorf("the missing record was not added:\n%s", file)
+		t.Errorf("the record the row named was not written:\n%s", file)
 	}
 }
 
@@ -619,5 +619,65 @@ local-data: "only-on-dns2.example.net. A 192.0.2.50"
 
 	if !strings.Contains(h.targets["dns1"].file(), "only-on-dns2.example.net") {
 		t.Errorf("dns1 was not repaired while dns3 was down:\n%s", h.targets["dns1"].file())
+	}
+}
+
+func TestRepairAllSkipsANameTheServersAnswerDifferently(t *testing.T) {
+	// This button adds and never removes, and it has no source to say which of
+	// the two values is the right one. Writing both would give one name two
+	// addresses everywhere, which is the drift it was pressed to end.
+	h := newWriteHarness(t, 2)
+	h.targets["dns1"].content = []byte(seeded +
+		"local-data: \"split.example.net. A 192.0.2.55\"\n" +
+		"local-data: \"only.example.net. A 192.0.2.60\"\n")
+	h.targets["dns2"].content = []byte(seeded +
+		"local-data: \"split.example.net. A 192.0.2.99\"\n")
+
+	report, err := h.writer.RepairAll(context.Background(), testActor(), groupTarget())
+	if err != nil {
+		t.Fatalf("RepairAll returned an error: %v", err)
+	}
+
+	file := h.targets["dns2"].file()
+	if !strings.Contains(file, "only.example.net") {
+		t.Errorf("the record that was simply missing did not arrive:\n%s", file)
+	}
+	if strings.Contains(file, "192.0.2.55") {
+		t.Errorf("the value of the other server was written beside its own:\n%s", file)
+	}
+
+	var message string
+	for _, result := range report.Results {
+		if result.ServerName == "dns2" {
+			message = result.Message
+		}
+	}
+	if !strings.Contains(message, "skipped") {
+		t.Errorf("the report does not say that a record was left out: %q", message)
+	}
+}
+
+func TestAMirrorReproducesASourceThatHoldsTwoValuesForOneName(t *testing.T) {
+	// The remote file is authoritative and it is edited by hand as well. A
+	// mirror copies a file rather than composing one, so the rule that keeps
+	// one address per name does not reach it.
+	h := newWriteHarness(t, 2)
+	h.targets["dns1"].content = []byte(seeded +
+		"local-data: \"round.example.net. A 192.0.2.10\"\n" +
+		"local-data: \"round.example.net. A 192.0.2.11\"\n")
+
+	report, err := h.writer.Mirror(context.Background(), testActor(), groupTarget())
+	if err != nil {
+		t.Fatalf("Mirror returned an error: %v", err)
+	}
+	if !report.OK() {
+		t.Fatalf("got %+v", report.Results)
+	}
+
+	file := h.targets["dns2"].file()
+	for _, value := range []string{"192.0.2.10", "192.0.2.11"} {
+		if !strings.Contains(file, value) {
+			t.Errorf("the copy dropped %s:\n%s", value, file)
+		}
 	}
 }

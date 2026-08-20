@@ -297,7 +297,7 @@ func (w *Writer) repairOne(ctx context.Context, actor server.Actor,
 		return result
 	}
 
-	op, needed := repairOperation(dnsfile.Parse(content), want)
+	op, needed := repairOperation(content, want)
 	if !needed {
 		result.Status = StatusSkipped
 		result.Message = "Already in place"
@@ -343,11 +343,18 @@ func (w *Writer) repairOne(ctx context.Context, actor server.Actor,
 //
 // A value the row does not name is left alone. It is a row of its own in the
 // same diff, with its own button, and the operator decides what happens to it.
-func repairOperation(current []dnsfile.Record, want dnsfile.Record) (Operation, bool) {
-	for _, record := range current {
+func repairOperation(content []byte, want dnsfile.Record) (Operation, bool) {
+	for _, record := range dnsfile.Parse(content) {
 		if keyOf(record) == keyOf(want) {
 			return Operation{}, false
 		}
+	}
+
+	// The name answers with something else. Adding beside it would leave the
+	// server holding both, which is the difference this button exists to
+	// close rather than a second one to open.
+	if _, taken := dnsfile.TakenBy(content, want); taken {
+		return Operation{Kind: OpSet, Record: want}, true
 	}
 	return Operation{Kind: OpAdd, Record: want}, true
 }
@@ -486,7 +493,17 @@ func (w *Writer) repairAllOne(ctx context.Context, actor server.Actor,
 	// Every addition is applied in memory first, so a server whose file the
 	// panel cannot rewrite completely is left exactly as it was.
 	updated := content
+	written, skipped := 0, 0
 	for _, op := range added {
+		// A name two servers answer differently for is a difference this
+		// button cannot decide: it adds and never removes, and there is no
+		// source to say which value is the right one. The record is left for
+		// the operator rather than written beside the value already there.
+		if _, taken := dnsfile.TakenBy(updated, op.Record); taken {
+			skipped++
+			continue
+		}
+
 		updated, err = op.apply(updated)
 		if err != nil {
 			logging.From(ctx).Error("cannot repair a record",
@@ -495,6 +512,14 @@ func (w *Writer) repairAllOne(ctx context.Context, actor server.Actor,
 			result.fail(err)
 			return result
 		}
+		written++
+	}
+
+	if written == 0 {
+		result.Status = StatusSkipped
+		result.Message = fmt.Sprintf(
+			"%d skipped, the name already answers with another value", skipped)
+		return result
 	}
 
 	w.keepPrevious(ctx, record.ID, content, digest)
@@ -513,7 +538,10 @@ func (w *Writer) repairAllOne(ctx context.Context, actor server.Actor,
 	}
 
 	result.Status = StatusSuccess
-	result.Message = fmt.Sprintf("%d added", len(added))
+	result.Message = fmt.Sprintf("%d added", written)
+	if skipped > 0 {
+		result.Message += fmt.Sprintf(", %d skipped", skipped)
+	}
 	refillCtx, cancelRefill := afterChange(ctx)
 	defer cancelRefill()
 
@@ -523,7 +551,7 @@ func (w *Writer) repairAllOne(ctx context.Context, actor server.Actor,
 		result.Message += ", but the cache could not be refreshed"
 	}
 
-	w.writeRepairAllAudit(ctx, actor, record, len(added), groupName)
+	w.writeRepairAllAudit(ctx, actor, record, written, groupName)
 	return result
 }
 
@@ -765,7 +793,11 @@ func mirrorOperations(current, want []dnsfile.Record) (added, removed []Operatio
 			continue
 		}
 		seen[key] = true
-		added = append(added, Operation{Kind: OpAdd, Record: record})
+		// OpCopy rather than OpAdd: these lines come from a file that already
+		// holds them, so they are reproduced rather than judged. A mirror
+		// removes before it adds, so a name whose value changed is free by the
+		// time its new line is written.
+		added = append(added, Operation{Kind: OpCopy, Record: record})
 	}
 	return added, removed
 }

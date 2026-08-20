@@ -7,20 +7,15 @@ import (
 	"testing"
 )
 
-// evalFree lists the scripts that run on page load. None of them may call eval.
+// Every script that runs on page load, and none of them may call eval.
 //
-// The content security policy of the panel refuses eval, and the vendor
-// bundles of the reference interface are development builds that wrap every
-// module in a call to it. Loading one of those would break the page with
-// nothing more than a console message, so the check belongs here.
+// The content security policy of the panel refuses eval, and a vendor bundle
+// shipped as a development build wraps every module in a call to it. Loading
+// one of those would break the page with nothing more than a console message,
+// so the check belongs here.
 func TestLoadedScriptsDoNotCallEval(t *testing.T) {
 	loaded := []string{
-		"static/js/layout.js",
-		"static/js/helpers.js",
-		"static/js/menu.js",
 		"static/js/app.js",
-		"static/js/bootstrap.bundle.min.js",
-		"static/js/perfect-scrollbar.min.js",
 		"static/js/sweetalert2.min.js",
 	}
 
@@ -120,7 +115,6 @@ func extractStaticPaths(body string) []string {
 // vendors. A rule about how the panel behaves can only be held against these.
 var ownScripts = []string{
 	"static/js/app.js",
-	"static/js/layout.js",
 }
 
 func TestThePanelWritesNoBrowserDialog(t *testing.T) {

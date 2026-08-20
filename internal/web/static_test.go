@@ -15,23 +15,12 @@ func TestStaticAssetsAreServedFromTheBinary(t *testing.T) {
 	env := newTestEnv(t)
 
 	assets := []string{
-		"/static/css/core.css",
-		"/static/css/theme-default.css",
-		"/static/css/brand.css",
 		"/static/css/panel.css",
-		"/static/css/publicsans.css",
 		"/static/css/boxicons.css",
 		"/static/css/sweetalert2.min.css",
-		"/static/css/page-auth.css",
 		"/static/js/htmx.min.js",
 		"/static/js/app.js",
-		"/static/js/layout.js",
-		"/static/js/bootstrap.bundle.min.js",
-		"/static/js/perfect-scrollbar.min.js",
 		"/static/js/sweetalert2.min.js",
-		"/static/js/helpers.js",
-		"/static/js/menu.js",
-		"/static/fonts/publicsans/publicsans-latin-ext.woff2",
 		"/static/fonts/boxicons/boxicons.woff2",
 		"/static/img/favicon.svg",
 	}
@@ -102,7 +91,7 @@ func TestStaticAssetsNeedNoSession(t *testing.T) {
 	// The login page needs its stylesheet before anyone has signed in.
 	env := newTestEnv(t)
 
-	recorder := env.do(t, httptest.NewRequest(http.MethodGet, "/static/css/core.css", nil))
+	recorder := env.do(t, httptest.NewRequest(http.MethodGet, "/static/css/panel.css", nil))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", recorder.Code)
 	}

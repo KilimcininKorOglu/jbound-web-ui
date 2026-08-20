@@ -1,7 +1,6 @@
 package web
 
 import (
-	"io/fs"
 	"maps"
 	"net/http"
 	"net/http/httptest"
@@ -21,15 +20,10 @@ var variablePattern = regexp.MustCompile(`(?m)^\s*(--panel-[a-z-]+)\s*:\s*(#[0-9
 func palette(t *testing.T, selector string) map[string]string {
 	t.Helper()
 
-	body, err := fs.ReadFile(staticFS, "static/css/theme-dark.css")
-	if err != nil {
-		t.Fatalf("cannot read theme-dark.css: %v", err)
-	}
-
 	pattern := regexp.MustCompile(`(?m)^\s*` + regexp.QuoteMeta(selector) + `\s*\{([^}]*)\}`)
-	match := pattern.FindStringSubmatch(string(body))
+	match := pattern.FindStringSubmatch(sheet(t, "panel.css"))
 	if match == nil {
-		t.Fatalf("theme-dark.css declares no %s block", selector)
+		t.Fatalf("panel.css declares no %s block", selector)
 	}
 
 	colours := map[string]string{}
@@ -42,52 +36,47 @@ func palette(t *testing.T, selector string) map[string]string {
 	return colours
 }
 
-// The dark palette is measured the same way the light one is. An eye adapts to
-// a low contrast dark theme long before it can read it comfortably.
-func TestTheDarkPaletteIsReadable(t *testing.T) {
-	colours := palette(t, `html[data-color-scheme="dark"]`)
+// The colours a rule may name without going through a token.
+//
+// Both belong to something that is deliberately the same in either theme: the
+// skip link, which is drawn in the light accent with a white ring so the ring
+// stays visible on top of it, and the block of machine output, which keeps its
+// dark field so the eye can tell where the output ends.
+var literalColours = map[string]string{
+	"#0B6FC4": "the skip link",
+	"#FFFFFF": "the skip link",
+	"#0B0B0F": "the log viewer",
+	"#D7DBDF": "the log viewer",
+	"#000000": "the page behind a scrim",
+}
 
-	cases := []struct {
-		name       string
-		text       string
-		background string
-	}{
-		{"body text", "--panel-text", "--panel-bg"},
-		{"body text on a card", "--panel-text", "--panel-surface"},
-		{"heading", "--panel-heading", "--panel-surface"},
-		{"muted text", "--panel-text-muted", "--panel-surface"},
-		{"muted text on the page", "--panel-text-muted", "--panel-bg"},
-		{"link", "--panel-accent", "--panel-surface"},
-		{"link hover", "--panel-accent-strong", "--panel-surface"},
-		{"success alert", "--panel-success-text", "--panel-success-bg"},
-		{"info alert", "--panel-info-text", "--panel-info-bg"},
-		{"warning alert", "--panel-warning-text", "--panel-warning-bg"},
-		{"danger alert", "--panel-danger-text", "--panel-danger-bg"},
-		{"secondary badge", "--panel-secondary-text", "--panel-secondary-bg"},
-		// The refusal under a control sits on the card rather than on a tint.
-		{"refused field", "--panel-danger-text", "--panel-surface"},
+// Colour lives in the token section and nowhere else.
+//
+// A hex further down the sheet is a colour that answers to neither theme, which
+// is how a panel ends up with one rule that stays light when everything around
+// it goes dark.
+func TestNothingBelowTheTokensNamesItsOwnColour(t *testing.T) {
+	body := sheet(t, "panel.css")
+
+	// The token section ends where the base section begins. Both are named in
+	// the header of the file, so this fails loudly if the sections move.
+	const marker = "2. Base"
+	start := strings.Index(body, marker)
+	if start < 0 {
+		t.Fatalf("panel.css carries no %q section", marker)
 	}
+	// Past the header comment as well, which names the sections in order.
+	next := strings.Index(body[start+len(marker):], marker)
+	if next < 0 {
+		t.Fatalf("panel.css names %q once, so the sections cannot be told apart", marker)
+	}
+	start += len(marker) + next
 
-	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
-			text, ok := colours[testCase.text]
-			if !ok {
-				t.Fatalf("the palette declares no %s", testCase.text)
-			}
-			background, ok := colours[testCase.background]
-			if !ok {
-				t.Fatalf("the palette declares no %s", testCase.background)
-			}
-
-			ratio, err := contrast(text, background)
-			if err != nil {
-				t.Fatalf("%v", err)
-			}
-			if ratio < aaThreshold {
-				t.Errorf("%s reads %s on %s at %.2f:1, want at least %.1f:1",
-					testCase.name, text, background, ratio, aaThreshold)
-			}
-		})
+	hex := regexp.MustCompile(`#[0-9A-Fa-f]{6}`)
+	for _, colour := range hex.FindAllString(body[start:], -1) {
+		if _, ok := literalColours[strings.ToUpper(colour)]; !ok {
+			t.Errorf("%s is named outside the palette and follows neither theme", colour)
+		}
 	}
 }
 

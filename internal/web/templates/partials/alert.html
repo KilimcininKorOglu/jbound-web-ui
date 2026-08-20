@@ -4,6 +4,6 @@
 <div class="alert alert-{{if eq .Severity "error"}}danger{{else}}{{.Severity}}{{end}} alert-dismissible mb-3"
      role="alert" data-alert="{{.Severity}}">
   {{.Message}}
-  <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="{{t "common.close"}}"></button>
+  <button type="button" class="btn-close" data-action="dismiss-alert" aria-label="{{t "common.close"}}"></button>
 </div>
 {{end}}

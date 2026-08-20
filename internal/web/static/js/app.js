@@ -1,17 +1,17 @@
 /**
  * Panel behaviour.
  *
- * The reference interface drives the page with jQuery and hand written ajax
- * calls. htmx replaces all of it, so this file only has to connect htmx to the
- * dialog and toast components and to handle the two clicks that cannot be
- * inline handlers under the content security policy.
+ * htmx does the requests and SweetAlert2 draws the dialogs, so this file only
+ * has to connect the two and to handle the clicks that cannot be inline
+ * handlers under the content security policy.
  */
 
 'use strict';
 
 (function () {
-  const PRIMARY = '#1B8A4E';
-  const SECONDARY = '#8592a3';
+  /* The dialog buttons take their colours from panel.css rather than from
+     here, so the two themes need no colour in JavaScript and the palette has
+     one home. */
 
   /* The texts this file raises come from the server, because the panel speaks
      more than one language and the content security policy allows no inline
@@ -149,8 +149,6 @@
       icon: 'warning',
       position: 'center',
       showCancelButton: true,
-      confirmButtonColor: PRIMARY,
-      cancelButtonColor: SECONDARY,
       confirmButtonText: text('client.yes'),
       cancelButtonText: text('client.cancel')
     }).then(function (result) {
@@ -175,8 +173,6 @@
       icon: 'question',
       position: 'center',
       showCancelButton: true,
-      confirmButtonColor: PRIMARY,
-      cancelButtonColor: SECONDARY,
       confirmButtonText: text('client.yes'),
       cancelButtonText: text('client.cancel')
     }).then(function (result) {
@@ -226,6 +222,29 @@
     if (trigger.dataset.action === 'logout') {
       event.preventDefault();
       confirmLogout();
+      return;
+    }
+
+    /* The message is on the page in front of the reader, so dismissing it is
+       a page concern and reaches no server. */
+    if (trigger.dataset.action === 'dismiss-alert') {
+      event.preventDefault();
+      const alert = trigger.closest('[role="alert"]');
+      if (alert) {
+        alert.remove();
+      }
+      return;
+    }
+
+    if (trigger.dataset.action === 'toggle-drawer') {
+      event.preventDefault();
+      setDrawer(!document.body.classList.contains('drawer-open'));
+      return;
+    }
+
+    if (trigger.dataset.action === 'close-drawer') {
+      event.preventDefault();
+      setDrawer(false);
       return;
     }
 
@@ -381,6 +400,25 @@
     });
   }
 
+  /* The navigation on a narrow screen. The state is a class on the body, so
+     the stylesheet decides what it means and a wide screen ignores it. */
+  function setDrawer(open) {
+    document.body.classList.toggle('drawer-open', open);
+
+    const toggle = document.querySelector('[data-action="toggle-drawer"]');
+    if (toggle) {
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+  }
+
+  /* Escape closes it. A reader who opened the menu by keyboard has no scrim
+     to click. */
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape' && document.body.classList.contains('drawer-open')) {
+      setDrawer(false);
+    }
+  });
+
   function clearPanel(id) {
     const panel = document.getElementById(id);
     if (panel) {
@@ -410,8 +448,6 @@
       icon: 'warning',
       position: 'center',
       showCancelButton: true,
-      confirmButtonColor: PRIMARY,
-      cancelButtonColor: SECONDARY,
       confirmButtonText: text('client.yes'),
       cancelButtonText: text('client.cancel')
     }).then(function (result) {

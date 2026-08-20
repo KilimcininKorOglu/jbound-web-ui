@@ -35,7 +35,7 @@ func getWithGzip(target string) *http.Request {
 
 func TestAStylesheetIsSentCompressed(t *testing.T) {
 	env := newTestEnv(t)
-	const asset = "/static/css/core.css"
+	const asset = "/static/css/panel.css"
 
 	plain := env.do(t, httptest.NewRequest(http.MethodGet, asset, nil))
 	if plain.Header().Get("Content-Encoding") != "" {

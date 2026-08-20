@@ -1,144 +1,1183 @@
-/* Panel styles.
+/* The panel's stylesheet.
  *
- * The reference interface keeps these rules in a style element inside the page
- * head. They live in a file here, because the content security policy allows
- * no inline style and a shared file is cached once instead of arriving with
- * every page.
+ * Everything the panel looks like is here. There was a vendor template under
+ * it once, a megabyte of rules the panel then fought with !important, and the
+ * look it gave was the template's rather than the panel's.
+ *
+ * The design is content first and dark leaning: one accent, flat surfaces,
+ * hairline borders instead of shadows, pill shaped controls, and a system font
+ * so nothing is downloaded to read a table. There are no gradients anywhere.
+ *
+ * Order matters and the sections below are the order:
+ *
+ *   1. Tokens      the palette of both themes, and nothing else holds a hex
+ *   2. Base        reset, type, the page shell, the utilities the pages use
+ *   3. Components  button, card, table, form, badge, alert, pagination, dialog
+ *   4. Panel       focus, skip link, motion, and the parts only this panel has
+ *
+ * Contrast: every text pair below is at or above 4.5:1 and every user
+ * interface element at or above 3:1, which is what WCAG 2.2 AA asks for. The
+ * ratios are measured by contrast_test.go rather than trusted to the eye that
+ * chose them.
  */
 
-/* --- Toolbars ----------------------------------------------------------- */
+/* ========================================================================
+   1. Tokens
+   ======================================================================== */
 
-.dns-toolbar {
-  display: flex;
-  gap: 0.75rem;
-  align-items: center;
-  flex-wrap: wrap;
+/* The light palette. It is the default because a stylesheet has to have one,
+   and because a browser that reports no preference gets it. */
+:root {
+    --panel-bg: #FFFFFF;
+    --panel-surface: #F7F9F9;
+    --panel-surface-raised: #EFF3F4;
+    --panel-border: #EFF3F4;
+    --panel-control-border: #71767B;
+    --panel-text: #0F1419;
+    --panel-text-muted: #536471;
+    --panel-heading: #0F1419;
+
+    /* The accent darkens for a white field. The blue this design is drawn
+       around reads at 3.00:1 on white, which no amount of weight fixes. */
+    --panel-accent: #0B6FC4;
+    --panel-accent-strong: #095A9E;
+    --panel-accent-soft: rgba(11, 111, 196, 0.10);
+    --panel-on-accent: #FFFFFF;
+
+    --panel-focus: #0B6FC4;
+    --panel-hover: rgba(15, 20, 25, 0.03);
+
+    --panel-success: #00714D;
+    --panel-success-bg: #E6F4EE;
+    --panel-info: #0B6FC4;
+    --panel-info-bg: #EDF6FD;
+    --panel-warning: #8A5A00;
+    --panel-warning-bg: #FBF1DC;
+    --panel-danger: #B4231A;
+    --panel-danger-bg: #FBE9E7;
+    --panel-secondary: #536471;
+    --panel-secondary-bg: #EFF3F4;
+
+    /* Shape. A pill for anything pressed, a card for anything that holds
+       content, a small radius for anything typed into. */
+    --panel-radius-pill: 9999px;
+    --panel-radius-card: 16px;
+    --panel-radius-field: 4px;
+
+    /* Space. Four pixels, doubled. */
+    --panel-space-1: 0.25rem;
+    --panel-space-2: 0.5rem;
+    --panel-space-3: 0.75rem;
+    --panel-space-4: 1rem;
+    --panel-space-5: 1.25rem;
+    --panel-space-6: 1.5rem;
+    --panel-space-8: 2rem;
+    --panel-space-12: 3rem;
+
+    --panel-rail: 260px;
+    --panel-column: 1120px;
+    --panel-header: 53px;
 }
 
-.dns-toolbar .form-control,
-.dns-toolbar .form-select {
-  max-width: 220px;
+/* The dark palette. Pure black rather than a dark gray: the content is what
+   the reader came for and the page around it should not compete. */
+html[data-color-scheme="dark"] {
+    /* On the html element as well, so the strip past the layout on a wide
+       screen is not the only white left on the page. */
+    background-color: #000000;
+
+    --panel-bg: #000000;
+    --panel-surface: #16181C;
+    --panel-surface-raised: #1D1F23;
+    --panel-border: #2F3336;
+    --panel-control-border: #647885;
+    --panel-text: #E7E9EA;
+    --panel-text-muted: #8B98A5;
+    --panel-heading: #F7F9F9;
+
+    --panel-accent: #1D9BF0;
+    --panel-accent-strong: #6EC1F6;
+    --panel-accent-soft: rgba(29, 155, 240, 0.15);
+
+    /* Black on the accent, because white on it reads at 3.00:1. The blue is
+       bright enough to carry dark text, which is what the ratio says. */
+    --panel-on-accent: #000000;
+
+    --panel-focus: #1D9BF0;
+    --panel-hover: rgba(255, 255, 255, 0.03);
+
+    --panel-success: #00BA7C;
+    --panel-success-bg: #06251A;
+    --panel-info: #1D9BF0;
+    --panel-info-bg: #0A2334;
+    --panel-warning: #FFD400;
+    --panel-warning-bg: #2A2205;
+    --panel-danger: #F8626B;
+    --panel-danger-bg: #2E1113;
+    --panel-secondary: #8B98A5;
+    --panel-secondary-bg: #1D1F23;
 }
 
-/* --- Log viewer ---------------------------------------------------------- */
+/* The same palette for a reader who chose nothing and whose system asks for
+   dark. Nothing is decided in JavaScript, so the first paint is already
+   correct and no page flashes white. */
+@media (prefers-color-scheme: dark) {
+    html[data-color-scheme="system"] {
+        background-color: #000000;
 
-/* The syslog viewer. A dark block, because the lines are machine output and
-   the eye needs the block to end somewhere. */
-.log-viewer {
-  max-height: 24rem;
-  overflow: auto;
-  background: #232333;
-  color: #d5d5e0;
-  padding: 1rem;
-  border-radius: 0.375rem;
-  font-size: 0.8125rem;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-all;
+        --panel-bg: #000000;
+        --panel-surface: #16181C;
+        --panel-surface-raised: #1D1F23;
+        --panel-border: #2F3336;
+        --panel-control-border: #647885;
+        --panel-text: #E7E9EA;
+        --panel-text-muted: #8B98A5;
+        --panel-heading: #F7F9F9;
+
+        --panel-accent: #1D9BF0;
+        --panel-accent-strong: #6EC1F6;
+        --panel-accent-soft: rgba(29, 155, 240, 0.15);
+        --panel-on-accent: #000000;
+
+        --panel-focus: #1D9BF0;
+        --panel-hover: rgba(255, 255, 255, 0.03);
+
+        --panel-success: #00BA7C;
+        --panel-success-bg: #06251A;
+        --panel-info: #1D9BF0;
+        --panel-info-bg: #0A2334;
+        --panel-warning: #FFD400;
+        --panel-warning-bg: #2A2205;
+        --panel-danger: #F8626B;
+        --panel-danger-bg: #2E1113;
+        --panel-secondary: #8B98A5;
+        --panel-secondary-bg: #1D1F23;
+    }
 }
 
-/* --- Tables and pagination ---------------------------------------------- */
+/* ========================================================================
+   2. Base
+   ======================================================================== */
 
-.pagination {
-  margin-bottom: 0;
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
 }
 
-.pagination .page-link {
-  min-width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.875rem;
+html {
+    -webkit-text-size-adjust: 100%;
 }
 
-.pagination .page-link i {
-  font-size: 1rem;
+body {
+    margin: 0;
+    background-color: var(--panel-bg);
+    color: var(--panel-text);
+
+    /* The system stack. A panel that answers with a table should not wait on a
+       font file to show it. */
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        Helvetica, Arial, sans-serif;
+    font-size: 15px;
+    line-height: 20px;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    margin: 0 0 var(--panel-space-3);
+    color: var(--panel-heading);
+    font-weight: 700;
+    line-height: 1.25;
+}
+
+h1, .h1 { font-size: 23px; }
+h2, .h2 { font-size: 20px; }
+h3, .h3 { font-size: 18px; }
+h4, .h4 { font-size: 17px; }
+h5, .h5 { font-size: 16px; }
+h6, .h6 { font-size: 15px; }
+
+p {
+    margin: 0 0 var(--panel-space-4);
+}
+
+a {
+    color: var(--panel-accent);
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+code, pre, samp, kbd {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9375em;
+}
+
+hr {
+    border: 0;
+    border-top: 1px solid var(--panel-border);
+    margin: var(--panel-space-4) 0;
+}
+
+img {
+    max-width: 100%;
+}
+
+/* --- The shell ---------------------------------------------------------- */
+
+/* Two parts: a rail that stays, and a column that scrolls. The rail is fixed
+   rather than sticky, so a long table cannot push the navigation off the
+   screen. */
+.app-shell {
+    display: flex;
+    min-height: 100vh;
+}
+
+.app-rail {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: var(--panel-rail);
+    display: flex;
+    flex-direction: column;
+    padding: var(--panel-space-3) var(--panel-space-2);
+    border-right: 1px solid var(--panel-border);
+    background-color: var(--panel-bg);
+    overflow-y: auto;
+    z-index: 100;
+}
+
+.app-body {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin-left: var(--panel-rail);
+    display: flex;
+    flex-direction: column;
+}
+
+/* The column the content sits in. Bordered on both sides, so a wide screen
+   reads as a page rather than as a field of scattered cards. */
+.app-column {
+    width: 100%;
+    max-width: var(--panel-column);
+    margin: 0 auto;
+    border-left: 1px solid var(--panel-border);
+    border-right: 1px solid var(--panel-border);
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+}
+
+/* The header rides above the content and lets it show through, which is what
+   says the page is still scrolling underneath. */
+.app-header {
+    position: sticky;
+    top: 0;
+    z-index: 200;
+    min-height: var(--panel-header);
+    display: flex;
+    align-items: center;
+    gap: var(--panel-space-3);
+    padding: var(--panel-space-2) var(--panel-space-4);
+    border-bottom: 1px solid var(--panel-border);
+    background-color: color-mix(in srgb, var(--panel-bg) 80%, transparent);
+    backdrop-filter: blur(12px);
+}
+
+.app-header-title {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 700;
+}
+
+.app-header-meta {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: var(--panel-space-3);
+    flex-wrap: wrap;
+}
+
+.app-main {
+    flex: 1 1 auto;
+    padding: var(--panel-space-6) var(--panel-space-4);
+}
+
+.app-footer {
+    padding: var(--panel-space-4);
+    border-top: 1px solid var(--panel-border);
+    color: var(--panel-text-muted);
+    font-size: 13px;
+    text-align: center;
+}
+
+/* --- The rail ----------------------------------------------------------- */
+
+.app-brand {
+    display: flex;
+    align-items: center;
+    gap: var(--panel-space-2);
+    padding: var(--panel-space-2) var(--panel-space-3);
+    margin-bottom: var(--panel-space-4);
+}
+
+.app-brand-link {
+    display: flex;
+    align-items: center;
+    gap: var(--panel-space-2);
+    color: var(--panel-heading);
+    min-width: 0;
+}
+
+.app-brand-link:hover {
+    text-decoration: none;
+}
+
+.app-brand-mark {
+    height: 32px;
+    width: auto;
+    flex-shrink: 0;
+}
+
+/* The name is a setting, so it can be longer than the word this was drawn
+   for. It wraps and stops after two lines; the whole name stays readable in
+   the page title and the footer. */
+.app-brand-text {
+    display: -webkit-box;
+    min-width: 0;
+    font-size: 17px;
+    font-weight: 700;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+    overflow: hidden;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+.app-nav {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    flex: 1 1 auto;
+}
+
+.app-nav-header {
+    padding: var(--panel-space-4) var(--panel-space-3) var(--panel-space-1);
+    color: var(--panel-text-muted);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+}
+
+/* A navigation entry is a pill, which is the shape of everything pressed
+   here. The active one is bold rather than coloured, so the accent stays with
+   the controls that do something. */
+.app-nav-link {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: var(--panel-space-4);
+    padding: var(--panel-space-3);
+    border: 0;
+    border-radius: var(--panel-radius-pill);
+    background: none;
+    color: var(--panel-text);
+    font: inherit;
+    font-size: 15px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.app-nav-link:hover {
+    background-color: var(--panel-hover);
+    text-decoration: none;
+}
+
+.app-nav-item.active > .app-nav-link {
+    font-weight: 700;
+    color: var(--panel-accent);
+    background-color: var(--panel-accent-soft);
+}
+
+.app-nav-link .bx {
+    font-size: 20px;
+    flex-shrink: 0;
+}
+
+/* --- The drawer --------------------------------------------------------- */
+
+/* On a narrow screen the rail slides in over the page. The toggle and the
+   scrim are hidden everywhere else, so a wide screen carries neither. */
+.app-drawer-toggle,
+.app-scrim {
+    display: none;
+}
+
+@media (max-width: 900px) {
+    .app-rail {
+        transform: translateX(-100%);
+        transition: transform 0.2s ease-out;
+    }
+
+    body.drawer-open .app-rail {
+        transform: translateX(0);
+    }
+
+    .app-body {
+        margin-left: 0;
+    }
+
+    .app-column {
+        border-left: 0;
+        border-right: 0;
+    }
+
+    .app-drawer-toggle {
+        display: inline-flex;
+    }
+
+    body.drawer-open .app-scrim {
+        display: block;
+        position: fixed;
+        inset: 0;
+        z-index: 90;
+        background-color: rgba(0, 0, 0, 0.5);
+    }
+}
+
+/* --- Utilities ---------------------------------------------------------- */
+
+/* Only the ones the pages use. A utility nobody writes is a rule nobody can
+   delete with confidence later. */
+
+.d-none { display: none !important; }
+.d-block { display: block; }
+.d-flex { display: flex; }
+.d-grid { display: grid; }
+.flex-row { flex-direction: row; }
+.flex-wrap { flex-wrap: wrap; }
+.flex-grow-1 { flex-grow: 1; }
+.align-items-start { align-items: flex-start; }
+.align-items-center { align-items: center; }
+.align-items-end { align-items: flex-end; }
+.justify-content-center { justify-content: center; }
+.justify-content-between { justify-content: space-between; }
+.gap-3 { gap: var(--panel-space-3); }
+.ms-auto { margin-left: auto; }
+
+@media (min-width: 768px) {
+    .d-md-flex { display: flex; }
+}
+
+@media (min-width: 1200px) {
+    .d-xl-none { display: none; }
+}
+
+/* The grid. Twelve columns, and the gutter classes the forms ask for. */
+.row {
+    display: flex;
+    flex-wrap: wrap;
+    margin-left: calc(var(--panel-gutter, var(--panel-space-4)) / -2);
+    margin-right: calc(var(--panel-gutter, var(--panel-space-4)) / -2);
+}
+
+.row > * {
+    padding-left: calc(var(--panel-gutter, var(--panel-space-4)) / 2);
+    padding-right: calc(var(--panel-gutter, var(--panel-space-4)) / 2);
+    margin-bottom: var(--panel-gutter, var(--panel-space-4));
+}
+
+.g-2 { --panel-gutter: var(--panel-space-2); }
+.g-3 { --panel-gutter: var(--panel-space-3); }
+.g-4 { --panel-gutter: var(--panel-space-4); }
+
+.col-4 { width: 33.333333%; }
+.col-5 { width: 41.666667%; }
+.col-7 { width: 58.333333%; }
+.col-8 { width: 66.666667%; }
+.col-12 { width: 100%; }
+
+@media (min-width: 768px) {
+    .col-md-1 { width: 8.333333%; }
+    .col-md-2 { width: 16.666667%; }
+    .col-md-3 { width: 25%; }
+    .col-md-4 { width: 33.333333%; }
+    .col-md-5 { width: 41.666667%; }
+    .col-md-6 { width: 50%; }
+    .col-md-8 { width: 66.666667%; }
+}
+
+@media (min-width: 992px) {
+    .col-lg-4 { width: 33.333333%; }
+    .col-lg-5 { width: 41.666667%; }
+    .col-lg-6 { width: 50%; }
+    .col-lg-7 { width: 58.333333%; }
+}
+
+/* Below the breakpoint every column is the full width, which is what keeps a
+   form readable on a phone. */
+@media (max-width: 767px) {
+    .row > [class*="col-md-"] {
+        width: 100%;
+    }
+}
+
+.mb-0 { margin-bottom: 0 !important; }
+.mb-2 { margin-bottom: var(--panel-space-2); }
+.mb-3 { margin-bottom: var(--panel-space-3); }
+.mb-4 { margin-bottom: var(--panel-space-4); }
+.mt-0 { margin-top: 0; }
+.mt-1 { margin-top: var(--panel-space-1); }
+.mt-2 { margin-top: var(--panel-space-2); }
+.mt-3 { margin-top: var(--panel-space-3); }
+.mt-4 { margin-top: var(--panel-space-4); }
+.me-1 { margin-right: var(--panel-space-1); }
+.me-3 { margin-right: var(--panel-space-3); }
+.ms-1 { margin-left: var(--panel-space-1); }
+.ms-2 { margin-left: var(--panel-space-2); }
+
+.p-3 { padding: var(--panel-space-3); }
+.pb-0 { padding-bottom: 0; }
+.py-1 { padding-top: var(--panel-space-1); padding-bottom: var(--panel-space-1); }
+.py-2 { padding-top: var(--panel-space-2); padding-bottom: var(--panel-space-2); }
+.py-4 { padding-top: var(--panel-space-4); padding-bottom: var(--panel-space-4); }
+
+.w-100 { width: 100%; }
+.h-100 { height: 100%; }
+
+.small { font-size: 13px; }
+.fw-bold { font-weight: 700; }
+.text-center { text-align: center; }
+.text-end { text-align: right; }
+.text-nowrap { white-space: nowrap; }
+.text-uppercase { text-transform: uppercase; }
+.text-decoration-none { text-decoration: none; }
+.align-middle { vertical-align: middle; }
+.cursor-pointer { cursor: pointer; }
+.list-unstyled { list-style: none; padding-left: 0; margin: 0; }
+.rounded { border-radius: var(--panel-radius-field); }
+.border { border: 1px solid var(--panel-border); }
+
+.text-muted,
+.text-body-secondary {
+    color: var(--panel-text-muted) !important;
+}
+
+.text-danger { color: var(--panel-danger); }
+
+/* Off the screen and still in the document, which is where a heading a
+   sighted reader does not need has to stay. */
+.visually-hidden {
+    position: absolute !important;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* ========================================================================
+   3. Components
+   ======================================================================== */
+
+/* --- Buttons ------------------------------------------------------------ */
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--panel-space-2);
+    min-height: 36px;
+    padding: 0 var(--panel-space-4);
+    border: 1px solid transparent;
+    border-radius: var(--panel-radius-pill);
+    background: none;
+    color: var(--panel-text);
+    font: inherit;
+    font-weight: 700;
+    line-height: 1.2;
+    text-align: center;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.btn:hover {
+    text-decoration: none;
+}
+
+.btn:disabled,
+.btn.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-sm {
+    min-height: 30px;
+    padding: 0 var(--panel-space-3);
+    font-size: 13px;
+}
+
+.btn-icon {
+    min-width: 34px;
+    padding: 0;
+}
+
+.btn-primary {
+    background-color: var(--panel-accent);
+    border-color: var(--panel-accent);
+    color: var(--panel-on-accent);
+}
+
+.btn-primary:hover:not(:disabled) {
+    background-color: var(--panel-accent-strong);
+    border-color: var(--panel-accent-strong);
+}
+
+/* The outlined ones. A border and the text, nothing filled, so the one filled
+   button on a page is the one the page is about. */
+.btn-outline-primary {
+    border-color: var(--panel-accent);
+    color: var(--panel-accent);
+}
+
+.btn-outline-secondary {
+    border-color: var(--panel-control-border);
+    color: var(--panel-text);
+}
+
+.btn-outline-danger {
+    border-color: var(--panel-danger);
+    color: var(--panel-danger);
+}
+
+.btn-outline-warning {
+    border-color: var(--panel-warning);
+    color: var(--panel-warning);
+}
+
+.btn-outline-primary:hover:not(:disabled),
+.btn-outline-secondary:hover:not(:disabled),
+.btn-outline-danger:hover:not(:disabled),
+.btn-outline-warning:hover:not(:disabled) {
+    background-color: var(--panel-hover);
+}
+
+/* Apply Rules. It is what makes a written file take effect, so it is the
+   filled button of the page it sits on. */
+.btn-apply {
+    background-color: var(--panel-accent);
+    border-color: var(--panel-accent);
+    color: var(--panel-on-accent);
+}
+
+.btn-apply:hover:not(:disabled) {
+    background-color: var(--panel-accent-strong);
+    border-color: var(--panel-accent-strong);
+}
+
+/* Nothing to apply. An outline rather than a filled button that cannot be
+   pressed, so the shape of the page stays and the state is obvious. */
+.btn-apply:disabled,
+.btn-apply.disabled {
+    background-color: transparent;
+    border-color: var(--panel-control-border);
+    color: var(--panel-text-muted);
+    opacity: 1;
+}
+
+/* The dismiss control of an alert. Drawn rather than an image, so it takes
+   the colour of the text it sits beside. */
+.btn-close {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--panel-radius-pill);
+    background: none;
+    color: inherit;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.btn-close::before {
+    content: "\00d7";
+}
+
+.btn-close:hover {
+    background-color: var(--panel-hover);
+}
+
+/* --- Cards -------------------------------------------------------------- */
+
+/* A surface with a border. No shadow: depth is a background colour and a
+   hairline, which is what keeps a dark page from glowing. */
+.card {
+    background-color: var(--panel-surface);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--panel-radius-card);
+    overflow: hidden;
+}
+
+.card-header {
+    padding: var(--panel-space-4);
+    border-bottom: 1px solid var(--panel-border);
+}
+
+.card-header h1,
+.card-header h2,
+.card-header h3,
+.card-header h4,
+.card-header h5,
+.card-header h6 {
+    margin: 0;
+}
+
+.card-body {
+    padding: var(--panel-space-4);
+}
+
+.card-footer {
+    padding: var(--panel-space-4);
+    border-top: 1px solid var(--panel-border);
+}
+
+/* --- Tables ------------------------------------------------------------- */
+
+.table-responsive {
+    overflow-x: auto;
+}
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    color: var(--panel-text);
+}
+
+.table caption {
+    padding: var(--panel-space-3) var(--panel-space-4);
+    color: var(--panel-text-muted);
+    font-size: 13px;
+    text-align: left;
+}
+
+.table th,
+.table td {
+    padding: var(--panel-space-3) var(--panel-space-4);
+    border-bottom: 1px solid var(--panel-border);
+    text-align: left;
+    vertical-align: middle;
 }
 
 .table th {
-  font-weight: 600;
-  font-size: 0.8125rem;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+    color: var(--panel-text-muted);
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    white-space: nowrap;
 }
 
-.card {
-  border: none;
-  box-shadow: 0 2px 6px 0 rgba(67, 89, 113, 0.12);
+/* The last row carries no line, so a table ends where the card does. */
+.table tbody tr:last-child td {
+    border-bottom: 0;
 }
 
-/* --- Status ------------------------------------------------------------- */
-
-.badge-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  display: inline-block;
+.table-sm th,
+.table-sm td {
+    padding: var(--panel-space-2) var(--panel-space-3);
 }
 
-.status-indicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+.table-hover tbody tr:hover {
+    background-color: var(--panel-hover);
 }
 
-.status-indicator .dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
+.table-danger td {
+    background-color: var(--panel-danger-bg);
 }
 
-.status-indicator .dot.green {
-  background: #71dd37;
+/* --- Forms -------------------------------------------------------------- */
+
+.form-label {
+    display: block;
+    margin-bottom: var(--panel-space-1);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--panel-text);
 }
 
-.status-indicator .dot.orange {
-  background: #ffab00;
+.form-control,
+.form-select {
+    width: 100%;
+    min-height: 38px;
+    padding: var(--panel-space-2) var(--panel-space-3);
+    border: 1px solid var(--panel-control-border);
+    border-radius: var(--panel-radius-field);
+    background-color: transparent;
+    color: var(--panel-text);
+    font: inherit;
 }
 
-.status-indicator .dot.red {
-  background: #ff3e1d;
+.form-select {
+    /* The arrow is drawn by the browser. A background image would need a
+       colour of its own and would not follow the theme. */
+    appearance: auto;
+}
+
+.form-control::placeholder {
+    color: var(--panel-text-muted);
+}
+
+.form-control:focus,
+.form-select:focus {
+    border-color: var(--panel-accent);
+    outline: none;
+    box-shadow: 0 0 0 1px var(--panel-accent);
+}
+
+.form-control:disabled,
+.form-select:disabled {
+    opacity: 0.6;
+}
+
+.form-select-sm {
+    min-height: 30px;
+    padding: var(--panel-space-1) var(--panel-space-2);
+    font-size: 13px;
+}
+
+.form-text {
+    display: block;
+    margin-top: var(--panel-space-1);
+    color: var(--panel-text-muted);
+    font-size: 13px;
+}
+
+.invalid-feedback {
+    display: block;
+    margin-top: var(--panel-space-1);
+    color: var(--panel-danger);
+    font-size: 13px;
+}
+
+.form-control.is-invalid,
+.form-select.is-invalid {
+    border-color: var(--panel-danger);
+}
+
+/* The password field and its reveal button read as one control. */
+.input-group {
+    display: flex;
+    align-items: stretch;
+}
+
+.input-group .form-control {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+.input-group-text {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 var(--panel-space-3);
+    border: 1px solid var(--panel-control-border);
+    border-left: 0;
+    border-top-right-radius: var(--panel-radius-field);
+    border-bottom-right-radius: var(--panel-radius-field);
+    background: none;
+    color: var(--panel-text-muted);
+    cursor: pointer;
+}
+
+.form-check {
+    display: flex;
+    align-items: center;
+    gap: var(--panel-space-2);
+    margin-bottom: var(--panel-space-2);
+}
+
+.form-check-input {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    accent-color: var(--panel-accent);
+    flex-shrink: 0;
+}
+
+.form-check-label {
+    margin: 0;
+}
+
+/* A switch is a checkbox the browser draws wider. Nothing here redraws it,
+   because a control the operating system knows is one the reader knows. */
+.form-switch .form-check-input {
+    width: 34px;
+}
+
+/* --- Badges ------------------------------------------------------------- */
+
+.badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px var(--panel-space-2);
+    border-radius: var(--panel-radius-pill);
+    background-color: var(--panel-secondary-bg);
+    color: var(--panel-secondary);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 16px;
+    white-space: nowrap;
+}
+
+.bg-label-primary,
+.bg-label-info {
+    background-color: var(--panel-info-bg);
+    color: var(--panel-info);
+}
+
+.bg-label-success {
+    background-color: var(--panel-success-bg);
+    color: var(--panel-success);
+}
+
+.bg-label-warning {
+    background-color: var(--panel-warning-bg);
+    color: var(--panel-warning);
+}
+
+.bg-label-danger {
+    background-color: var(--panel-danger-bg);
+    color: var(--panel-danger);
+}
+
+.bg-label-secondary,
+.bg-label-dark {
+    background-color: var(--panel-secondary-bg);
+    color: var(--panel-secondary);
+}
+
+/* --- Alerts ------------------------------------------------------------- */
+
+.alert {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--panel-space-3);
+    padding: var(--panel-space-3) var(--panel-space-4);
+    border: 1px solid;
+    border-radius: var(--panel-radius-card);
+}
+
+.alert .btn-close {
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+.alert-success {
+    background-color: var(--panel-success-bg);
+    border-color: var(--panel-success);
+    color: var(--panel-success);
+}
+
+.alert-info {
+    background-color: var(--panel-info-bg);
+    border-color: var(--panel-info);
+    color: var(--panel-info);
+}
+
+.alert-warning {
+    background-color: var(--panel-warning-bg);
+    border-color: var(--panel-warning);
+    color: var(--panel-warning);
+}
+
+.alert-danger {
+    background-color: var(--panel-danger-bg);
+    border-color: var(--panel-danger);
+    color: var(--panel-danger);
+}
+
+/* --- Pagination --------------------------------------------------------- */
+
+.pagination {
+    display: flex;
+    gap: var(--panel-space-1);
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    flex-wrap: wrap;
+}
+
+.page-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 36px;
+    height: 36px;
+    padding: 0 var(--panel-space-2);
+    border: 1px solid transparent;
+    border-radius: var(--panel-radius-pill);
+    color: var(--panel-text);
+    font-size: 14px;
+}
+
+.page-link:hover {
+    background-color: var(--panel-hover);
+    text-decoration: none;
+}
+
+.page-item.active .page-link {
+    background-color: var(--panel-accent);
+    color: var(--panel-on-accent);
+}
+
+.page-item.disabled .page-link {
+    color: var(--panel-text-muted);
+    pointer-events: none;
+}
+
+.pagination-sm .page-link {
+    min-width: 30px;
+    height: 30px;
+    font-size: 13px;
 }
 
 /* --- Dialogs ------------------------------------------------------------ */
 
+/* SweetAlert2 draws the confirmations. Its own sheet loads first and this
+   brings it onto the palette and the shapes of everything else. */
 .swal2-popup {
-  font-size: 0.9rem !important;
+    background-color: var(--panel-surface) !important;
+    border: 1px solid var(--panel-border);
+    border-radius: var(--panel-radius-card) !important;
+    color: var(--panel-text) !important;
+    font-size: 15px !important;
+}
+
+.swal2-title,
+.swal2-html-container {
+    color: var(--panel-text) !important;
+}
+
+.swal2-actions .swal2-styled {
+    border-radius: var(--panel-radius-pill) !important;
+    font-weight: 700;
+    box-shadow: none !important;
+}
+
+.swal2-actions .swal2-confirm {
+    background-color: var(--panel-accent) !important;
+    color: var(--panel-on-accent) !important;
+}
+
+.swal2-actions .swal2-cancel {
+    background-color: transparent !important;
+    border: 1px solid var(--panel-control-border) !important;
+    color: var(--panel-text) !important;
 }
 
 .swal2-container {
-  z-index: 99999 !important;
+    z-index: 99999 !important;
 }
 
-/* --- Corporate colour, the parts the theme override misses --------------- */
-
-/* The template marks the active menu item with a bar in its own primary
-   colour. The corporate stylesheet recolours the label and the background of
-   that item but not the bar, which then sits in purple next to green text. */
-.menu-vertical .menu-item.active::before,
-.menu-inner .menu-item.active::before {
-  background: #1B8A4E !important;
+/* The toast a finished action raises. */
+.swal2-toast {
+    background-color: var(--panel-surface) !important;
+    border: 1px solid var(--panel-border) !important;
+    box-shadow: none !important;
 }
 
-/* --- Buttons that look like links ---------------------------------------- */
+/* ========================================================================
+   4. Panel
+   ======================================================================== */
 
-/* The menu toggle and the logout entry run a script and navigate nowhere. A
-   link that goes nowhere is announced as one that does, so they are buttons
-   and take the shape of the menu entries around them. */
-button.menu-link,
-button.layout-menu-toggle {
-  width: 100%;
-  background: none;
-  border: none;
-  text-align: left;
-  font: inherit;
-  color: inherit;
-  cursor: pointer;
+/* --- Toolbars ----------------------------------------------------------- */
+
+.dns-toolbar {
+    display: flex;
+    gap: var(--panel-space-3);
+    align-items: center;
+    flex-wrap: wrap;
 }
 
-button.layout-menu-toggle {
-  width: auto;
+.dns-toolbar .form-control,
+.dns-toolbar .form-select {
+    max-width: 220px;
+}
+
+/* The captions above the rows of the add form. They name the controls
+   beneath them, which cannot carry labels of their own because the row is
+   cloned and an id may appear once. */
+.record-row-head {
+    color: var(--panel-text-muted);
+    font-size: 13px;
+    font-weight: 700;
+}
+
+/* --- Machine output ------------------------------------------------------ */
+
+/* The lines are machine output and the eye needs the block to end somewhere,
+   so it keeps the dark field in both themes. */
+.log-viewer {
+    max-height: 24rem;
+    overflow: auto;
+    padding: var(--panel-space-4);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--panel-radius-card);
+    background: #0B0B0F;
+    color: #D7DBDF;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+/* --- Status ------------------------------------------------------------- */
+
+.status-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--panel-space-2);
+}
+
+.status-indicator .dot,
+.badge-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+}
+
+.status-indicator .dot.green { background: var(--panel-success); }
+.status-indicator .dot.orange { background: var(--panel-warning); }
+.status-indicator .dot.red { background: var(--panel-danger); }
+
+/* --- Login -------------------------------------------------------------- */
+
+.login-wrapper {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--panel-space-6) var(--panel-space-4);
+}
+
+.login-card {
+    width: 100%;
+    max-width: 420px;
+}
+
+.login-mark {
+    height: 56px;
+    width: auto;
 }
 
 /* --- Skip link ----------------------------------------------------------- */
@@ -146,36 +1185,34 @@ button.layout-menu-toggle {
 /* The first focusable element of the page. It stays out of the way until it
    is focused, which is the only time it is useful. */
 .skip-link {
-  position: absolute;
-  left: -9999px;
-  top: 0;
-  z-index: 10000;
-  padding: 0.75rem 1rem;
-  background: #1B8A4E;
-  color: #FFFFFF;
-  border-radius: 0 0 0.375rem 0;
-  text-decoration: none;
+    position: absolute;
+    left: -9999px;
+    top: 0;
+    z-index: 10000;
+    padding: var(--panel-space-3) var(--panel-space-4);
+    background: #0B6FC4;
+    color: #FFFFFF;
+    border-radius: 0 0 var(--panel-radius-field) 0;
+    text-decoration: none;
 }
 
 .skip-link:focus {
-  left: 0;
-  color: #FFFFFF;
+    left: 0;
+    color: #FFFFFF;
 }
 
-/* The link is green and so is the ring, so this one is drawn in white and
-   inside the link, where the page behind it cannot swallow it. */
+/* The link carries the accent and so does the ring, so this one is drawn in
+   white and inside the link, where the page behind it cannot swallow it. */
 .skip-link:focus-visible {
-  outline-color: #FFFFFF;
-  outline-offset: -6px;
+    outline-color: #FFFFFF;
+    outline-offset: -6px;
 }
 
 /* --- Keyboard focus ------------------------------------------------------ */
 
-/* The vendor sheets drop the browser outline and put a pale shadow in its
-   place, which vanishes on a coloured field. A ring is drawn instead, and only
-   for a keyboard, so a pointer does not leave one behind after every click.
-   The colour comes from the theme, because the ring has to keep its 3:1
-   against whatever sits behind it. */
+/* A ring, and only for a keyboard, so a pointer does not leave one behind
+   after every click. The colour comes from the theme, because the ring has to
+   keep its 3:1 against whatever sits behind it. */
 :focus-visible,
 .btn:focus-visible,
 .btn-close:focus-visible,
@@ -183,58 +1220,24 @@ button.layout-menu-toggle {
 .form-select:focus-visible,
 .form-check-input:focus-visible,
 .page-link:focus-visible,
-.menu-link:focus-visible,
-.menu-toggle:focus-visible,
+.app-nav-link:focus-visible,
 .dropdown-item:focus-visible {
-  outline: 3px solid var(--panel-focus, #15703F);
-  outline-offset: 2px;
-  box-shadow: none;
+    outline: 3px solid var(--panel-focus, #0B6FC4);
+    outline-offset: 2px;
+    box-shadow: none;
 }
 
 /* --- Target size --------------------------------------------------------- */
 
-/* WCAG 2.5.8 asks for 24 by 24 CSS pixels. The icon buttons and the pagination
-   links are the controls that fall under it; a checkbox reaches the size
-   through its label, which toggles it as well. */
+/* WCAG 2.5.8 asks for 24 by 24 CSS pixels. The icon buttons and the
+   pagination links are the controls that fall under it; a checkbox reaches
+   the size through its label, which toggles it as well. */
 .btn-sm,
 .btn-icon,
+.btn-close,
 .pagination .page-link {
-  min-width: 24px;
-  min-height: 24px;
-}
-
-/* --- Layout details ----------------------------------------------------- */
-
-/* The mark stands where a name used to. It is the same file in both places,
-   sized by where it sits, so there is one asset to keep in step rather than
-   one per position. */
-.app-brand-mark {
-  height: 32px;
-  width: auto;
-}
-
-/* The name is a setting, so it can be longer than the word the template was
-   drawn for. The vendor sheet refuses to shrink this element and the brand
-   block hides what overflows, so a long name was cut mid-word with no sign
-   that anything was missing. It now wraps inside the menu and stops after two
-   lines, which is what the fixed height of the block holds. The whole name
-   stays readable in the page title and the footer. */
-.app-brand-text {
-  display: -webkit-box;
-  flex-shrink: 1;
-  min-width: 0;
-  font-size: 1.125rem;
-  line-height: 1.3;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  overflow: hidden;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
-
-.login-mark {
-  height: 56px;
-  width: auto;
+    min-width: 24px;
+    min-height: 24px;
 }
 
 /* --- htmx --------------------------------------------------------------- */
@@ -243,19 +1246,19 @@ button.layout-menu-toggle {
    security policy blocks that, so they are declared here instead. */
 
 .htmx-indicator {
-  opacity: 0;
-  transition: opacity 200ms ease-in;
+    opacity: 0;
+    transition: opacity 200ms ease-in;
 }
 
 .htmx-request .htmx-indicator,
 .htmx-request.htmx-indicator {
-  opacity: 1;
+    opacity: 1;
 }
 
 /* A request in flight should look busy without the layout moving. */
 .htmx-request[disabled],
 .htmx-request:disabled {
-  cursor: progress;
+    cursor: progress;
 }
 
 /* --- Reduced motion ------------------------------------------------------ */
@@ -263,12 +1266,12 @@ button.layout-menu-toggle {
 /* A reader who asked the system for less movement gets none. The indicator
    still appears and the page still scrolls, both without the animation. */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
 }

@@ -681,6 +681,24 @@ func TestAWriteReopensTheUnappliedMarker(t *testing.T) {
 	}
 }
 
+func TestTheRecordsPageOfAnEmptyGroupOpens(t *testing.T) {
+	// A group somebody has just created holds no server, and the records page
+	// is where they are sent next. An internal error there would read as a
+	// broken panel rather than as an empty group.
+	env := newFleetEnv(t)
+
+	empty, err := env.servers.CreateGroup(t.Context(),
+		server.Actor{UID: 1001, Username: "dnsadmin"}, server.Group{Name: "edge"})
+	if err != nil {
+		t.Fatalf("cannot create the group: %v", err)
+	}
+
+	body := env.table(t, fmt.Sprintf("scope=group&group_id=%d", empty.ID))
+	if !strings.Contains(body, "No records") {
+		t.Errorf("the page of an empty group does not read as empty:\n%s", body)
+	}
+}
+
 func TestAListingWithNoTargetFallsBackToTheFirstGroup(t *testing.T) {
 	// There is no listing of every server any more. A request that names no
 	// target, and a link that names the scope the panel used to offer, both

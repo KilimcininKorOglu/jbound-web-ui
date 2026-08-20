@@ -76,6 +76,18 @@ func (s *Service) ListGroups(ctx context.Context) ([]Group, error) {
 	return s.groups.List(ctx)
 }
 
+// Members returns the servers of a group, including none at all.
+//
+// A group somebody has just created is empty, and its page has to open rather
+// than fail. What may not happen against an empty group is a write, which is
+// what Targets is for.
+func (s *Service) Members(ctx context.Context, groupID int64) ([]Server, error) {
+	if _, err := s.groups.Get(ctx, groupID); err != nil {
+		return nil, err
+	}
+	return s.groups.Members(ctx, groupID)
+}
+
 // Targets returns the servers an operation against a group will reach.
 //
 // A group with no member is refused rather than reported as a success with

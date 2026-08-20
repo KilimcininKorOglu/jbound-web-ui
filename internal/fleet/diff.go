@@ -200,7 +200,7 @@ func (d Diff) FilterMismatches() Diff {
 func (s *Service) Diff(ctx context.Context, query Query, onlyMismatches bool) (Diff, error) {
 	target := Target{Scope: query.Scope, ServerID: query.ServerID, GroupID: query.GroupID}
 
-	members, groupName, err := s.writer.Targets(ctx, target)
+	members, groupName, err := s.writer.Members(ctx, target)
 	if err != nil {
 		return Diff{}, err
 	}

@@ -41,6 +41,10 @@ func (f *fakeGroups) Targets(_ context.Context, id int64) ([]server.Server, erro
 	return members, nil
 }
 
+func (f *fakeGroups) Members(_ context.Context, id int64) ([]server.Server, error) {
+	return f.members[id], nil
+}
+
 // SourceServer answers the way the service does: a reference that is not a
 // member of this group, or not reachable, reads as none.
 func (f *fakeGroups) SourceServer(_ context.Context, id int64) (server.Server, bool, error) {
@@ -646,6 +650,26 @@ func TestAnEmptyGroupIsRefused(t *testing.T) {
 
 	if _, err := h.writer.Apply(context.Background(), testActor(), groupTarget(), addOperation()); err == nil {
 		t.Fatal("an operation against an empty group was accepted")
+	}
+}
+
+func TestAnEmptyGroupStillHasAPage(t *testing.T) {
+	// A group somebody has just created has no member yet, and the records
+	// page of it opens on an empty listing. Refusing the listing the way a
+	// write is refused would answer the operator with an internal error on the
+	// page they were sent to next.
+	h := newWriteHarness(t, 1)
+	h.groups.members[1] = nil
+
+	members, name, err := h.writer.Members(context.Background(), groupTarget())
+	if err != nil {
+		t.Fatalf("the listing of an empty group was refused: %v", err)
+	}
+	if len(members) != 0 {
+		t.Errorf("%d members came back from an empty group", len(members))
+	}
+	if name != "resolvers" {
+		t.Errorf("group name = %q, want resolvers", name)
 	}
 }
 

@@ -363,10 +363,13 @@ type Writer struct {
 // GroupSource resolves a group into its members.
 //
 // Targets refuses a group with no member, so an operation that would reach
-// nothing never becomes a report full of nothing.
+// nothing never becomes a report full of nothing. Members answers for the
+// same group without refusing it, because a listing of a group somebody has
+// just created has to open rather than fail.
 type GroupSource interface {
 	GetGroup(ctx context.Context, id int64) (server.Group, error)
 	Targets(ctx context.Context, groupID int64) ([]server.Server, error)
+	Members(ctx context.Context, groupID int64) ([]server.Server, error)
 
 	// SourceServer answers with the member a mirror copies from, and whether
 	// there is one at all. A reference that has left the group or gone out of
@@ -403,12 +406,27 @@ func (w *Writer) transportConfig(record server.Server) transport.Config {
 	return record.TransportConfig(w.dataDir, timeouts.Connect, timeouts.Command)
 }
 
-// Targets resolves a target into the servers it covers.
+// Targets resolves a target into the servers an operation will reach.
 //
 // A disabled server stays in the list. It produces a skipped result, so the
 // operator sees that it was left out rather than wondering why the count is
-// short.
+// short. An empty group is refused, which is the one thing that separates this
+// from Members.
 func (w *Writer) Targets(ctx context.Context, target Target) ([]server.Server, string, error) {
+	return w.resolve(ctx, target, w.groups.Targets)
+}
+
+// Members resolves a target into the servers it covers.
+//
+// It answers for an empty group as well, because a listing of a group nobody
+// has put a server in yet has to open rather than fail.
+func (w *Writer) Members(ctx context.Context, target Target) ([]server.Server, string, error) {
+	return w.resolve(ctx, target, w.groups.Members)
+}
+
+func (w *Writer) resolve(ctx context.Context, target Target,
+	ofGroup func(context.Context, int64) ([]server.Server, error)) ([]server.Server, string, error) {
+
 	switch target.Scope {
 	case ScopeServer:
 		record, err := w.servers.Get(ctx, target.ServerID)
@@ -422,7 +440,7 @@ func (w *Writer) Targets(ctx context.Context, target Target) ([]server.Server, s
 		if err != nil {
 			return nil, "", err
 		}
-		members, err := w.groups.Targets(ctx, target.GroupID)
+		members, err := ofGroup(ctx, target.GroupID)
 		if err != nil {
 			return nil, "", err
 		}

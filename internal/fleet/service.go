@@ -87,7 +87,7 @@ func (s *Service) Page(ctx context.Context, query Query) (Page, error) {
 		return Page{}, err
 	}
 
-	members, _, err := s.writer.Targets(ctx,
+	members, _, err := s.writer.Members(ctx,
 		Target{Scope: query.Scope, ServerID: query.ServerID, GroupID: query.GroupID})
 	if err != nil {
 		return Page{}, err
@@ -172,7 +172,7 @@ func (s *Service) States(ctx context.Context) (map[int64]State, error) {
 func (s *Service) Status(ctx context.Context, query Query) (Status, error) {
 	target := Target{Scope: query.Scope, ServerID: query.ServerID, GroupID: query.GroupID}
 
-	members, groupName, err := s.writer.Targets(ctx, target)
+	members, groupName, err := s.writer.Members(ctx, target)
 	if err != nil {
 		return Status{}, err
 	}

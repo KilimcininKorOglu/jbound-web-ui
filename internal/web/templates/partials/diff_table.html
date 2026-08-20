@@ -26,7 +26,7 @@
          removes, so it needs no source and it takes nothing away from the
          server whose extra record was the one worth keeping. */}}
     <div class="dns-toolbar mt-3 mb-0">
-      <button class="btn btn-primary" type="button" data-field="repair-all"
+      <button class="btn btn-create" type="button" data-field="repair-all"
               hx-post="/diff/repair-all" hx-include="#diff-controls"
               hx-target="#record-panel" hx-swap="innerHTML"
               hx-confirm="{{t "diff.repair_all_question"}}"
@@ -38,9 +38,10 @@
     {{end}}
 
     {{if and .SourceName .IsAdmin}}
-    {{/* Outlined and in the danger colour, because this one deletes. */}}
+    {{/* In the colour of a deletion, because that is what separates this one
+         from the button above it. */}}
     <div class="dns-toolbar mt-2 mb-0">
-      <button class="btn btn-outline-danger" type="button" data-field="sync-from-source"
+      <button class="btn btn-outline-delete" type="button" data-field="sync-from-source"
               hx-post="/diff/sync" hx-include="#diff-controls"
               hx-target="#record-panel" hx-swap="innerHTML"
               hx-confirm="{{tf "diff.sync_question" .SourceName}}"
@@ -103,9 +104,9 @@
           </td>
           {{end}}
 
-          <td class="text-end">
+          <td class="row-actions">
             {{if not .Match}}
-            <button class="btn btn-sm btn-outline-primary" type="button"
+            <button class="btn btn-sm btn-outline-create" type="button"
                     data-field="repair"
                     hx-post="/diff/repair" hx-include="#diff-controls"
                     hx-vals='{"fqdn": "{{.FQDN}}", "type": "{{.Type}}", "value": "{{.Value}}", "priority": "{{.Priority}}"}'

@@ -55,8 +55,10 @@
           <td class="text-muted">
             {{if .LastSeenAt}}{{localTimePtr .LastSeenAt}}{{else}}{{t "servers.never"}}{{end}}
           </td>
-          <td class="text-end">
-            <button class="btn btn-sm btn-outline-primary" type="button"
+          <td class="row-actions">
+            {{/* Five actions on one row, and the colour of each says what it
+                 does: blue tests, grey shows, amber changes, red removes. */}}
+            <button class="btn btn-sm btn-outline-test" type="button"
                     hx-post="/servers/{{.ID}}/test" hx-target="#server-panel" hx-swap="innerHTML">
               {{t "servers.test"}}
             </button>
@@ -65,19 +67,19 @@
                  re-display it would be a way to collect the credentials of the
                  whole fleet. */}}
             {{if ne .Transport "agent"}}
-            <button class="btn btn-sm btn-outline-primary" type="button"
+            <button class="btn btn-sm btn-outline-read" type="button"
                     hx-get="/servers/{{.ID}}/key" hx-target="#server-panel" hx-swap="innerHTML">
               {{t "servers.key"}}
             </button>
             {{end}}
-            <button class="btn btn-sm btn-outline-primary" type="button"
+            <button class="btn btn-sm btn-outline-edit" type="button"
                     hx-get="/servers/{{.ID}}/edit" hx-target="#server-panel" hx-swap="innerHTML">
               {{t "common.edit"}}
             </button>
             {{/* Offered only where there is something to put back, so the
                  button never answers with nothing to restore. */}}
             {{if .HasBackup}}
-            <button class="btn btn-sm btn-outline-warning" type="button"
+            <button class="btn btn-sm btn-outline-edit" type="button"
                     hx-post="/servers/{{.ID}}/restore-file"
                     hx-target="#server-panel" hx-swap="innerHTML"
                     hx-confirm="{{tf "servers.restore_question" .Name}}"
@@ -85,7 +87,7 @@
               {{t "servers.restore"}}
             </button>
             {{end}}
-            <button class="btn btn-sm btn-outline-danger" type="button"
+            <button class="btn btn-sm btn-outline-delete" type="button"
                     hx-delete="/servers/{{.ID}}" hx-target="#server-panel" hx-swap="innerHTML"
                     hx-confirm="{{tf "servers.delete_question" .Name}}"
                     data-confirm-title="{{t "servers.delete_title"}}">
@@ -108,7 +110,7 @@
 <div class="card">
   <div class="card-header d-flex align-items-center justify-content-between">
     <h2 class="h5 mb-0">{{t "servers.groups"}}</h2>
-    <button class="btn btn-primary btn-sm" type="button"
+    <button class="btn btn-create btn-sm" type="button"
             hx-get="/groups/new" hx-target="#server-panel" hx-swap="innerHTML">
       <i class="bx bx-plus" aria-hidden="true"></i> {{t "servers.add_group"}}
     </button>
@@ -138,12 +140,12 @@
             {{if .SourceName}}{{.SourceName}}
             {{else}}<span class="text-muted">{{t "servers.no_source"}}</span>{{end}}
           </td>
-          <td class="text-end">
-            <button class="btn btn-sm btn-outline-primary" type="button"
+          <td class="row-actions">
+            <button class="btn btn-sm btn-outline-edit" type="button"
                     hx-get="/groups/{{.ID}}/edit" hx-target="#server-panel" hx-swap="innerHTML">
               {{t "common.edit"}}
             </button>
-            <button class="btn btn-sm btn-outline-danger" type="button"
+            <button class="btn btn-sm btn-outline-delete" type="button"
                     hx-delete="/groups/{{.ID}}" hx-target="#server-panel" hx-swap="innerHTML"
                     hx-confirm="{{tf "servers.group_delete_question" .Name}}"
                     data-confirm-title="{{t "servers.group_delete_title"}}">

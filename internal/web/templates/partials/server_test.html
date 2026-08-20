@@ -36,10 +36,10 @@
           hx-confirm="{{if .Result.HostKeyChanged}}{{tf "servertest.replace_question" .Server.Name}}{{else}}{{tf "servertest.approve_question" .Server.Name}}{{end}}"
           data-confirm-title="{{if .Result.HostKeyChanged}}{{t "servertest.replace_title"}}{{else}}{{t "servertest.approve_title"}}{{end}}">
       <input type="hidden" name="fingerprint" value="{{.Result.HostKey.Fingerprint}}">
-      <button class="btn btn-primary" type="submit" data-action-name="trust">
+      <button class="btn btn-create" type="submit" data-action-name="trust">
         {{if .Result.HostKeyChanged}}{{t "servertest.replace"}}{{else}}{{t "servertest.approve"}}{{end}}
       </button>
-      <button class="btn btn-outline-secondary" type="button" data-action="close-panel">
+      <button class="btn btn-cancel" type="button" data-action="close-panel">
         {{t "common.cancel"}}
       </button>
     </form>
@@ -67,12 +67,12 @@
     <pre class="border rounded p-3 mb-3" data-field="detail">{{.Result.Message}}</pre>
 
     <div class="dns-toolbar">
-      <button class="btn btn-outline-primary" type="button"
+      <button class="btn btn-outline-test" type="button"
               hx-post="/servers/{{.Server.ID}}/test"
               hx-target="#server-panel" hx-swap="innerHTML">
         {{t "servertest.retry"}}
       </button>
-      <button class="btn btn-outline-secondary" type="button" data-action="close-panel">
+      <button class="btn btn-cancel" type="button" data-action="close-panel">
         {{t "servertest.close"}}
       </button>
     </div>

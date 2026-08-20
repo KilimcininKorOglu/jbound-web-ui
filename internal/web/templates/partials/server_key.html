@@ -31,7 +31,7 @@
   {{end}}
 
   <div class="dns-toolbar">
-    <button class="btn btn-primary" type="button"
+    <button class="btn btn-test" type="button"
             hx-post="/servers/{{.Server.ID}}/test"
             hx-target="#server-panel" hx-swap="innerHTML">
       {{t "serverkey.test"}}
@@ -43,7 +43,7 @@
          target by hand, so replacing one is a visit to that host rather than a
          button here. */}}
     {{if ne .Server.Transport "agent"}}
-    <button class="btn btn-outline-danger" type="button" data-field="rotate-key"
+    <button class="btn btn-outline-delete" type="button" data-field="rotate-key"
             hx-post="/servers/{{.Server.ID}}/rotate-key"
             hx-target="#server-panel" hx-swap="innerHTML"
             hx-confirm="{{tf "serverkey.rotate_question" .Server.Name}}"
@@ -51,7 +51,7 @@
       {{t "serverkey.rotate"}}
     </button>
     {{end}}
-    <button class="btn btn-outline-secondary" type="button" data-action="close-panel">
+    <button class="btn btn-cancel" type="button" data-action="close-panel">
       {{t "serverkey.close"}}
     </button>
   </div>

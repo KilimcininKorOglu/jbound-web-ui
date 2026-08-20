@@ -46,14 +46,14 @@
             {{if policy .Type}}<span data-field="blocked">{{t "dns.blocked"}}</span>
             {{else}}{{if eq .Type "MX"}}<span class="text-body-secondary">{{.Priority}}</span> {{end}}{{.Value}}{{end}}
           </td>
-          <td class="text-end">
-            <button class="btn btn-sm btn-outline-primary" type="button"
+          <td class="row-actions">
+            <button class="btn btn-sm btn-outline-edit" type="button"
                     hx-get="/dns/records/edit?fqdn={{.FQDN}}&type={{.Type}}&value={{.Value}}&priority={{.Priority}}"
                     hx-include="#record-controls"
                     hx-target="#record-panel" hx-swap="innerHTML">
               {{t "common.edit"}}
             </button>
-            <button class="btn btn-sm btn-outline-danger" type="button"
+            <button class="btn btn-sm btn-outline-delete" type="button"
                     hx-delete="/dns/records"
                     hx-vals='{"fqdn": "{{.FQDN}}", "type": "{{.Type}}", "value": "{{.Value}}", "priority": "{{.Priority}}"}'
                     hx-include="#record-controls"

@@ -1,9 +1,9 @@
 {{define "content"}}
-<div class="d-flex flex-wrap align-items-center justify-content-between mb-3">
-  <h1 class="h5 mb-0">{{t "nav.sessions"}}</h1>
+<div class="page-head">
+  <h1>{{t "nav.sessions"}}</h1>
 
   {{if .Data.Total}}
-  <button class="btn btn-outline-danger btn-sm" type="button" data-field="revoke-all"
+  <button class="btn btn-outline-delete btn-sm" type="button" data-field="revoke-all"
           hx-post="/sessions/revoke-all"
           hx-target="#session-table" hx-swap="innerHTML"
           hx-confirm="{{tf "sessions.revoke_all_question" .Data.Total}}"

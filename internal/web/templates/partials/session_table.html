@@ -34,7 +34,7 @@
           <td class="text-muted">{{.Count}}</td>
           <td class="text-muted text-nowrap">{{localTime .FirstSeen}}</td>
           <td class="text-muted text-nowrap">{{localTime .LastActive}}</td>
-          <td class="text-end">
+          <td class="row-actions">
             {{if and .Self (eq .Count 1)}}
             <span class="text-body-secondary small">{{t "sessions.only_yours"}}</span>
             {{else}}
@@ -44,7 +44,7 @@
                   data-confirm-title="{{t "sessions.revoke_title"}}">
               <input type="hidden" name="uid" value="{{.UID}}">
               <input type="hidden" name="username" value="{{.Username}}">
-              <button class="btn btn-outline-danger btn-sm" type="submit"
+              <button class="btn btn-outline-delete btn-sm" type="submit"
                       data-field="revoke-{{.UID}}">
                 {{if .Self}}{{t "sessions.revoke_others"}}{{else}}{{t "sessions.revoke"}}{{end}}
               </button>

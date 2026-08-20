@@ -30,7 +30,7 @@
           {{end}}
         </div>
         {{if not $.Exists}}
-        <button class="btn btn-sm btn-primary mt-2" type="button" data-field="conflict-edit"
+        <button class="btn btn-sm btn-edit mt-2" type="button" data-field="conflict-edit"
                 hx-get="{{.EditURL}}" hx-target="#record-panel" hx-swap="innerHTML">
           {{t "record.conflict_edit"}}
         </button>
@@ -40,7 +40,7 @@
     </ul>
 
     <div class="dns-toolbar mt-3">
-      <button class="btn btn-outline-secondary" type="button" data-action="close-record-panel">
+      <button class="btn btn-cancel" type="button" data-action="close-record-panel">
         {{if .Exists}}{{t "common.close"}}{{else}}{{t "common.cancel"}}{{end}}
       </button>
     </div>

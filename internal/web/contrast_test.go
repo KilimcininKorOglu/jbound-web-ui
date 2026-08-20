@@ -51,8 +51,23 @@ var textPairs = []pair{
 	// A refusal under a control and an outlined button sit on the card rather
 	// than on a tint of their own.
 	{"refused field", "--panel-danger", "--panel-surface"},
-	{"outlined danger button", "--panel-danger", "--panel-surface"},
 	{"status word", "--panel-success", "--panel-surface"},
+
+	// The outlined half of the button vocabulary, on the card a table sits on.
+	{"outlined create button", "--panel-success", "--panel-surface"},
+	{"outlined edit button", "--panel-warning", "--panel-surface"},
+	{"outlined delete button", "--panel-danger", "--panel-surface"},
+	{"outlined test button", "--panel-accent", "--panel-surface"},
+	{"outlined read button", "--panel-secondary", "--panel-surface"},
+
+	// The filled half. One label colour serves every fill, which only holds
+	// while each fill is far enough from it.
+	{"filled create button", "--panel-on-accent", "--panel-success"},
+	{"filled edit button", "--panel-on-accent", "--panel-warning"},
+	{"filled delete button", "--panel-on-accent", "--panel-danger"},
+	{"filled test button", "--panel-on-accent", "--panel-accent"},
+	{"filled read button", "--panel-on-accent", "--panel-secondary"},
+	{"apply button", "--panel-on-accent", "--panel-accent-alt"},
 }
 
 // controlPairs is every element WCAG 1.4.11 asks 3:1 of: the edge that says
@@ -69,6 +84,16 @@ var controlPairs = []pair{
 	{"status dot, up", "--panel-success", "--panel-surface"},
 	{"status dot, unapplied", "--panel-warning", "--panel-surface"},
 	{"status dot, down", "--panel-danger", "--panel-surface"},
+
+	// The edge of an outlined button, which is what says where it ends, and
+	// the fill of a solid one against the page behind it.
+	{"create button edge", "--panel-success", "--panel-surface"},
+	{"edit button edge", "--panel-warning", "--panel-surface"},
+	{"delete button edge", "--panel-danger", "--panel-surface"},
+	{"test button edge", "--panel-accent", "--panel-surface"},
+	{"read button edge", "--panel-secondary", "--panel-surface"},
+	{"apply button against the page", "--panel-accent-alt", "--panel-bg"},
+	{"apply button against a card", "--panel-accent-alt", "--panel-surface"},
 }
 
 // Both palettes are measured, and by the same table.

@@ -1,6 +1,6 @@
 {{define "content"}}
-<div class="d-flex flex-wrap align-items-center justify-content-between mb-3">
-  <h1 class="h5 mb-0">{{t "nav.record_diff"}}</h1>
+<div class="page-head">
+  <h1>{{t "nav.record_diff"}}</h1>
 </div>
 
 {{/* The comparison is between the servers of one group. A single server has
@@ -57,7 +57,7 @@
   </div>
 </div>
 
-<div id="record-panel" class="mb-4" aria-live="polite"></div>
+<div id="record-panel" class="panel-slot" aria-live="polite"></div>
 
 <div id="diff-table"
      hx-get="/diff/table" hx-include="#diff-controls"

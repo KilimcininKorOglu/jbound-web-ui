@@ -1,27 +1,20 @@
 {{define "content"}}
-<div class="row">
-  <div class="col-12 mb-4">
-    <div class="card">
-      <div class="card-header d-flex align-items-center justify-content-between">
-        <h1 class="h5 mb-0">{{t "nav.servers"}}</h1>
-        <button class="btn btn-primary btn-sm" type="button"
-                hx-get="/servers/new" hx-target="#server-panel" hx-swap="innerHTML">
-          <i class="bx bx-plus" aria-hidden="true"></i> {{t "servers.add"}}
-        </button>
-      </div>
-      <div class="card-body">
-        <div id="server-panel" aria-live="polite"></div>
-      </div>
-    </div>
-  </div>
-
-  <div class="col-12">
-    {{/* A connection test and a host key approval change the status of a row
-         but swap the panel, so the tables reload themselves on the event
-         those handlers raise. */}}
-    <div id="server-tables"
-         hx-get="/servers/table" hx-trigger="servers-changed from:body"
-         hx-swap="innerHTML">{{template "server-tables" .Data}}</div>
-  </div>
+<div class="page-head">
+  <h1>{{t "nav.servers"}}</h1>
+  <button class="btn btn-create btn-sm" type="button"
+          hx-get="/servers/new" hx-target="#server-panel" hx-swap="innerHTML">
+    <i class="bx bx-plus" aria-hidden="true"></i> {{t "servers.add"}}
+  </button>
 </div>
+
+{{/* The form and every result of a row action land here. Each of them draws
+     its own card, so the slot is empty and takes no room until one does. */}}
+<div id="server-panel" class="panel-slot" aria-live="polite"></div>
+
+{{/* A connection test and a host key approval change the status of a row
+     but swap the panel, so the tables reload themselves on the event
+     those handlers raise. */}}
+<div id="server-tables"
+     hx-get="/servers/table" hx-trigger="servers-changed from:body"
+     hx-swap="innerHTML">{{template "server-tables" .Data}}</div>
 {{end}}

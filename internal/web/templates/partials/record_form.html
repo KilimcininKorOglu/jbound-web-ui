@@ -30,7 +30,7 @@
       {{range .Rows}}{{template "record-row" .}}{{end}}
 
       <div class="mt-2">
-        <button class="btn btn-sm btn-outline-secondary" type="button"
+        <button class="btn btn-sm btn-outline-create" type="button"
                 data-action="add-record-row">{{t "record.add_row"}}</button>
         <span class="form-text ms-2">{{t "record.add_row_help"}}</span>
       </div>
@@ -132,10 +132,10 @@
       {{end}}
 
       <div class="dns-toolbar mt-4">
-        <button class="btn btn-primary" type="submit">
+        <button class="btn btn-create" type="submit">
           {{if .IsNew}}{{t "record.submit_add"}}{{else}}{{t "record.submit_edit"}}{{end}}
         </button>
-        <button class="btn btn-outline-secondary" type="button" data-action="close-record-panel">
+        <button class="btn btn-cancel" type="button" data-action="close-record-panel">
           {{t "common.cancel"}}
         </button>
       </div>
@@ -181,7 +181,7 @@
   </div>
 
   <div class="col-md-1">
-    <button class="btn btn-outline-danger btn-icon" type="button"
+    <button class="btn btn-outline-delete btn-icon" type="button"
             data-action="remove-record-row" aria-label="{{t "record.remove_row"}}">
       <i class="bx bx-x" aria-hidden="true"></i>
     </button>

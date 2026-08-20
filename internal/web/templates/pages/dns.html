@@ -1,18 +1,18 @@
 {{define "content"}}
-<div class="d-flex flex-wrap align-items-center justify-content-between mb-3">
-  <h1 class="h5 mb-0">{{t "nav.dns_records"}}</h1>
+<div class="page-head">
+  <h1>{{t "nav.dns_records"}}</h1>
   <div class="dns-toolbar">
-    <button class="btn btn-outline-secondary btn-sm" type="button"
+    <button class="btn btn-outline-read btn-sm" type="button"
             hx-post="/dns/refresh" hx-include="#record-controls"
             hx-target="#record-table" hx-swap="innerHTML">
       <i class="bx bx-refresh" aria-hidden="true"></i> {{t "dns.refresh"}}
     </button>
-    <button class="btn btn-outline-secondary btn-sm" type="button"
+    <button class="btn btn-outline-read btn-sm" type="button"
             hx-get="/dns/query" hx-include="#record-controls"
             hx-target="#record-panel" hx-swap="innerHTML">
       <i class="bx bx-search" aria-hidden="true"></i> {{t "dns.query"}}
     </button>
-    <button class="btn btn-primary btn-sm" type="button"
+    <button class="btn btn-create btn-sm" type="button"
             hx-get="/dns/records/new" hx-include="#record-controls"
             hx-target="#record-panel" hx-swap="innerHTML">
       <i class="bx bx-plus" aria-hidden="true"></i> {{t "dns.add_record"}}
@@ -95,7 +95,7 @@
 
 <div id="record-status" class="mb-4" aria-live="polite">{{template "record-status" .Data}}</div>
 
-<div id="record-panel" class="mb-4" aria-live="polite"></div>
+<div id="record-panel" class="panel-slot" aria-live="polite"></div>
 
 {{/* A change swaps the panel, so the table reloads itself on the event
      rather than being swapped in from three different places. */}}

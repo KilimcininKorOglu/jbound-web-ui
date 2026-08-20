@@ -44,8 +44,17 @@
     --panel-accent-soft: rgba(11, 111, 196, 0.10);
     --panel-on-accent: #FFFFFF;
 
+    /* The second accent, and it belongs to one action: applying the rules.
+       That is the only thing the panel does that reaches the running
+       resolvers, so it answers to none of the other colours. */
+    --panel-accent-alt: #6B3FD4;
+
     --panel-focus: #0B6FC4;
     --panel-hover: rgba(15, 20, 25, 0.03);
+
+    /* How far a filled button moves when it is pressed. Darker on a light
+       theme, brighter on a dark one. */
+    --panel-press: 0.92;
 
     --panel-success: #00714D;
     --panel-success-bg: #E6F4EE;
@@ -56,7 +65,7 @@
     --panel-danger: #B4231A;
     --panel-danger-bg: #FBE9E7;
     --panel-secondary: #536471;
-    --panel-secondary-bg: #EFF3F4;
+    --panel-secondary-bg: #E1E8ED;
 
     /* Shape. A pill for anything pressed, a card for anything that holds
        content, a small radius for anything typed into. */
@@ -98,6 +107,7 @@ html[data-color-scheme="dark"] {
     --panel-accent: #1D9BF0;
     --panel-accent-strong: #6EC1F6;
     --panel-accent-soft: rgba(29, 155, 240, 0.15);
+    --panel-accent-alt: #B78BF7;
 
     /* Black on the accent, because white on it reads at 3.00:1. The blue is
        bright enough to carry dark text, which is what the ratio says. */
@@ -105,6 +115,7 @@ html[data-color-scheme="dark"] {
 
     --panel-focus: #1D9BF0;
     --panel-hover: rgba(255, 255, 255, 0.03);
+    --panel-press: 1.12;
 
     --panel-success: #00BA7C;
     --panel-success-bg: #06251A;
@@ -115,7 +126,7 @@ html[data-color-scheme="dark"] {
     --panel-danger: #F8626B;
     --panel-danger-bg: #2E1113;
     --panel-secondary: #8B98A5;
-    --panel-secondary-bg: #1D1F23;
+    --panel-secondary-bg: #262A2E;
 }
 
 /* The same palette for a reader who chose nothing and whose system asks for
@@ -137,10 +148,12 @@ html[data-color-scheme="dark"] {
         --panel-accent: #1D9BF0;
         --panel-accent-strong: #6EC1F6;
         --panel-accent-soft: rgba(29, 155, 240, 0.15);
+        --panel-accent-alt: #B78BF7;
         --panel-on-accent: #000000;
 
         --panel-focus: #1D9BF0;
         --panel-hover: rgba(255, 255, 255, 0.03);
+        --panel-press: 1.12;
 
         --panel-success: #00BA7C;
         --panel-success-bg: #06251A;
@@ -151,7 +164,7 @@ html[data-color-scheme="dark"] {
         --panel-danger: #F8626B;
         --panel-danger-bg: #2E1113;
         --panel-secondary: #8B98A5;
-        --panel-secondary-bg: #1D1F23;
+        --panel-secondary-bg: #262A2E;
     }
 }
 
@@ -209,6 +222,23 @@ a:hover {
     text-decoration: underline;
 }
 
+/* The browser indents a definition by forty pixels of its own, which puts the
+   value on the next line whenever a term and its value are meant to sit side
+   by side in two columns. */
+dl {
+    margin: 0;
+}
+
+dd {
+    margin: 0;
+}
+
+/* A term and its value are one line, so the rows sit closer than the gutter a
+   form asks for. */
+dl.row {
+    --panel-gutter: var(--panel-space-2);
+}
+
 code, pre, samp, kbd {
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-size: 0.9375em;
@@ -246,7 +276,7 @@ img {
     border-right: 1px solid var(--panel-border);
     background-color: var(--panel-bg);
     overflow-y: auto;
-    z-index: 100;
+    z-index: 300;
 }
 
 .app-body {
@@ -410,8 +440,11 @@ img {
 /* --- The drawer --------------------------------------------------------- */
 
 /* On a narrow screen the rail slides in over the page. The toggle and the
-   scrim are hidden everywhere else, so a wide screen carries neither. */
-.app-drawer-toggle,
+   scrim are hidden everywhere else, so a wide screen carries neither.
+
+   The toggle is named through its header, because it is also a .btn and a
+   single class would lose to the display the button sets further down. */
+.app-header .app-drawer-toggle,
 .app-scrim {
     display: none;
 }
@@ -435,7 +468,7 @@ img {
         border-right: 0;
     }
 
-    .app-drawer-toggle {
+    .app-header .app-drawer-toggle {
         display: inline-flex;
     }
 
@@ -443,7 +476,7 @@ img {
         display: block;
         position: fixed;
         inset: 0;
-        z-index: 90;
+        z-index: 250;
         background-color: rgba(0, 0, 0, 0.5);
     }
 }
@@ -468,12 +501,10 @@ img {
 .gap-3 { gap: var(--panel-space-3); }
 .ms-auto { margin-left: auto; }
 
+/* The wide screen variant has to outweigh .d-none, which is the whole point
+   of the pair: hidden by default, shown once there is room. */
 @media (min-width: 768px) {
-    .d-md-flex { display: flex; }
-}
-
-@media (min-width: 1200px) {
-    .d-xl-none { display: none; }
+    .d-md-flex { display: flex !important; }
 }
 
 /* The grid. Twelve columns, and the gutter classes the forms ask for. */
@@ -629,57 +660,78 @@ img {
     padding: 0;
 }
 
-.btn-primary {
-    background-color: var(--panel-accent);
-    border-color: var(--panel-accent);
-    color: var(--panel-on-accent);
-}
+/* Colour says what a button does.
+ *
+ * A button is named after what pressing it does, never after where it sits or
+ * how loud it should look, and every button of the same kind carries the same
+ * colour on every page. That is the whole rule; a reader who has learned that
+ * red removes something has learned it for the panel rather than for one
+ * table.
+ *
+ *   create   green    adds something, or saves a form
+ *   edit     amber    changes something that is already there
+ *   delete   red      takes something away
+ *   test     blue     probes something and reports back, changing nothing
+ *   read     grey     shows something, changing nothing
+ *   apply    violet   makes what is written take effect on the resolvers
+ *   cancel   plain    closes what is open and does nothing else
+ *
+ * Filled means this is the action the panel or the form is for. Outlined means
+ * it is one of several offered, which is what a table row holds.
+ */
 
-.btn-primary:hover:not(:disabled) {
-    background-color: var(--panel-accent-strong);
-    border-color: var(--panel-accent-strong);
-}
-
-/* The outlined ones. A border and the text, nothing filled, so the one filled
-   button on a page is the one the page is about. */
-.btn-outline-primary {
-    border-color: var(--panel-accent);
-    color: var(--panel-accent);
-}
-
-.btn-outline-secondary {
-    border-color: var(--panel-control-border);
-    color: var(--panel-text);
-}
-
-.btn-outline-danger {
-    border-color: var(--panel-danger);
-    color: var(--panel-danger);
-}
-
-.btn-outline-warning {
-    border-color: var(--panel-warning);
-    color: var(--panel-warning);
-}
-
-.btn-outline-primary:hover:not(:disabled),
-.btn-outline-secondary:hover:not(:disabled),
-.btn-outline-danger:hover:not(:disabled),
-.btn-outline-warning:hover:not(:disabled) {
-    background-color: var(--panel-hover);
-}
-
-/* Apply Rules. It is what makes a written file take effect, so it is the
-   filled button of the page it sits on. */
+.btn-create,
+.btn-edit,
+.btn-delete,
+.btn-test,
+.btn-read,
 .btn-apply {
-    background-color: var(--panel-accent);
-    border-color: var(--panel-accent);
+    /* White on a light theme, black on a dark one. Every fill below was
+       chosen so that this one label colour reads on all of them. */
     color: var(--panel-on-accent);
 }
 
+.btn-create {
+    background-color: var(--panel-success);
+    border-color: var(--panel-success);
+}
+
+.btn-edit {
+    background-color: var(--panel-warning);
+    border-color: var(--panel-warning);
+}
+
+.btn-delete {
+    background-color: var(--panel-danger);
+    border-color: var(--panel-danger);
+}
+
+.btn-test {
+    background-color: var(--panel-accent);
+    border-color: var(--panel-accent);
+}
+
+.btn-read {
+    background-color: var(--panel-secondary);
+    border-color: var(--panel-secondary);
+}
+
+/* Apply Rules, and nothing else. It is the one action that reaches the running
+   resolvers rather than the file, so it is neither a save nor a test. */
+.btn-apply {
+    background-color: var(--panel-accent-alt);
+    border-color: var(--panel-accent-alt);
+}
+
+/* The press. A light theme darkens and a dark one brightens, so the label
+   gains contrast either way rather than losing it. */
+.btn-create:hover:not(:disabled),
+.btn-edit:hover:not(:disabled),
+.btn-delete:hover:not(:disabled),
+.btn-test:hover:not(:disabled),
+.btn-read:hover:not(:disabled),
 .btn-apply:hover:not(:disabled) {
-    background-color: var(--panel-accent-strong);
-    border-color: var(--panel-accent-strong);
+    filter: brightness(var(--panel-press));
 }
 
 /* Nothing to apply. An outline rather than a filled button that cannot be
@@ -690,6 +742,48 @@ img {
     border-color: var(--panel-control-border);
     color: var(--panel-text-muted);
     opacity: 1;
+}
+
+/* The outlined half of the same vocabulary. */
+.btn-outline-create {
+    border-color: var(--panel-success);
+    color: var(--panel-success);
+}
+
+.btn-outline-edit {
+    border-color: var(--panel-warning);
+    color: var(--panel-warning);
+}
+
+.btn-outline-delete {
+    border-color: var(--panel-danger);
+    color: var(--panel-danger);
+}
+
+.btn-outline-test {
+    border-color: var(--panel-accent);
+    color: var(--panel-accent);
+}
+
+.btn-outline-read {
+    border-color: var(--panel-secondary);
+    color: var(--panel-secondary);
+}
+
+/* Cancel and close. They carry no colour of their own, because leaving
+   something alone is not an action worth a hue. */
+.btn-cancel {
+    border-color: var(--panel-control-border);
+    color: var(--panel-text);
+}
+
+.btn-outline-create:hover:not(:disabled),
+.btn-outline-edit:hover:not(:disabled),
+.btn-outline-delete:hover:not(:disabled),
+.btn-outline-test:hover:not(:disabled),
+.btn-outline-read:hover:not(:disabled),
+.btn-cancel:hover:not(:disabled) {
+    background-color: var(--panel-hover);
 }
 
 /* The dismiss control of an alert. Drawn rather than an image, so it takes
@@ -896,17 +990,25 @@ img {
     cursor: pointer;
 }
 
+/* Two columns: the box, and everything that describes it. The help text and a
+   refusal sit under the label rather than beside it, which is what a row does
+   when it is laid out as one line. */
 .form-check {
-    display: flex;
-    align-items: center;
-    gap: var(--panel-space-2);
+    display: grid;
+    grid-template-columns: auto 1fr;
+    column-gap: var(--panel-space-2);
     margin-bottom: var(--panel-space-2);
+}
+
+.form-check > :not(.form-check-input) {
+    grid-column: 2;
 }
 
 .form-check-input {
     width: 18px;
     height: 18px;
     margin: 0;
+    align-self: center;
     accent-color: var(--panel-accent);
     flex-shrink: 0;
 }
@@ -1096,6 +1198,59 @@ img {
 /* ========================================================================
    4. Panel
    ======================================================================== */
+
+/* --- Page structure ------------------------------------------------------ */
+
+/* The name of the page and the actions that belong to the whole of it. */
+.page-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--panel-space-3);
+    margin-bottom: var(--panel-space-4);
+}
+
+.page-head h1 {
+    margin: 0;
+    font-size: 20px;
+}
+
+/* The name of a block inside a page. */
+.section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--panel-space-3);
+    margin-bottom: var(--panel-space-3);
+}
+
+.section-head h2 {
+    margin: 0;
+    font-size: 17px;
+}
+
+/* Where a fragment lands. It draws its own card, so an empty one takes no
+   room rather than leaving a blank band on the page. */
+.panel-slot:not(:empty) {
+    margin-bottom: var(--panel-space-6);
+}
+
+/* The actions of one table row. A server offers five of them, which is more
+   than fits on a narrow screen, so they wrap with an even gap instead of
+   running together. */
+.row-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--panel-space-2);
+
+    /* Without a floor the table hands this column whatever is left and the
+       five buttons stack one per line, which makes the row four times as tall
+       as the record it is about. */
+    min-width: 13rem;
+}
 
 /* --- Toolbars ----------------------------------------------------------- */
 

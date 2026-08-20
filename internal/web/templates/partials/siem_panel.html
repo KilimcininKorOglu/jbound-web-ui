@@ -78,8 +78,8 @@
           <div class="form-text">{{t "siem.receiver_help"}}</div>
 
           <div class="dns-toolbar mt-4">
-            <button class="btn btn-primary" type="submit">{{t "siem.receiver_save"}}</button>
-            <button class="btn btn-outline-secondary" type="button"
+            <button class="btn btn-create" type="submit">{{t "siem.receiver_save"}}</button>
+            <button class="btn btn-outline-test" type="button"
                     data-field="send-test"
                     hx-post="/siem/test" hx-target="#siem-panel" hx-swap="innerHTML">
               {{t "siem.send_test"}}
@@ -110,7 +110,7 @@
 <div class="card">
   <div class="card-header d-flex flex-wrap align-items-center justify-content-between">
     <h2 class="h6 mb-0">{{t "siem.recent"}}</h2>
-    <button class="btn btn-outline-secondary btn-sm" type="button"
+    <button class="btn btn-outline-read btn-sm" type="button"
             hx-get="/siem/panel" hx-target="#siem-panel" hx-swap="innerHTML">
       <i class="bx bx-refresh" aria-hidden="true"></i> {{t "common.refresh"}}
     </button>

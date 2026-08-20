@@ -451,6 +451,31 @@ func TestThePlainUserSeesNoSSHCoordinates(t *testing.T) {
 	}
 }
 
+func TestTheAddressColumnFollowsTheTransport(t *testing.T) {
+	// An agent server has no account and no sshd. Printing the SSH form for it
+	// told the operator their fleet had a login it does not have, and named a
+	// port nothing listens on.
+	env := newTestEnv(t)
+	admin := env.login(t, "dnsadmin")
+
+	if recorder := env.addAgentServer(t, admin, "dns4"); recorder.Code != http.StatusOK {
+		t.Fatalf("cannot add the agent server: %d", recorder.Code)
+	}
+
+	body := env.do(t, httptest.NewRequest(http.MethodGet, "/system/status", nil),
+		admin).Body.String()
+
+	if !strings.Contains(body, "dns4.example:8443") {
+		t.Errorf("the agent server is not shown on its agent port:\n%s", body)
+	}
+	if strings.Contains(body, "@dns4.example") {
+		t.Error("the agent server is shown with an account it does not have")
+	}
+	if strings.Contains(body, "dns4.example:22") {
+		t.Error("the agent server is shown on the SSH port")
+	}
+}
+
 func TestTheCacheErrorRowSpansTheWholeTable(t *testing.T) {
 	// The address column comes and goes with the reader, and a colspan that
 	// does not follow it breaks the table for whoever is left.

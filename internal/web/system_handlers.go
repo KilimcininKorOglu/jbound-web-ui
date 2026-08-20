@@ -164,6 +164,19 @@ func (a *App) systemPageData(r *http.Request) (systemPageData, error) {
 	}, nil
 }
 
+// endpointOf is the address the panel reaches one server on.
+//
+// The two transports meet a server at different places, and printing the SSH
+// form for both put an account and a port on an agent server that has neither.
+// An operator reading `dnsops@dns4:22` for a machine with no sshd is being told
+// something that is not true about their own fleet.
+func endpointOf(record server.Server) string {
+	if record.Transport == server.TransportAgent {
+		return fmt.Sprintf("%s:%d", record.Host, record.AgentPort)
+	}
+	return fmt.Sprintf("%s@%s:%d", record.SSHUser, record.Host, record.SSHPort)
+}
+
 // systemStatus reads the fleet from the cache.
 //
 // The page opens no connection. What it shows is what the refresher last saw,
@@ -197,8 +210,7 @@ func (a *App) systemStatus(r *http.Request) (systemStatus, error) {
 			CacheError:    cacheErrorText(catalog, state.LastError),
 		}
 		if admin {
-			row.Endpoint = fmt.Sprintf("%s@%s:%d",
-				record.SSHUser, record.Host, record.SSHPort)
+			row.Endpoint = endpointOf(record)
 		}
 		rows = append(rows, row)
 	}

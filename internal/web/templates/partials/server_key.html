@@ -5,55 +5,57 @@
      which is shown here and nowhere else: a page that could re-display it
      would be a way to collect the credentials of the whole fleet. */}}
 {{define "server-key"}}
-<div class="mb-3">
-  <h2 class="h6">{{tf "serverkey.title" .Server.Name}}</h2>
+<div class="card">
+  <div class="card-body">
+    <h2 class="h6">{{tf "serverkey.title" .Server.Name}}</h2>
 
-  {{if eq .Server.Transport "agent"}}
-  <p class="text-muted mb-2">{{t "serverkey.token_lead"}}</p>
-  {{template "alert" (alert "warning" (t "serverkey.token_once"))}}
+    {{if eq .Server.Transport "agent"}}
+    <p class="text-muted mb-2">{{t "serverkey.token_lead"}}</p>
+    {{template "alert" (alert "warning" (t "serverkey.token_once"))}}
 
-  <pre class="border rounded p-3 mb-2" data-field="agent-token">{{.Key.PublicKey}}</pre>
-  <p class="text-muted small mb-3">
-    <code>sudo ./deploy/setup-agent.sh -t &lt;token&gt;</code>
-  </p>
-  {{else}}
-  <p class="text-muted mb-2">
-    {{t "serverkey.lead_1"}}
-    <code>~{{.Server.SSHUser}}/.ssh/authorized_keys</code>
-    {{t "serverkey.lead_2"}}
-  </p>
-  {{if .Rotated}}
-  {{template "alert" (alert "warning" (t "serverkey.rotated"))}}
-  {{end}}
-
-  <pre class="border rounded p-3 mb-2" data-field="public-key">{{.Key.PublicKey}}</pre>
-  <p class="text-muted small mb-3">{{t "serverkey.fingerprint"}} <code>{{.Key.Fingerprint}}</code></p>
-  {{end}}
-
-  <div class="dns-toolbar">
-    <button class="btn btn-test" type="button"
-            hx-post="/servers/{{.Server.ID}}/test"
-            hx-target="#server-panel" hx-swap="innerHTML">
-      {{t "serverkey.test"}}
-    </button>
-    {{/* Replacing a leaked key used to mean deleting the server, which takes
-         its cached records, its state and its group membership with it.
-
-         An agent server has no key pair to rotate. Its token is written on the
-         target by hand, so replacing one is a visit to that host rather than a
-         button here. */}}
-    {{if ne .Server.Transport "agent"}}
-    <button class="btn btn-outline-delete" type="button" data-field="rotate-key"
-            hx-post="/servers/{{.Server.ID}}/rotate-key"
-            hx-target="#server-panel" hx-swap="innerHTML"
-            hx-confirm="{{tf "serverkey.rotate_question" .Server.Name}}"
-            data-confirm-title="{{t "serverkey.rotate_title"}}">
-      {{t "serverkey.rotate"}}
-    </button>
+    <pre class="border rounded p-3 mb-2" data-field="agent-token">{{.Key.PublicKey}}</pre>
+    <p class="text-muted small mb-3">
+      <code>sudo ./deploy/setup-agent.sh -t &lt;token&gt;</code>
+    </p>
+    {{else}}
+    <p class="text-muted mb-2">
+      {{t "serverkey.lead_1"}}
+      <code>~{{.Server.SSHUser}}/.ssh/authorized_keys</code>
+      {{t "serverkey.lead_2"}}
+    </p>
+    {{if .Rotated}}
+    {{template "alert" (alert "warning" (t "serverkey.rotated"))}}
     {{end}}
-    <button class="btn btn-cancel" type="button" data-action="close-panel">
-      {{t "serverkey.close"}}
-    </button>
+
+    <pre class="border rounded p-3 mb-2" data-field="public-key">{{.Key.PublicKey}}</pre>
+    <p class="text-muted small mb-3">{{t "serverkey.fingerprint"}} <code>{{.Key.Fingerprint}}</code></p>
+    {{end}}
+
+    <div class="dns-toolbar">
+      <button class="btn btn-test" type="button"
+              hx-post="/servers/{{.Server.ID}}/test"
+              hx-target="#server-panel" hx-swap="innerHTML">
+        {{t "serverkey.test"}}
+      </button>
+      {{/* Replacing a leaked key used to mean deleting the server, which takes
+           its cached records, its state and its group membership with it.
+
+           An agent server has no key pair to rotate. Its token is written on the
+           target by hand, so replacing one is a visit to that host rather than a
+           button here. */}}
+      {{if ne .Server.Transport "agent"}}
+      <button class="btn btn-outline-delete" type="button" data-field="rotate-key"
+              hx-post="/servers/{{.Server.ID}}/rotate-key"
+              hx-target="#server-panel" hx-swap="innerHTML"
+              hx-confirm="{{tf "serverkey.rotate_question" .Server.Name}}"
+              data-confirm-title="{{t "serverkey.rotate_title"}}">
+        {{t "serverkey.rotate"}}
+      </button>
+      {{end}}
+      <button class="btn btn-cancel" type="button" data-action="close-panel">
+        {{t "serverkey.close"}}
+      </button>
+    </div>
   </div>
 </div>
 {{end}}

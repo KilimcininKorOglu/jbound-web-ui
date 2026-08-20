@@ -2,80 +2,82 @@
      tells the operator whether to look at the network, the key, the file or
      the sudoers rules. */}}
 {{define "server-test"}}
-<div>
-  <h2 class="h6">{{tf "servertest.title" .Server.Name}}</h2>
+<div class="card">
+  <div class="card-body">
+    <h2 class="h6">{{tf "servertest.title" .Server.Name}}</h2>
 
-  {{if .Result.OK}}
-    {{template "alert" (alert "success" (t "servertest.ok"))}}
+    {{if .Result.OK}}
+      {{template "alert" (alert "success" (t "servertest.ok"))}}
 
-    <ul class="text-muted small">
-      <li>{{t "servertest.step_connect"}}</li>
-      <li>{{t "servertest.step_read"}}</li>
-      <li>{{t "servertest.step_write"}}</li>
-      <li>{{t "servertest.step_status"}}</li>
-    </ul>
+      <ul class="text-muted small">
+        <li>{{t "servertest.step_connect"}}</li>
+        <li>{{t "servertest.step_read"}}</li>
+        <li>{{t "servertest.step_write"}}</li>
+        <li>{{t "servertest.step_status"}}</li>
+      </ul>
 
-  {{else if .Result.HostKey}}
-    {{if .Result.HostKeyChanged}}
-      {{template "alert" (alert "error" (t "servertest.key_changed"))}}
+    {{else if .Result.HostKey}}
+      {{if .Result.HostKeyChanged}}
+        {{template "alert" (alert "error" (t "servertest.key_changed"))}}
 
-      <p class="mb-2">{{t "servertest.key_changed_help"}}</p>
-    {{else}}
-      {{template "alert" (alert "warning" (t "servertest.key_missing"))}}
-    {{end}}
-
-    <p class="mb-2">
-      {{t "servertest.compare_1"}}
-      <code>ssh-keyscan -t ed25519 {{.Server.Host}}</code>
-      {{t "servertest.compare_2"}}
-    </p>
-    <pre class="border rounded p-3 mb-3" data-field="fingerprint">{{.Result.HostKey.Fingerprint}}</pre>
-
-    <form hx-post="/servers/{{.Server.ID}}/trust"
-          hx-target="#server-panel" hx-swap="innerHTML"
-          hx-confirm="{{if .Result.HostKeyChanged}}{{tf "servertest.replace_question" .Server.Name}}{{else}}{{tf "servertest.approve_question" .Server.Name}}{{end}}"
-          data-confirm-title="{{if .Result.HostKeyChanged}}{{t "servertest.replace_title"}}{{else}}{{t "servertest.approve_title"}}{{end}}">
-      <input type="hidden" name="fingerprint" value="{{.Result.HostKey.Fingerprint}}">
-      <button class="btn btn-create" type="submit" data-action-name="trust">
-        {{if .Result.HostKeyChanged}}{{t "servertest.replace"}}{{else}}{{t "servertest.approve"}}{{end}}
-      </button>
-      <button class="btn btn-cancel" type="button" data-action="close-panel">
-        {{t "common.cancel"}}
-      </button>
-    </form>
-
-  {{else}}
-    {{template "alert" (alert "error" (t "servertest.failed"))}}
-
-    {{if .Result.Step}}
-    <p class="mb-2">
-      {{t "servertest.failed_at"}}
-      <strong data-field="step">{{.Result.Step}}</strong>
-      {{t "servertest.failed_step_suffix"}}
-      {{if eq .Result.Step "connect"}}
-        {{t "servertest.detail_connect"}}
-      {{else if eq .Result.Step "read"}}
-        {{t "servertest.detail_read"}}
-      {{else if eq .Result.Step "write"}}
-        {{t "servertest.detail_write"}}
-      {{else if eq .Result.Step "status"}}
-        {{t "servertest.detail_status"}}
+        <p class="mb-2">{{t "servertest.key_changed_help"}}</p>
+      {{else}}
+        {{template "alert" (alert "warning" (t "servertest.key_missing"))}}
       {{end}}
-    </p>
+
+      <p class="mb-2">
+        {{t "servertest.compare_1"}}
+        <code>ssh-keyscan -t ed25519 {{.Server.Host}}</code>
+        {{t "servertest.compare_2"}}
+      </p>
+      <pre class="border rounded p-3 mb-3" data-field="fingerprint">{{.Result.HostKey.Fingerprint}}</pre>
+
+      <form hx-post="/servers/{{.Server.ID}}/trust"
+            hx-target="#server-panel" hx-swap="innerHTML"
+            hx-confirm="{{if .Result.HostKeyChanged}}{{tf "servertest.replace_question" .Server.Name}}{{else}}{{tf "servertest.approve_question" .Server.Name}}{{end}}"
+            data-confirm-title="{{if .Result.HostKeyChanged}}{{t "servertest.replace_title"}}{{else}}{{t "servertest.approve_title"}}{{end}}">
+        <input type="hidden" name="fingerprint" value="{{.Result.HostKey.Fingerprint}}">
+        <button class="btn btn-create" type="submit" data-action-name="trust">
+          {{if .Result.HostKeyChanged}}{{t "servertest.replace"}}{{else}}{{t "servertest.approve"}}{{end}}
+        </button>
+        <button class="btn btn-cancel" type="button" data-action="close-panel">
+          {{t "common.cancel"}}
+        </button>
+      </form>
+
+    {{else}}
+      {{template "alert" (alert "error" (t "servertest.failed"))}}
+
+      {{if .Result.Step}}
+      <p class="mb-2">
+        {{t "servertest.failed_at"}}
+        <strong data-field="step">{{.Result.Step}}</strong>
+        {{t "servertest.failed_step_suffix"}}
+        {{if eq .Result.Step "connect"}}
+          {{t "servertest.detail_connect"}}
+        {{else if eq .Result.Step "read"}}
+          {{t "servertest.detail_read"}}
+        {{else if eq .Result.Step "write"}}
+          {{t "servertest.detail_write"}}
+        {{else if eq .Result.Step "status"}}
+          {{t "servertest.detail_status"}}
+        {{end}}
+      </p>
+      {{end}}
+
+      <pre class="border rounded p-3 mb-3" data-field="detail">{{.Result.Message}}</pre>
+
+      <div class="dns-toolbar">
+        <button class="btn btn-outline-test" type="button"
+                hx-post="/servers/{{.Server.ID}}/test"
+                hx-target="#server-panel" hx-swap="innerHTML">
+          {{t "servertest.retry"}}
+        </button>
+        <button class="btn btn-cancel" type="button" data-action="close-panel">
+          {{t "servertest.close"}}
+        </button>
+      </div>
     {{end}}
-
-    <pre class="border rounded p-3 mb-3" data-field="detail">{{.Result.Message}}</pre>
-
-    <div class="dns-toolbar">
-      <button class="btn btn-outline-test" type="button"
-              hx-post="/servers/{{.Server.ID}}/test"
-              hx-target="#server-panel" hx-swap="innerHTML">
-        {{t "servertest.retry"}}
-      </button>
-      <button class="btn btn-cancel" type="button" data-action="close-panel">
-        {{t "servertest.close"}}
-      </button>
-    </div>
-  {{end}}
+  </div>
 </div>
 {{end}}

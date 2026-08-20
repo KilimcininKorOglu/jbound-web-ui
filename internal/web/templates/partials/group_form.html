@@ -1,50 +1,57 @@
 {{define "group-form"}}
-<form hx-post="{{if .IsNew}}/groups{{else}}/groups/{{.Group.ID}}{{end}}"
-      hx-target="#server-tables" hx-swap="innerHTML">
-
-  {{if .Problem}}{{template "alert" (alert "error" .Problem)}}{{end}}
-
-  <div class="row g-3">
-    <div class="col-md-4">
-      <label class="form-label" for="group_name">{{t "common.name"}}</label>
-      <input class="form-control" id="group_name" name="name" value="{{.Group.Name}}"
-             placeholder="resolvers" autocapitalize="none" spellcheck="false" required>
-    </div>
-    <div class="col-md-8">
-      <label class="form-label" for="group_description">{{t "groupform.description"}}</label>
-      <input class="form-control" id="group_description" name="description"
-             value="{{.Group.Description}}" maxlength="255">
-    </div>
-
-    {{/* Which servers are in the group is chosen on each server, so this form
-         only names the member a synchronisation copies from. The list is the
-         group's own members, because copying anything else over them would
-         replace this group's records with another group's. */}}
-    <div class="col-md-6">
-      <label class="form-label" for="source_server_id">{{t "groupform.source"}}</label>
-      <select class="form-select" id="source_server_id" name="source_server_id">
-        <option value="0" {{if eq $.Group.SourceServerID 0}}selected{{end}}>
-          {{t "groupform.source_none"}}
-        </option>
-        {{range .Members}}
-        <option value="{{.ID}}" {{if eq $.Group.SourceServerID .ID}}selected{{end}}>
-          {{.Name}}
-        </option>
-        {{end}}
-      </select>
-      <div class="form-text">
-        {{if .Members}}{{t "groupform.source_help"}}{{else}}{{t "groupform.source_needs_members"}}{{end}}
-      </div>
-    </div>
-
-    <div class="col-12 dns-toolbar">
-      <button class="btn btn-create" type="submit">
-        {{if .IsNew}}{{t "groupform.submit_add"}}{{else}}{{t "groupform.submit_edit"}}{{end}}
-      </button>
-      <button class="btn btn-cancel" type="button" data-action="close-panel">
-        {{t "common.cancel"}}
-      </button>
-    </div>
+<div class="card">
+  <div class="card-header">
+    <h2 class="h6">{{if .IsNew}}{{t "groupform.add_title"}}{{else}}{{t "groupform.edit_title"}}{{end}}</h2>
   </div>
-</form>
+  <div class="card-body">
+    <form hx-post="{{if .IsNew}}/groups{{else}}/groups/{{.Group.ID}}{{end}}"
+          hx-target="#server-tables" hx-swap="innerHTML">
+
+      {{if .Problem}}{{template "alert" (alert "error" .Problem)}}{{end}}
+
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label" for="group_name">{{t "common.name"}}</label>
+          <input class="form-control" id="group_name" name="name" value="{{.Group.Name}}"
+                 placeholder="resolvers" autocapitalize="none" spellcheck="false" required>
+        </div>
+        <div class="col-md-8">
+          <label class="form-label" for="group_description">{{t "groupform.description"}}</label>
+          <input class="form-control" id="group_description" name="description"
+                 value="{{.Group.Description}}" maxlength="255">
+        </div>
+
+        {{/* Which servers are in the group is chosen on each server, so this form
+             only names the member a synchronisation copies from. The list is the
+             group's own members, because copying anything else over them would
+             replace this group's records with another group's. */}}
+        <div class="col-md-6">
+          <label class="form-label" for="source_server_id">{{t "groupform.source"}}</label>
+          <select class="form-select" id="source_server_id" name="source_server_id">
+            <option value="0" {{if eq $.Group.SourceServerID 0}}selected{{end}}>
+              {{t "groupform.source_none"}}
+            </option>
+            {{range .Members}}
+            <option value="{{.ID}}" {{if eq $.Group.SourceServerID .ID}}selected{{end}}>
+              {{.Name}}
+            </option>
+            {{end}}
+          </select>
+          <div class="form-text">
+            {{if .Members}}{{t "groupform.source_help"}}{{else}}{{t "groupform.source_needs_members"}}{{end}}
+          </div>
+        </div>
+
+        <div class="col-12 dns-toolbar">
+          <button class="btn btn-create" type="submit">
+            {{if .IsNew}}{{t "groupform.submit_add"}}{{else}}{{t "groupform.submit_edit"}}{{end}}
+          </button>
+          <button class="btn btn-cancel" type="button" data-action="close-panel">
+            {{t "common.cancel"}}
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
 {{end}}

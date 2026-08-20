@@ -1167,21 +1167,39 @@ img {
     color: var(--panel-text) !important;
 }
 
+/* The dialog buttons take their colour from the role class app.js passes
+   through customClass, so a question about a deletion is answered by a red
+   button rather than by whatever the library ships. These rules give them the
+   shape and let the .btn-* classes above carry the colour: they are as
+   specific as SweetAlert2's own pair and panel.css loads last, so they win the
+   tie. */
 .swal2-actions .swal2-styled {
     border-radius: var(--panel-radius-pill) !important;
     font-weight: 700;
     box-shadow: none !important;
+    background-image: none !important;
 }
 
-.swal2-actions .swal2-confirm {
-    background-color: var(--panel-accent) !important;
-    color: var(--panel-on-accent) !important;
+.swal2-actions .btn-create,
+.swal2-actions .btn-edit,
+.swal2-actions .btn-delete,
+.swal2-actions .btn-test,
+.swal2-actions .btn-read,
+.swal2-actions .btn-apply {
+    color: var(--panel-on-accent);
 }
 
-.swal2-actions .swal2-cancel {
-    background-color: transparent !important;
-    border: 1px solid var(--panel-control-border) !important;
-    color: var(--panel-text) !important;
+.swal2-actions .btn-create { background-color: var(--panel-success); }
+.swal2-actions .btn-edit { background-color: var(--panel-warning); }
+.swal2-actions .btn-delete { background-color: var(--panel-danger); }
+.swal2-actions .btn-test { background-color: var(--panel-accent); }
+.swal2-actions .btn-read { background-color: var(--panel-secondary); }
+.swal2-actions .btn-apply { background-color: var(--panel-accent-alt); }
+
+.swal2-actions .btn-cancel {
+    background-color: transparent;
+    border: 1px solid var(--panel-control-border);
+    color: var(--panel-text);
 }
 
 .swal2-container {
@@ -1264,6 +1282,27 @@ img {
 .dns-toolbar .form-control,
 .dns-toolbar .form-select {
     max-width: 220px;
+}
+
+/* --- Disclosure ---------------------------------------------------------- */
+
+/* The server form folds the tool paths and the key away, because most of the
+   time the setup script has already filled them in. The browser draws the
+   marker; this gives the control a target worth clicking. */
+details {
+    margin-bottom: var(--panel-space-3);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--panel-radius-field);
+    padding: var(--panel-space-2) var(--panel-space-3);
+}
+
+details > summary {
+    font-weight: 700;
+    cursor: pointer;
+}
+
+details[open] > summary {
+    margin-bottom: var(--panel-space-3);
 }
 
 /* The captions above the rows of the add form. They name the controls

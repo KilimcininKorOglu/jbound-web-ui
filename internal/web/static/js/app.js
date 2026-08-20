@@ -38,6 +38,35 @@
     return STRINGS[key] || key;
   }
 
+  /* Every kind of button the panel draws, named after what pressing it does.
+     panel.css holds the colour of each. */
+  const ROLES = ['create', 'edit', 'delete', 'test', 'read', 'apply'];
+
+  /* The dialog asks about what a button was going to do, so its confirming
+     button carries that button's colour. A red row action answering with a
+     blue Yes reads as a different action from the one that was pressed. */
+  function roleOf(element) {
+    if (!element || !element.classList) {
+      return 'create';
+    }
+    for (const role of ROLES) {
+      if (element.classList.contains('btn-' + role) ||
+        element.classList.contains('btn-outline-' + role)) {
+        return role;
+      }
+    }
+    return 'create';
+  }
+
+  /* The classes SweetAlert2 puts on its own buttons. Passed on every dialog,
+     so no dialog falls back to the colours of the library. */
+  function dialogButtons(role) {
+    return {
+      confirmButton: 'btn btn-' + role,
+      cancelButton: 'btn btn-cancel'
+    };
+  }
+
   /* htmx injects a style element for its indicator classes. The content
      security policy allows no inline style, so the rules live in panel.css
      instead. */
@@ -149,6 +178,7 @@
       icon: 'warning',
       position: 'center',
       showCancelButton: true,
+      customClass: dialogButtons(roleOf(event.target)),
       confirmButtonText: text('client.yes'),
       cancelButtonText: text('client.cancel')
     }).then(function (result) {
@@ -173,6 +203,7 @@
       icon: 'question',
       position: 'center',
       showCancelButton: true,
+      customClass: dialogButtons('create'),
       confirmButtonText: text('client.yes'),
       cancelButtonText: text('client.cancel')
     }).then(function (result) {
@@ -448,6 +479,9 @@
       icon: 'warning',
       position: 'center',
       showCancelButton: true,
+      /* Signing out ends a session, which is what the revoke buttons do to
+         somebody else's. Same consequence, same colour. */
+      customClass: dialogButtons('delete'),
       confirmButtonText: text('client.yes'),
       cancelButtonText: text('client.cancel')
     }).then(function (result) {

@@ -1,202 +1,209 @@
 {{define "server-form"}}
-<form hx-post="{{if .IsNew}}/servers{{else}}/servers/{{.Server.ID}}{{end}}"
-      hx-target="#server-panel" hx-swap="innerHTML">
+<div class="card">
+  <div class="card-header">
+    <h2 class="h6">{{if .IsNew}}{{t "serverform.add_title"}}{{else}}{{t "serverform.edit_title"}}{{end}}</h2>
+  </div>
+  <div class="card-body">
+    <form hx-post="{{if .IsNew}}/servers{{else}}/servers/{{.Server.ID}}{{end}}"
+          hx-target="#server-panel" hx-swap="innerHTML">
 
-  {{if .Problem}}{{template "alert" (alert "error" .Problem)}}{{end}}
+      {{if .Problem}}{{template "alert" (alert "error" .Problem)}}{{end}}
 
-  {{/* agent marks the transport this record uses, so every block below can ask
-       once rather than repeating the comparison. */}}
-  {{$agent := eq .Server.Transport "agent"}}
+      {{/* agent marks the transport this record uses, so every block below can ask
+           once rather than repeating the comparison. */}}
+      {{$agent := eq .Server.Transport "agent"}}
 
-  <div class="row g-3">
-    <div class="col-md-4">
-      <label class="form-label" for="name">{{t "common.name"}}</label>
-      <input class="form-control" id="name" name="name" value="{{.Server.Name}}"
-             placeholder="dns1" autocapitalize="none" spellcheck="false" required>
-      {{if not .IsNew}}
-      <div class="form-text">{{t "serverform.rename_help"}}</div>
-      {{end}}
-    </div>
-    <div class="col-md-5">
-      <label class="form-label" for="host">{{t "serverform.host"}}</label>
-      <input class="form-control" id="host" name="host" value="{{.Server.Host}}"
-             placeholder="dns1.example.net" autocapitalize="none" spellcheck="false" required>
-    </div>
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label" for="name">{{t "common.name"}}</label>
+          <input class="form-control" id="name" name="name" value="{{.Server.Name}}"
+                 placeholder="dns1" autocapitalize="none" spellcheck="false" required>
+          {{if not .IsNew}}
+          <div class="form-text">{{t "serverform.rename_help"}}</div>
+          {{end}}
+        </div>
+        <div class="col-md-5">
+          <label class="form-label" for="host">{{t "serverform.host"}}</label>
+          <input class="form-control" id="host" name="host" value="{{.Server.Host}}"
+                 placeholder="dns1.example.net" autocapitalize="none" spellcheck="false" required>
+        </div>
 
-    {{/* The transport decides what the rest of this form is for, so it comes
-         before any of it.
+        {{/* The transport decides what the rest of this form is for, so it comes
+             before any of it.
 
-         It cannot be changed after the fact. The secret that reaches the
-         server is a private key on one path and a bearer token on the other,
-         and switching would leave the record pointing at a file of the wrong
-         kind. Deleting and re-adding is the honest way to move a server. */}}
-    <div class="col-md-3">
-      <label class="form-label" for="transport">{{t "serverform.transport"}}</label>
-      {{if .IsNew}}
-      <select class="form-select" id="transport" name="transport" data-action="transport">
-        <option value="ssh" {{if not $agent}}selected{{end}}>{{t "serverform.transport_ssh"}}</option>
-        <option value="agent" {{if $agent}}selected{{end}}>{{t "serverform.transport_agent"}}</option>
-      </select>
-      {{else}}
-      <input class="form-control" id="transport" value="{{.Server.Transport}}" readonly>
-      <input type="hidden" name="transport" value="{{.Server.Transport}}">
-      <div class="form-text">{{t "serverform.transport_fixed"}}</div>
-      {{end}}
-    </div>
+             It cannot be changed after the fact. The secret that reaches the
+             server is a private key on one path and a bearer token on the other,
+             and switching would leave the record pointing at a file of the wrong
+             kind. Deleting and re-adding is the honest way to move a server. */}}
+        <div class="col-md-3">
+          <label class="form-label" for="transport">{{t "serverform.transport"}}</label>
+          {{if .IsNew}}
+          <select class="form-select" id="transport" name="transport" data-action="transport">
+            <option value="ssh" {{if not $agent}}selected{{end}}>{{t "serverform.transport_ssh"}}</option>
+            <option value="agent" {{if $agent}}selected{{end}}>{{t "serverform.transport_agent"}}</option>
+          </select>
+          {{else}}
+          <input class="form-control" id="transport" value="{{.Server.Transport}}" readonly>
+          <input type="hidden" name="transport" value="{{.Server.Transport}}">
+          <div class="form-text">{{t "serverform.transport_fixed"}}</div>
+          {{end}}
+        </div>
 
-    {{/* The group owns the records this server holds, so it is chosen here
-         rather than on the group. A server may be in none, and then only an
-         action that names it on its own reaches it. */}}
-    <div class="col-md-3">
-      <label class="form-label" for="group_id">{{t "serverform.group"}}</label>
-      <select class="form-select" id="group_id" name="group_id">
-        <option value="0" {{if eq $.Server.GroupID 0}}selected{{end}}>
-          {{t "serverform.group_none"}}
-        </option>
-        {{range .Groups}}
-        <option value="{{.ID}}" {{if eq $.Server.GroupID .ID}}selected{{end}}>{{.Name}}</option>
+        {{/* The group owns the records this server holds, so it is chosen here
+             rather than on the group. A server may be in none, and then only an
+             action that names it on its own reaches it. */}}
+        <div class="col-md-3">
+          <label class="form-label" for="group_id">{{t "serverform.group"}}</label>
+          <select class="form-select" id="group_id" name="group_id">
+            <option value="0" {{if eq $.Server.GroupID 0}}selected{{end}}>
+              {{t "serverform.group_none"}}
+            </option>
+            {{range .Groups}}
+            <option value="{{.ID}}" {{if eq $.Server.GroupID .ID}}selected{{end}}>{{.Name}}</option>
+            {{end}}
+          </select>
+          {{if not .Groups}}
+          <div class="form-text">{{t "serverform.group_help"}}</div>
+          {{end}}
+        </div>
+
+        {{/* Everything from here to the tool paths belongs to one transport or the
+             other. The blocks are marked rather than hidden by a script writing
+             style, because the content security policy allows no inline script and
+             a class the stylesheet knows is one place to change. */}}
+        <div class="col-md-3" data-transport="ssh" {{if $agent}}hidden{{end}}>
+          <label class="form-label" for="ssh_port">{{t "serverform.ssh_port"}}</label>
+          <input class="form-control" id="ssh_port" name="ssh_port" type="number"
+                 min="1" max="65535" value="{{.Server.SSHPort}}">
+        </div>
+        <div class="col-md-3" data-transport="ssh" {{if $agent}}hidden{{end}}>
+          <label class="form-label" for="ssh_user">{{t "serverform.ssh_user"}}</label>
+          <input class="form-control" id="ssh_user" name="ssh_user" value="{{.Server.SSHUser}}"
+                 placeholder="dnsops" autocapitalize="none" spellcheck="false">
+        </div>
+
+        <div class="col-md-3" data-transport="agent" {{if not $agent}}hidden{{end}}>
+          <label class="form-label" for="agent_port">{{t "serverform.agent_port"}}</label>
+          <input class="form-control" id="agent_port" name="agent_port" type="number"
+                 min="1" max="65535" value="{{.Server.AgentPort}}">
+          <div class="form-text">{{t "serverform.agent_port_help"}}</div>
+        </div>
+
+        {{/* The records file and every command below it live on the target when an
+             agent is in front of it. The panel reads the path from the agent and
+             sends neither. */}}
+        <div class="col-12" data-transport="agent" {{if not $agent}}hidden{{end}}>
+          <div class="form-text">{{t "serverform.agent_help"}}</div>
+        </div>
+
+        <div class="col-md-8" data-transport="ssh" {{if $agent}}hidden{{end}}>
+          <label class="form-label" for="records_path">{{t "serverform.records"}}</label>
+          <input class="form-control" id="records_path" name="records_path"
+                 value="{{.Server.RecordsPath}}" spellcheck="false">
+          <div class="form-text">{{t "serverform.records_help"}}</div>
+        </div>
+
+        <div class="col-md-6" data-transport="ssh" {{if $agent}}hidden{{end}}>
+          <label class="form-label" for="reload_cmd">{{t "serverform.reload_cmd"}}</label>
+          <input class="form-control" id="reload_cmd" name="reload_cmd"
+                 value="{{.Server.ReloadCmd}}" spellcheck="false">
+        </div>
+        <div class="col-md-6" data-transport="ssh" {{if $agent}}hidden{{end}}>
+          <label class="form-label" for="status_cmd">{{t "serverform.status_cmd"}}</label>
+          <input class="form-control" id="status_cmd" name="status_cmd"
+                 value="{{.Server.StatusCmd}}" spellcheck="false">
+        </div>
+
+        <div class="col-md-6" data-transport="ssh" {{if $agent}}hidden{{end}}>
+          <label class="form-label" for="reload_fallback_cmd">{{t "serverform.reload_fallback_cmd"}}</label>
+          <input class="form-control" id="reload_fallback_cmd" name="reload_fallback_cmd"
+                 value="{{.Server.ReloadFallbackCmd}}" spellcheck="false">
+        </div>
+        <div class="col-md-6" data-transport="ssh" {{if $agent}}hidden{{end}}>
+          <label class="form-label" for="restart_cmd">{{t "serverform.restart_cmd"}}</label>
+          <input class="form-control" id="restart_cmd" name="restart_cmd"
+                 value="{{.Server.RestartCmd}}" spellcheck="false">
+        </div>
+        <div class="col-12" data-transport="ssh" {{if $agent}}hidden{{end}}>
+          <div class="form-text">{{t "serverform.ladder_help"}}</div>
+        </div>
+
+        <div class="col-12" data-transport="ssh" {{if $agent}}hidden{{end}}>
+          <label class="form-label" for="check_conf_cmd">{{t "serverform.check_conf_cmd"}}</label>
+          <input class="form-control" id="check_conf_cmd" name="check_conf_cmd"
+                 value="{{.Server.CheckConfCmd}}" spellcheck="false">
+          <div class="form-text">{{t "serverform.check_conf_cmd_help"}}</div>
+        </div>
+
+        <div class="col-12" data-transport="ssh" {{if $agent}}hidden{{end}}>
+          <label class="form-label" for="ensure_include_cmd">{{t "serverform.ensure_include_cmd"}}</label>
+          <input class="form-control" id="ensure_include_cmd" name="ensure_include_cmd"
+                 value="{{.Server.EnsureIncludeCmd}}" spellcheck="false">
+          <div class="form-text">{{t "serverform.ensure_include_cmd_help"}}</div>
+        </div>
+
+        <div class="col-12" data-transport="ssh" {{if $agent}}hidden{{end}}>
+          <details>
+            <summary class="mb-2">{{t "serverform.tool_paths"}}</summary>
+            <div class="row g-3">
+              <div class="col-md-3">
+                <label class="form-label" for="base64_path">base64</label>
+                <input class="form-control" id="base64_path" name="base64_path"
+                       value="{{.Server.Base64Path}}" spellcheck="false">
+              </div>
+              <div class="col-md-3">
+                <label class="form-label" for="tee_path">tee</label>
+                <input class="form-control" id="tee_path" name="tee_path"
+                       value="{{.Server.TeePath}}" spellcheck="false">
+              </div>
+              <div class="col-md-3">
+                <label class="form-label" for="mv_path">mv</label>
+                <input class="form-control" id="mv_path" name="mv_path"
+                       value="{{.Server.MvPath}}" spellcheck="false">
+              </div>
+              <div class="col-md-3">
+                <label class="form-label" for="sha256_path">sha256sum</label>
+                <input class="form-control" id="sha256_path" name="sha256_path"
+                       value="{{.Server.Sha256Path}}" spellcheck="false">
+              </div>
+            </div>
+            <div class="form-text mt-2">{{t "serverform.tool_paths_help"}}</div>
+          </details>
+        </div>
+
+        {{if .IsNew}}
+        <div class="col-12" data-transport="ssh" {{if $agent}}hidden{{end}}>
+          <details>
+            <summary class="mb-2">{{t "serverform.existing_key"}}</summary>
+            <label class="form-label" for="private_key">{{t "serverform.private_key"}}</label>
+            <textarea class="form-control" id="private_key" name="private_key" rows="6"
+                      spellcheck="false"
+                      placeholder="{{t "serverform.private_key_placeholder"}}"></textarea>
+            <div class="form-text">{{t "serverform.private_key_help"}}</div>
+          </details>
+        </div>
         {{end}}
-      </select>
-      {{if not .Groups}}
-      <div class="form-text">{{t "serverform.group_help"}}</div>
-      {{end}}
-    </div>
 
-    {{/* Everything from here to the tool paths belongs to one transport or the
-         other. The blocks are marked rather than hidden by a script writing
-         style, because the content security policy allows no inline script and
-         a class the stylesheet knows is one place to change. */}}
-    <div class="col-md-3" data-transport="ssh" {{if $agent}}hidden{{end}}>
-      <label class="form-label" for="ssh_port">{{t "serverform.ssh_port"}}</label>
-      <input class="form-control" id="ssh_port" name="ssh_port" type="number"
-             min="1" max="65535" value="{{.Server.SSHPort}}">
-    </div>
-    <div class="col-md-3" data-transport="ssh" {{if $agent}}hidden{{end}}>
-      <label class="form-label" for="ssh_user">{{t "serverform.ssh_user"}}</label>
-      <input class="form-control" id="ssh_user" name="ssh_user" value="{{.Server.SSHUser}}"
-             placeholder="dnsops" autocapitalize="none" spellcheck="false">
-    </div>
-
-    <div class="col-md-3" data-transport="agent" {{if not $agent}}hidden{{end}}>
-      <label class="form-label" for="agent_port">{{t "serverform.agent_port"}}</label>
-      <input class="form-control" id="agent_port" name="agent_port" type="number"
-             min="1" max="65535" value="{{.Server.AgentPort}}">
-      <div class="form-text">{{t "serverform.agent_port_help"}}</div>
-    </div>
-
-    {{/* The records file and every command below it live on the target when an
-         agent is in front of it. The panel reads the path from the agent and
-         sends neither. */}}
-    <div class="col-12" data-transport="agent" {{if not $agent}}hidden{{end}}>
-      <div class="form-text">{{t "serverform.agent_help"}}</div>
-    </div>
-
-    <div class="col-md-8" data-transport="ssh" {{if $agent}}hidden{{end}}>
-      <label class="form-label" for="records_path">{{t "serverform.records"}}</label>
-      <input class="form-control" id="records_path" name="records_path"
-             value="{{.Server.RecordsPath}}" spellcheck="false">
-      <div class="form-text">{{t "serverform.records_help"}}</div>
-    </div>
-
-    <div class="col-md-6" data-transport="ssh" {{if $agent}}hidden{{end}}>
-      <label class="form-label" for="reload_cmd">{{t "serverform.reload_cmd"}}</label>
-      <input class="form-control" id="reload_cmd" name="reload_cmd"
-             value="{{.Server.ReloadCmd}}" spellcheck="false">
-    </div>
-    <div class="col-md-6" data-transport="ssh" {{if $agent}}hidden{{end}}>
-      <label class="form-label" for="status_cmd">{{t "serverform.status_cmd"}}</label>
-      <input class="form-control" id="status_cmd" name="status_cmd"
-             value="{{.Server.StatusCmd}}" spellcheck="false">
-    </div>
-
-    <div class="col-md-6" data-transport="ssh" {{if $agent}}hidden{{end}}>
-      <label class="form-label" for="reload_fallback_cmd">{{t "serverform.reload_fallback_cmd"}}</label>
-      <input class="form-control" id="reload_fallback_cmd" name="reload_fallback_cmd"
-             value="{{.Server.ReloadFallbackCmd}}" spellcheck="false">
-    </div>
-    <div class="col-md-6" data-transport="ssh" {{if $agent}}hidden{{end}}>
-      <label class="form-label" for="restart_cmd">{{t "serverform.restart_cmd"}}</label>
-      <input class="form-control" id="restart_cmd" name="restart_cmd"
-             value="{{.Server.RestartCmd}}" spellcheck="false">
-    </div>
-    <div class="col-12" data-transport="ssh" {{if $agent}}hidden{{end}}>
-      <div class="form-text">{{t "serverform.ladder_help"}}</div>
-    </div>
-
-    <div class="col-12" data-transport="ssh" {{if $agent}}hidden{{end}}>
-      <label class="form-label" for="check_conf_cmd">{{t "serverform.check_conf_cmd"}}</label>
-      <input class="form-control" id="check_conf_cmd" name="check_conf_cmd"
-             value="{{.Server.CheckConfCmd}}" spellcheck="false">
-      <div class="form-text">{{t "serverform.check_conf_cmd_help"}}</div>
-    </div>
-
-    <div class="col-12" data-transport="ssh" {{if $agent}}hidden{{end}}>
-      <label class="form-label" for="ensure_include_cmd">{{t "serverform.ensure_include_cmd"}}</label>
-      <input class="form-control" id="ensure_include_cmd" name="ensure_include_cmd"
-             value="{{.Server.EnsureIncludeCmd}}" spellcheck="false">
-      <div class="form-text">{{t "serverform.ensure_include_cmd_help"}}</div>
-    </div>
-
-    <div class="col-12" data-transport="ssh" {{if $agent}}hidden{{end}}>
-      <details>
-        <summary class="mb-2">{{t "serverform.tool_paths"}}</summary>
-        <div class="row g-3">
-          <div class="col-md-3">
-            <label class="form-label" for="base64_path">base64</label>
-            <input class="form-control" id="base64_path" name="base64_path"
-                   value="{{.Server.Base64Path}}" spellcheck="false">
-          </div>
-          <div class="col-md-3">
-            <label class="form-label" for="tee_path">tee</label>
-            <input class="form-control" id="tee_path" name="tee_path"
-                   value="{{.Server.TeePath}}" spellcheck="false">
-          </div>
-          <div class="col-md-3">
-            <label class="form-label" for="mv_path">mv</label>
-            <input class="form-control" id="mv_path" name="mv_path"
-                   value="{{.Server.MvPath}}" spellcheck="false">
-          </div>
-          <div class="col-md-3">
-            <label class="form-label" for="sha256_path">sha256sum</label>
-            <input class="form-control" id="sha256_path" name="sha256_path"
-                   value="{{.Server.Sha256Path}}" spellcheck="false">
+        <div class="col-12">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="enabled" name="enabled"
+                   value="1" {{if .Server.Enabled}}checked{{end}}>
+            <label class="form-check-label" for="enabled">
+              {{t "serverform.enabled"}}
+            </label>
           </div>
         </div>
-        <div class="form-text mt-2">{{t "serverform.tool_paths_help"}}</div>
-      </details>
-    </div>
 
-    {{if .IsNew}}
-    <div class="col-12" data-transport="ssh" {{if $agent}}hidden{{end}}>
-      <details>
-        <summary class="mb-2">{{t "serverform.existing_key"}}</summary>
-        <label class="form-label" for="private_key">{{t "serverform.private_key"}}</label>
-        <textarea class="form-control" id="private_key" name="private_key" rows="6"
-                  spellcheck="false"
-                  placeholder="{{t "serverform.private_key_placeholder"}}"></textarea>
-        <div class="form-text">{{t "serverform.private_key_help"}}</div>
-      </details>
-    </div>
-    {{end}}
-
-    <div class="col-12">
-      <div class="form-check">
-        <input class="form-check-input" type="checkbox" id="enabled" name="enabled"
-               value="1" {{if .Server.Enabled}}checked{{end}}>
-        <label class="form-check-label" for="enabled">
-          {{t "serverform.enabled"}}
-        </label>
+        <div class="col-12 dns-toolbar">
+          <button class="btn btn-create" type="submit">
+            {{if .IsNew}}{{t "serverform.submit_add"}}{{else}}{{t "serverform.submit_edit"}}{{end}}
+          </button>
+          <button class="btn btn-cancel" type="button" data-action="close-panel">
+            {{t "common.cancel"}}
+          </button>
+        </div>
       </div>
-    </div>
-
-    <div class="col-12 dns-toolbar">
-      <button class="btn btn-create" type="submit">
-        {{if .IsNew}}{{t "serverform.submit_add"}}{{else}}{{t "serverform.submit_edit"}}{{end}}
-      </button>
-      <button class="btn btn-cancel" type="button" data-action="close-panel">
-        {{t "common.cancel"}}
-      </button>
-    </div>
+    </form>
   </div>
-</form>
+</div>
 {{end}}

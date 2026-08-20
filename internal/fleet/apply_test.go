@@ -1424,3 +1424,25 @@ func TestSettingIsRefusedForATypeThatCarriesSeveralValues(t *testing.T) {
 		t.Fatalf("got %v, want ErrInvalid", err)
 	}
 }
+
+func TestAServerThatAlreadyHoldsTheRecordIsSkippedRatherThanFailed(t *testing.T) {
+	// The record is missing from the others, which is why the write was made.
+	// A red row for the server that was already right reads as a fault.
+	h := newWriteHarness(t, 2)
+	h.targets["dns1"].content = []byte(
+		"local-data: \"new.example.net. A 192.0.2.20\"\n")
+
+	report, err := h.writer.Apply(context.Background(), testActor(), groupTarget(), addOperation())
+	if err != nil {
+		t.Fatalf("Apply returned an error: %v", err)
+	}
+
+	success, failed, skipped := report.Counts()
+	if success != 1 || failed != 0 || skipped != 1 {
+		t.Fatalf("counts = %d/%d/%d, want one written and one skipped:\n%+v",
+			success, failed, skipped, report.Results)
+	}
+	if file := h.targets["dns2"].file(); !strings.Contains(file, "192.0.2.20") {
+		t.Errorf("the server that lacked the record did not get it:\n%s", file)
+	}
+}

@@ -598,6 +598,15 @@ func (w *Writer) applyOne(ctx context.Context, actor server.Actor,
 	defer lock.Unlock()
 
 	if err := w.write(ctx, actor, record, op); err != nil {
+		// A server that already holds the record is why the write was made for
+		// the others. Reporting it as a failure would put a red row in front
+		// of an operator whose change arrived everywhere it was missing.
+		if op.Kind == OpAdd && errors.Is(err, dnsfile.ErrDuplicate) {
+			result.Status = StatusSkipped
+			result.Message = "Already in place"
+			return result
+		}
+
 		// The response table is the only other place this appears, and it
 		// lives exactly as long as the page it was rendered into.
 		logging.From(ctx).Error("cannot write a record to a server",

@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"html"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -1193,5 +1195,136 @@ func TestTheEditFormStaysASingleRecord(t *testing.T) {
 	}
 	if !strings.Contains(body, `name="old_fqdn"`) {
 		t.Errorf("the edit form lost the record it replaces:\n%s", body)
+	}
+}
+
+func TestANameThatAlreadyAnswersRaisesTheChoice(t *testing.T) {
+	// The seeded file answers for www with 10.0.0.20. Writing a second address
+	// beside it would leave the resolver to pick, so the panel asks instead
+	// and touches nothing until it is answered.
+	env := newFleetEnv(t)
+
+	recorder := env.adminForm(t, http.MethodPost, "/dns/records", env.cookie, groupForm(url.Values{
+		"fqdn": {"www.example.local"}, "type": {"A"}, "value": {"10.0.0.99"},
+	}))
+	if recorder.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409:\n%s", recorder.Code, recorder.Body.String())
+	}
+
+	body := recorder.Body.String()
+	if !strings.Contains(body, `data-field="conflict-edit"`) {
+		t.Errorf("the panel offers no way to replace the value:\n%s", body)
+	}
+	for _, want := range []string{"10.0.0.20", "10.0.0.99", "dns1, dns2, dns3"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the panel does not say %q:\n%s", want, body)
+		}
+	}
+	for i := 1; i <= 3; i++ {
+		if file := env.target(int64(i)).file(); strings.Contains(file, "10.0.0.99") {
+			t.Errorf("a server was written to before the question was answered:\n%s", file)
+		}
+	}
+}
+
+func TestTheChoiceOpensTheFormOnBothRecords(t *testing.T) {
+	// The form has to carry what the server answers with as well as what was
+	// typed, or the operator confirms a replacement without seeing what is
+	// being replaced.
+	env := newFleetEnv(t)
+
+	recorder := env.adminForm(t, http.MethodPost, "/dns/records", env.cookie, groupForm(url.Values{
+		"fqdn": {"www.example.local"}, "type": {"A"}, "value": {"10.0.0.99"},
+	}))
+	link := regexp.MustCompile(`hx-get="([^"]+)"`).FindStringSubmatch(recorder.Body.String())
+	if link == nil {
+		t.Fatalf("the panel carries no link:\n%s", recorder.Body.String())
+	}
+
+	form := env.do(t, httptest.NewRequest(http.MethodGet, html.UnescapeString(link[1]), nil), env.cookie)
+	if form.Code != http.StatusOK {
+		t.Fatalf("the form answered %d", form.Code)
+	}
+
+	body := form.Body.String()
+	if !strings.Contains(body, `hx-put="/dns/records/set"`) {
+		t.Errorf("the form does not submit as a replacement:\n%s", body)
+	}
+	if !strings.Contains(body, `value="10.0.0.99"`) {
+		t.Errorf("the form does not carry the value that was typed:\n%s", body)
+	}
+	if !strings.Contains(body, `name="old_value" value="10.0.0.20"`) {
+		t.Errorf("the form does not carry the value being replaced:\n%s", body)
+	}
+}
+
+func TestReplacingAValueReachesEveryServerOfTheTarget(t *testing.T) {
+	// One answer covers the servers that hold the old value and the ones that
+	// have never heard the name, which is what the question promised.
+	env := newFleetEnv(t)
+	env.target(3).setFile("# managed by the panel\n")
+
+	recorder := env.adminForm(t, http.MethodPut, "/dns/records/set", env.cookie, groupForm(url.Values{
+		"fqdn": {"www.example.local"}, "type": {"A"}, "value": {"10.0.0.99"},
+		"old_fqdn": {"www.example.local"}, "old_type": {"A"}, "old_value": {"10.0.0.20"},
+		"set": {"1"},
+	}))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200:\n%s", recorder.Code, recorder.Body.String())
+	}
+
+	for i := 1; i <= 3; i++ {
+		file := env.target(int64(i)).file()
+		if !strings.Contains(file, "10.0.0.99") {
+			t.Errorf("dns%d does not answer with the new value:\n%s", i, file)
+		}
+		if strings.Contains(file, "10.0.0.20") {
+			t.Errorf("dns%d still answers with the old value:\n%s", i, file)
+		}
+	}
+}
+
+func TestARecordTheWholeTargetHoldsIsReportedRatherThanWritten(t *testing.T) {
+	env := newFleetEnv(t)
+
+	recorder := env.adminForm(t, http.MethodPost, "/dns/records", env.cookie, groupForm(url.Values{
+		"fqdn": {"www.example.local"}, "type": {"A"}, "value": {"10.0.0.20"},
+	}))
+	if recorder.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409:\n%s", recorder.Code, recorder.Body.String())
+	}
+
+	body := recorder.Body.String()
+	if !strings.Contains(body, `data-field="conflict-intro"`) {
+		t.Fatalf("the panel is not the one about a record that is there:\n%s", body)
+	}
+	if strings.Contains(body, `data-field="conflict-edit"`) {
+		t.Errorf("a record that is already there offers a replacement:\n%s", body)
+	}
+}
+
+func TestARecordOnlySomeServersHoldReachesTheOthers(t *testing.T) {
+	// The servers that lack it are the reason the write was made. The ones
+	// that hold it are skipped rather than reported as failures.
+	env := newFleetEnv(t)
+	env.target(3).setFile("# managed by the panel\n")
+	if _, err := env.records.Refresh(t.Context()); err != nil {
+		t.Fatalf("cannot refill the cache: %v", err)
+	}
+
+	recorder := env.adminForm(t, http.MethodPost, "/dns/records", env.cookie, groupForm(url.Values{
+		"fqdn": {"mail.example.local"}, "type": {"MX"}, "value": {"mx1.example.local"},
+		"priority": {"10"},
+	}))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200:\n%s", recorder.Code, recorder.Body.String())
+	}
+
+	if file := env.target(3).file(); !strings.Contains(file, "mx1.example.local") {
+		t.Errorf("the server that lacked the record did not get it:\n%s", file)
+	}
+	body := recorder.Body.String()
+	if strings.Contains(body, `data-field="status">failed<`) {
+		t.Errorf("a server that already held the record is reported as a failure:\n%s", body)
 	}
 }

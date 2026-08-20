@@ -138,13 +138,18 @@ func (a *App) Router() http.Handler {
 		// panel's own deadline, so a slow machine cannot push the response
 		// past the transport write timeout and take the per-server report
 		// with it.
-		"POST /dns/records":   a.withFleetDeadline(a.handleRecordCreate),
-		"PUT /dns/records":    a.withFleetDeadline(a.handleRecordUpdate),
-		"DELETE /dns/records": a.withFleetDeadline(a.handleRecordDelete),
-		"POST /dns/refresh":   a.withFleetDeadline(a.handleRecordRefresh),
-		"POST /dns/apply":     a.withFleetDeadline(a.handleRecordApply),
-		"GET /dns/query":      a.handleQueryForm,
-		"POST /dns/query":     a.withFleetDeadline(a.handleQuery),
+		"POST /dns/records": a.withFleetDeadline(a.handleRecordCreate),
+		"PUT /dns/records":  a.withFleetDeadline(a.handleRecordUpdate),
+		// The answer to a name that already answers: make the target hold this
+		// value, whatever each server held before. It is its own route rather
+		// than a field on the edit, because it replaces a record the operator
+		// never named and a form field could ask for that by accident.
+		"PUT /dns/records/set": a.withFleetDeadline(a.handleRecordSet),
+		"DELETE /dns/records":  a.withFleetDeadline(a.handleRecordDelete),
+		"POST /dns/refresh":    a.withFleetDeadline(a.handleRecordRefresh),
+		"POST /dns/apply":      a.withFleetDeadline(a.handleRecordApply),
+		"GET /dns/query":       a.handleQueryForm,
+		"POST /dns/query":      a.withFleetDeadline(a.handleQuery),
 
 		"GET /diff":             a.handleDiffPage,
 		"GET /diff/table":       a.handleDiffTable,

@@ -73,6 +73,11 @@ type recordFormData struct {
 	Types   []string
 	IsNew   bool
 	Problem string
+
+	// Set marks the form that answers a taken name. It submits to the route
+	// that makes the whole target hold one value, rather than to the edit,
+	// which replaces a line each server has to be holding already.
+	Set bool
 }
 
 // recordRow is one row of the add form. It carries the types with it, because
@@ -367,6 +372,13 @@ func (a *App) handleRecordForm(w http.ResponseWriter, r *http.Request) {
 		data.Record = recordFromValues(values)
 		data.Old = data.Record
 		data.Rows = nil
+
+		// A form opened on a taken name carries two records: the one the
+		// server answers with and the one the operator typed.
+		if values.Get("old_fqdn") != "" {
+			data.Old = oldRecordFromValues(values)
+			data.Set = values.Get("set") != ""
+		}
 	}
 
 	servers, err := a.Servers.List(r.Context())
@@ -395,6 +407,12 @@ func (a *App) handleRecordUpdate(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) handleRecordDelete(w http.ResponseWriter, r *http.Request) {
 	a.applyOperation(w, r, fleet.OpDelete)
+}
+
+// handleRecordSet answers the choice a taken name raises: the target ends up
+// holding this value for the name, whatever each server held before.
+func (a *App) handleRecordSet(w http.ResponseWriter, r *http.Request) {
+	a.applyOperation(w, r, fleet.OpSet)
 }
 
 // applyOperation runs one change and renders the per server result.
@@ -426,6 +444,15 @@ func (a *App) applyOperation(w http.ResponseWriter, r *http.Request, kind string
 	target, err := targetFromValues(r.Form)
 	if err != nil {
 		a.recordProblem(w, r, kind, recordMessage(r.Context(), a.catalog(r), err), http.StatusBadRequest)
+		return
+	}
+
+	// What the target already holds decides whether this is a write or a
+	// question. Nothing reaches a server until it is answered.
+	if handled, err := a.checkConflicts(w, r, target, op); err != nil {
+		a.recordProblem(w, r, kind, recordMessage(r.Context(), a.catalog(r), err), dnsStatus(err))
+		return
+	} else if handled {
 		return
 	}
 
@@ -773,10 +800,11 @@ func (a *App) recordProblem(w http.ResponseWriter, r *http.Request,
 		Record:  recordFromValues(r.Form),
 		Query:   listingFrom(r.Form),
 		Types:   dnsfile.Types,
-		IsNew:   kind != fleet.OpEdit,
+		IsNew:   kind != fleet.OpEdit && kind != fleet.OpSet,
 		Problem: problem,
+		Set:     kind == fleet.OpSet,
 	}
-	if kind == fleet.OpEdit {
+	if kind == fleet.OpEdit || kind == fleet.OpSet {
 		data.Old = oldRecordFromValues(r.Form)
 	} else {
 		// Everything the operator typed comes back, not just the row that was
@@ -870,4 +898,113 @@ func parseInt(raw string) int {
 		return 0
 	}
 	return value
+}
+
+// conflictData feeds the panel a submission raises instead of a write.
+//
+// Nothing has reached a server when this is rendered. The operator either
+// answers the question it asks or leaves the target as it is.
+type conflictData struct {
+	Rows []conflictRow
+
+	// Exists marks the case where every server of the target already holds
+	// every record that was submitted, so there is nothing to write and
+	// nothing to ask.
+	Exists bool
+}
+
+// conflictRow is one submitted record and what it ran into.
+type conflictRow struct {
+	Row      int
+	Wanted   dnsfile.Record
+	Existing dnsfile.Record
+
+	// Servers reads "dns1, dns2", which is what the operator needs in a group
+	// where only some of the servers answer for the name.
+	Servers string
+
+	// EditURL opens the form with the record in the way as the old value and
+	// the submitted one as the new value.
+	EditURL string
+}
+
+// checkConflicts turns a submission into a question when the target already
+// answers for what it carries.
+//
+// It reports whether the response has been written. A conflict that is neither
+// a choice nor a complete duplicate lets the write run: a record some servers
+// already hold is still missing from the others.
+func (a *App) checkConflicts(w http.ResponseWriter, r *http.Request,
+	target fleet.Target, op fleet.Operation) (bool, error) {
+
+	var records []dnsfile.Record
+	switch op.Kind {
+	case fleet.OpAdd:
+		records = []dnsfile.Record{op.Record}
+	case fleet.OpAddMany:
+		records = op.Records
+	default:
+		// An edit, a delete and a set all name what they are replacing, so
+		// there is nothing to ask about.
+		return false, nil
+	}
+
+	conflicts, err := a.Records.Conflicts(r.Context(), target, records)
+	if err != nil {
+		return false, err
+	}
+
+	switch {
+	case fleet.NameTaken(conflicts):
+		a.renderConflict(w, r, target, conflicts, false)
+		return true, nil
+	case fleet.AlreadyEverywhere(conflicts, len(records)):
+		a.renderConflict(w, r, target, conflicts, true)
+		return true, nil
+	default:
+		return false, nil
+	}
+}
+
+// renderConflict draws the panel and writes 409, which htmx swaps in.
+func (a *App) renderConflict(w http.ResponseWriter, r *http.Request,
+	target fleet.Target, conflicts []fleet.Conflict, exists bool) {
+
+	data := conflictData{Exists: exists}
+	for _, conflict := range conflicts {
+		if exists != (conflict.Kind == fleet.ConflictExists) {
+			// One panel says one thing. A batch whose rows ran into different
+			// things shows the choices, because those are what stopped it.
+			continue
+		}
+		data.Rows = append(data.Rows, conflictRow{
+			Row:      conflict.Row,
+			Wanted:   conflict.Wanted,
+			Existing: conflict.Existing,
+			Servers:  strings.Join(conflict.Servers, ", "),
+			EditURL:  editURL(target, conflict),
+		})
+	}
+
+	a.RenderPartial(w, r, http.StatusConflict, "record-conflict", data)
+}
+
+// editURL opens the form on the record in the way, with the submitted value
+// filled in as the new one.
+func editURL(target fleet.Target, conflict fleet.Conflict) string {
+	values := url.Values{
+		"fqdn":         {conflict.Wanted.FQDN},
+		"type":         {conflict.Wanted.Type},
+		"value":        {conflict.Wanted.Value},
+		"priority":     {strconv.Itoa(conflict.Wanted.Priority)},
+		"old_fqdn":     {conflict.Existing.FQDN},
+		"old_type":     {conflict.Existing.Type},
+		"old_value":    {conflict.Existing.Value},
+		"old_priority": {strconv.Itoa(conflict.Existing.Priority)},
+		"set":          {"1"},
+		"scope":        {target.Scope},
+		"server_id":    {strconv.FormatInt(target.ServerID, 10)},
+		"group_id":     {strconv.FormatInt(target.GroupID, 10)},
+	}
+	return "/dns/records/edit?" + values.Encode()
 }

@@ -13,7 +13,7 @@
     <h2 class="h6 mb-0">{{if .IsNew}}{{t "record.add_title"}}{{else}}{{t "record.edit_title"}}{{end}}</h2>
   </div>
   <div class="card-body">
-    <form hx-{{if .IsNew}}post{{else}}put{{end}}="/dns/records"
+    <form hx-{{if .IsNew}}post{{else}}put{{end}}="/dns/records{{if .Set}}/set{{end}}"
           hx-target="#record-panel" hx-swap="innerHTML">
 
       {{if .Problem}}{{template "alert" (alert "error" .Problem)}}{{end}}
@@ -119,6 +119,16 @@
       <input type="hidden" name="old_type" value="{{.Old.Type}}">
       <input type="hidden" name="old_value" value="{{.Old.Value}}">
       <input type="hidden" name="old_priority" value="{{.Old.Priority}}">
+      {{end}}
+
+      {{if .Set}}
+      {{/* A refused submission is rendered again from these fields, so the
+           marker travels with them or the second attempt would go to the
+           edit, which every server that lacks the record would refuse. */}}
+      <input type="hidden" name="set" value="1">
+      <div class="form-text mt-3" data-field="set-note">
+        {{tf "record.set_note" .Old.Value}}
+      </div>
       {{end}}
 
       <div class="dns-toolbar mt-4">

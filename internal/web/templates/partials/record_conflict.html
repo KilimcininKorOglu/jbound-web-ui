@@ -1,0 +1,49 @@
+{{/* What a submission runs into, instead of a write.
+
+     Nothing has reached a server when this is on screen. The name already
+     answers, and which value it answers with is the operator's decision rather
+     than the panel's: writing beside what is there would leave two answers and
+     let the resolver pick. */}}
+{{define "record-conflict"}}
+<div class="card">
+  <div class="card-header">
+    <h2 class="h6 mb-0">
+      {{if .Exists}}{{t "record.exists_title"}}{{else}}{{t "record.conflict_title"}}{{end}}
+    </h2>
+  </div>
+  <div class="card-body">
+    <p class="mb-3" data-field="conflict-intro">
+      {{if .Exists}}{{t "record.exists_text"}}{{else}}{{t "record.conflict_intro"}}{{end}}
+    </p>
+
+    <ul class="list-unstyled mb-0">
+      {{range .Rows}}
+      <li class="mb-3" data-field="conflict-row">
+        <div>
+          <code>{{.Wanted.FQDN}}</code> <span class="badge bg-label-secondary">{{.Wanted.Type}}</span>
+        </div>
+        <div class="text-muted small">
+          {{if $.Exists}}
+          {{tf "record.exists_holders" .Wanted.Value .Servers}}
+          {{else}}
+          {{tf "record.conflict_holders" .Existing.Value .Servers .Wanted.Value}}
+          {{end}}
+        </div>
+        {{if not $.Exists}}
+        <button class="btn btn-sm btn-primary mt-2" type="button" data-field="conflict-edit"
+                hx-get="{{.EditURL}}" hx-target="#record-panel" hx-swap="innerHTML">
+          {{t "record.conflict_edit"}}
+        </button>
+        {{end}}
+      </li>
+      {{end}}
+    </ul>
+
+    <div class="dns-toolbar mt-3">
+      <button class="btn btn-outline-secondary" type="button" data-action="close-record-panel">
+        {{if .Exists}}{{t "common.close"}}{{else}}{{t "common.cancel"}}{{end}}
+      </button>
+    </div>
+  </div>
+</div>
+{{end}}

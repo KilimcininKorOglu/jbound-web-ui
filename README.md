@@ -58,9 +58,10 @@ Managed DNS server, over SSH:
 Managed DNS server, through the agent:
 
 - Unbound, and the `jbound-agent` binary installed by `deploy/setup-agent.sh`.
-- A port the panel can reach, `8443` by default.
-- No account, no `sudo` and no sudoers rule. The panel sends no command text and
-  names no file, so there is nothing for a login shell to run.
+- A port the panel can reach, `0.0.0.0:8443` by default.
+- No login account, no `sudo` and no sudoers rule. The agent runs under a locked
+  `jbound-agent` system account with no shell. The panel sends no command text
+  and names no file, so there is nothing for a login shell to run.
 
 ## Install
 
@@ -192,8 +193,22 @@ sudo ./deploy/setup-agent.sh -t "<the token the panel showed>"
 
 It writes `/etc/jbound-agent/token` with mode `600`, generates a self signed
 certificate, writes the environment file naming the two files and the five
-commands, and starts the service. It creates no account and installs no sudoers
-rule.
+commands, and starts the service. It installs no sudoers rule.
+
+The one account it creates is `jbound-agent`, the system account the agent runs
+under. It has no home directory, no shell and a locked password, so nobody signs
+in as it: the agent is a service on that host, not a way onto it. Nothing on the
+resolver accepts a login from the panel.
+
+That account gets exactly what the work needs: read on the control credentials,
+write in the two directories the records file and the main configuration live
+in, and one polkit rule that lets it reload and restart `unbound.service` and
+nothing else. A host with no polkit, or with no systemd, cannot grant the
+restart to anything but root, and the agent runs as root there instead. The
+script says which of the two it hit while it runs, and on a systemd host it
+records the fallback in a `User=root` unit drop-in, so the state is on disk
+rather than in somebody's memory. Install polkit and re-run the script to narrow
+it; the script removes the drop-in again once it can.
 
 The certificate is self signed on purpose. The panel pins the fingerprint an
 operator approves, the same way it pins an SSH host key, so a public issuer
@@ -359,6 +374,35 @@ that is not drift, and no write may target it. A page opened with no target
 lands on the first group by name. **Synchronise** is offered only once that
 group names a source.
 
+## The interface
+
+A button is named after what pressing it does, and the colour says the same
+thing on every page:
+
+| Colour | What the button does |
+| --- | --- |
+| Green | Adds something, or saves a form |
+| Amber | Changes something that is already there |
+| Red | Takes something away |
+| Blue | Probes something and reports back, changing nothing |
+| Grey | Shows something, changing nothing |
+| Violet | Applies the rules, the one action that reaches the running resolvers |
+| No colour | Cancels or closes, and does nothing else |
+
+The confirmation a destructive button raises answers in the same red, so the
+dialog cannot look like a different action from the one that was pressed.
+
+The panel speaks English and Turkish, and follows a light theme, a dark one, or
+whichever the operating system asks for. Both choices live in a cookie on the
+reader's own browser and nowhere else, so nothing about a reader is stored on
+the panel. The **Settings** page decides what a browser gets before anybody has
+chosen.
+
+Every page is reachable by keyboard, starting with a skip link that jumps past
+the navigation, and both palettes are measured rather than chosen by eye: text
+reads at 4.5:1 or better and every control edge and focus ring at 3:1 or better,
+which is what WCAG 2.2 AA asks for.
+
 ## Audit trail and SIEM
 
 Every action is written to the database with the user, the uid, the address, the
@@ -419,8 +463,9 @@ effect on the next read, without a restart. It covers four groups: timings
 fleet concurrency, page size), the SIEM switch and its collector, and the
 interface defaults a browser gets before anybody picks a language or a theme.
 
-The language and the theme of one browser are its own choice and live in a
-cookie. Nothing about a reader is stored server side.
+The interface defaults are what a browser gets before anybody chooses; a reader
+who picks a language or a theme keeps that choice in a cookie of their own, as
+[The interface](#the-interface) describes.
 
 ### Bringing an older trail with you
 
@@ -519,11 +564,12 @@ difference.
 ### The copy an upgrade leaves behind
 
 When a new binary has a migration to apply, it copies the database first and
-writes it next to the original as `jbound.db.before-<migration>.sql`. A
-migration can be one way: `0002` drops a column the previous binary reads, so
-without that copy there is no going back to the version that was running
-before. Roll back by stopping the service, putting the copy in place of
-`jbound.db` and installing the older binary.
+writes it next to the original, named after the migration file that is about to
+run: `jbound.db.before-0002_transfer_tools.sql`. A migration can be one way:
+`0002` drops a column the previous binary reads, so without that copy there is
+no going back to the version that was running before. Roll back by stopping the
+service, putting the copy in place of `jbound.db` and installing the older
+binary.
 
 The panel refuses to start if it cannot write the copy, because the copy is
 what protects against the step that follows it. Each file is written once; a
@@ -570,12 +616,13 @@ make dev-shell     # open a shell in the panel container
 make dev-stop      # stop it and keep the data
 make dev-start     # start it again
 make dev-down      # remove it and drop every volume
+make dev-restart   # rebuild from scratch, dropping every volume as well
 ```
 
 `dev-stop` leaves the panel database, the approved host keys and the files
 the targets hold where they are, so the servers you added are still there
-tomorrow. `dev-down` removes them: the next start has an empty panel and the
-targets are seeded again from `docker/seed`.
+tomorrow. `dev-down` and `dev-restart` remove them: the next start has an empty
+panel and the targets are seeded again from `docker/seed`.
 
 The panel is served on `http://127.0.0.1:8330`. `make dev-env` creates
 `.env.dev` from the example on the first run and refuses to start until every
@@ -591,9 +638,9 @@ docker compose -f docker-compose.dev.yml --env-file .env.dev ps
 
 The first start also fills the panel: the six targets, their approved host keys
 and agent fingerprints, and a group named `resolvers` that holds all of them and
-names `dns1` as its source, written by `docker/devseed`. It goes through the same service an operator goes through,
-and it leaves a panel that already holds a server alone, so anything you change
-afterwards stays changed.
+names `dns1` as its source, written by `docker/devseed`. It goes through the
+same service an operator goes through, and it leaves a panel that already holds
+a server alone, so anything you change afterwards stays changed.
 
 The group carries a seventh member, `dns-down`, pointed at the unrouted
 `192.0.2.1`. Every fleet action therefore reaches six servers and times out on
@@ -607,6 +654,16 @@ One of them, `dns5`, starts with the include line taken out of its resolver
 configuration: the failure is invisible everywhere else, and reproducing it on
 every start is what keeps the repair proven. They answer DNS on `8360`, `8361`
 and `8362`, next to `8331`, `8332` and `8333` for the SSH three.
+
+`air` rebuilds the panel when a file changes. On macOS the event does not always
+cross the Docker mount, and the container then keeps serving the previous build,
+which is a confusing way to lose an hour. Watch `make dev-logs` for a
+`building...` line after editing a template or a stylesheet, and restart the
+container when there is none:
+
+```
+docker compose -f docker-compose.dev.yml --env-file .env.dev restart app
+```
 
 ### Checks
 
@@ -648,7 +705,15 @@ Go toolchain.
 
 `.github/workflows/check.yml` runs the same checks on every push and pull
 request, and the vulnerability scan again once a week, because an advisory
-lands against source that did not change.
+lands against source that did not change. It takes its Go version from
+`go-version-file: go.mod`, so CI cannot drift from the toolchain line.
+
+The Go analysers are pinned in the Makefile: `staticcheck@2025.1.1`,
+`govulncheck@v1.1.4` and `modernize@v0.20.0`. Run them at those versions rather
+than at `@latest`, or a local result and CI disagree about what is a finding.
+`govulncheck` reports one advisory it cannot clear, `GO-2026-5932` against
+`golang.org/x/crypto/openpgp`, which has no fixed version and which no part of
+the panel calls; everything else is expected at zero.
 
 ## Layout
 
@@ -668,6 +733,7 @@ internal/siem        the CEF rendering, the sender and the delivery queue
 internal/settings    the settings registry and their storage
 internal/store       the SQL statements, with no business rules of their own
 internal/database    the connection, the pragmas and the migrations
+internal/config      the environment file, read once at startup
 internal/preflight   the startup checks that must pass before it serves
 internal/i18n        the language catalogues
 internal/web         handlers, templates and static assets

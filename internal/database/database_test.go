@@ -55,7 +55,7 @@ func TestOpenCreatesEverySchemaObject(t *testing.T) {
 	db := openTestDB(t)
 
 	wantTables := []string{
-		"servers", "server_groups", "server_group_members", "server_state",
+		"servers", "server_groups", "server_state",
 		"record_cache", "audit_logs", "login_attempts", "sessions",
 		"schema_migrations",
 	}
@@ -198,22 +198,20 @@ func TestDeletingAServerCascadesToStateAndCacheButKeepsAuditRows(t *testing.T) {
 		t.Fatalf("insert audit failed: %v", err)
 	}
 
-	groupRes, err := db.Exec("INSERT INTO server_groups (name) VALUES ('resolvers')")
-	if err != nil {
+	if _, err := db.Exec(
+		"INSERT INTO server_groups (name, source_server_id) VALUES ('resolvers', ?)",
+		serverID); err != nil {
 		t.Fatalf("insert group failed: %v", err)
 	}
-	groupID, _ := groupRes.LastInsertId()
-	if _, err := db.Exec(
-		"INSERT INTO server_group_members (group_id, server_id) VALUES (?, ?)",
-		groupID, serverID); err != nil {
-		t.Fatalf("insert membership failed: %v", err)
+	if _, err := db.Exec("UPDATE servers SET group_id = (SELECT id FROM server_groups)"); err != nil {
+		t.Fatalf("cannot put the server in the group: %v", err)
 	}
 
 	if _, err := db.Exec("DELETE FROM servers WHERE id = ?", serverID); err != nil {
 		t.Fatalf("delete failed: %v", err)
 	}
 
-	for _, table := range []string{"server_state", "record_cache", "server_group_members"} {
+	for _, table := range []string{"server_state", "record_cache"} {
 		var count int
 		if err := db.QueryRow(
 			"SELECT COUNT(*) FROM " + table + " WHERE server_id = " +
@@ -223,6 +221,16 @@ func TestDeletingAServerCascadesToStateAndCacheButKeepsAuditRows(t *testing.T) {
 		if count != 0 {
 			t.Errorf("%s still holds %d row(s) after the server was deleted", table, count)
 		}
+	}
+
+	// The group outlives its source. Deleting the server the group copied from
+	// leaves the group without a source rather than deleting the group.
+	var source any
+	if err := db.QueryRow("SELECT source_server_id FROM server_groups").Scan(&source); err != nil {
+		t.Fatalf("source query failed: %v", err)
+	}
+	if source != nil {
+		t.Errorf("the group still names server %v as its source", source)
 	}
 
 	var auditCount int

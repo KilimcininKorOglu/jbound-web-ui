@@ -425,7 +425,7 @@ func TestTheAgentMigrationKeepsEveryRowThatPointsAtAServer(t *testing.T) {
 		`INSERT INTO servers (id, name, host, ssh_user, ssh_key_path)
 		 VALUES (7, 'dns1', 'dns1', 'dnsops', 'keys/7.key')`,
 		`INSERT INTO server_groups (id, name) VALUES (3, 'resolvers')`,
-		`INSERT INTO server_group_members (group_id, server_id) VALUES (3, 7)`,
+		`UPDATE servers SET group_id = 3 WHERE id = 7`,
 		`INSERT INTO server_state (server_id, file_sha256) VALUES (7, 'abc')`,
 		`INSERT INTO record_cache (server_id, line, fqdn, type, value, raw)
 		 VALUES (7, 1, 'www.example.net', 'A', '192.0.2.10', 'local-data: ...')`,
@@ -461,7 +461,7 @@ func TestTheAgentMigrationKeepsEveryRowThatPointsAtAServer(t *testing.T) {
 	defer func() { _ = upgraded.Close() }()
 
 	for table, want := range map[string]int{
-		"servers": 1, "server_group_members": 1, "server_state": 1,
+		"servers": 1, "server_groups": 1, "server_state": 1,
 		"record_cache": 1, "file_backups": 1, "audit_logs": 1,
 	} {
 		var count int
@@ -565,13 +565,12 @@ func TestAnUpgradeThatBrokeAReferenceStopsTheStart(t *testing.T) {
 		t.Fatalf("Open returned an error: %v", err)
 	}
 
-	// A membership row naming a server that is not there. Reaching this state
+	// A group naming a source server that is not there. Reaching this state
 	// takes the suspension the migration run uses, which is exactly the state
 	// a broken rebuild would leave.
 	for _, statement := range []string{
 		"PRAGMA foreign_keys = OFF",
-		`INSERT INTO server_groups (id, name) VALUES (1, 'resolvers')`,
-		`INSERT INTO server_group_members (group_id, server_id) VALUES (1, 999)`,
+		`INSERT INTO server_groups (id, name, source_server_id) VALUES (1, 'resolvers', 999)`,
 		"PRAGMA foreign_keys = ON",
 	} {
 		if _, err := db.Exec(statement); err != nil {
@@ -588,7 +587,113 @@ func TestAnUpgradeThatBrokeAReferenceStopsTheStart(t *testing.T) {
 
 	if err := reopened.checkForeignKeys(context.Background()); err == nil {
 		t.Fatal("the check passed a row pointing at nothing")
-	} else if !strings.Contains(err.Error(), "server_group_members") {
+	} else if !strings.Contains(err.Error(), "server_groups") {
 		t.Errorf("the failure does not name the table: %v", err)
+	}
+}
+
+func TestTheGroupMigrationKeepsTheSmallestGroupAndRecordsTheRest(t *testing.T) {
+	// A server that sat in two groups has to end up in exactly one, and the
+	// membership that drops has to be visible afterwards. The old panel wide
+	// source becomes the source of its own group and of no other, which is the
+	// whole point of moving it: a mirror can no longer copy one group over
+	// another.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "panel.db")
+
+	db, err := Open(context.Background(), path)
+	if err != nil {
+		t.Fatalf("Open returned an error: %v", err)
+	}
+
+	// Put the database back to where it was before the group migration.
+	for _, statement := range []string{
+		"DROP INDEX IF EXISTS idx_servers_group",
+		"ALTER TABLE servers DROP COLUMN group_id",
+		"ALTER TABLE server_groups DROP COLUMN source_server_id",
+		`CREATE TABLE server_group_members (
+		     group_id  INTEGER NOT NULL REFERENCES server_groups(id) ON DELETE CASCADE,
+		     server_id INTEGER NOT NULL REFERENCES servers(id)       ON DELETE CASCADE,
+		     PRIMARY KEY (group_id, server_id))`,
+		"CREATE INDEX idx_group_members_server ON server_group_members (server_id)",
+		"DELETE FROM schema_migrations WHERE name = '0011_group_per_server.sql'",
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatalf("cannot undo the migration (%s): %v", statement, err)
+		}
+	}
+
+	for _, statement := range []string{
+		`INSERT INTO servers (id, name, host, ssh_user, ssh_key_path)
+		 VALUES (7, 'dns1', 'dns1', 'dnsops', 'keys/7.key')`,
+		`INSERT INTO server_groups (id, name) VALUES (3, 'resolvers')`,
+		`INSERT INTO server_groups (id, name) VALUES (5, 'edge')`,
+		`INSERT INTO server_group_members (group_id, server_id) VALUES (3, 7)`,
+		`INSERT INTO server_group_members (group_id, server_id) VALUES (5, 7)`,
+		`INSERT INTO settings (key, value) VALUES ('source_server_id', '7')`,
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatalf("cannot seed (%s): %v", statement, err)
+		}
+	}
+	_ = db.Close()
+
+	upgraded, err := Open(context.Background(), path)
+	if err != nil {
+		t.Fatalf("the upgrade failed: %v", err)
+	}
+	defer func() { _ = upgraded.Close() }()
+
+	var group int64
+	if err := upgraded.QueryRow("SELECT group_id FROM servers WHERE id = 7").Scan(&group); err != nil {
+		t.Fatalf("cannot read the group of the server: %v", err)
+	}
+	if group != 3 {
+		t.Errorf("the server is in group %d, want the smallest one, 3", group)
+	}
+
+	// The dropped membership is in the trail, naming the group it left.
+	var details string
+	if err := upgraded.QueryRow(
+		"SELECT details FROM audit_logs WHERE action = 'group_collapse'").Scan(&details); err != nil {
+		t.Fatalf("the dropped membership was not recorded: %v", err)
+	}
+	if !strings.Contains(details, "#5") || !strings.Contains(details, "dns1") {
+		t.Errorf("the recorded row does not name the server and the group it left: %q", details)
+	}
+
+	// The source lands on its own group only.
+	sources := map[int64]any{}
+	rows, err := upgraded.Query("SELECT id, source_server_id FROM server_groups")
+	if err != nil {
+		t.Fatalf("cannot read the groups: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var id int64
+		var source any
+		if err := rows.Scan(&id, &source); err != nil {
+			t.Fatalf("cannot scan a group: %v", err)
+		}
+		sources[id] = source
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("cannot walk the groups: %v", err)
+	}
+	if sources[3] != int64(7) {
+		t.Errorf("group 3 names %v as its source, want 7", sources[3])
+	}
+	if sources[5] != nil {
+		t.Errorf("group 5 took a source it never had: %v", sources[5])
+	}
+
+	// The panel wide setting is gone, so nothing reads it after the upgrade.
+	var left int
+	if err := upgraded.QueryRow(
+		"SELECT COUNT(*) FROM settings WHERE key = 'source_server_id'").Scan(&left); err != nil {
+		t.Fatalf("cannot read the settings: %v", err)
+	}
+	if left != 0 {
+		t.Error("the panel wide source server setting survived the upgrade")
 	}
 }

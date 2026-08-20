@@ -52,13 +52,14 @@ func newFleetEnv(t *testing.T) *fleetEnv {
 	}
 
 	group, err := env.servers.CreateGroup(ctx, server.Actor{UID: 1001, Username: "dnsadmin"},
-		server.Group{Name: "resolvers", ServerIDs: []int64{1, 2, 3}})
+		server.Group{Name: "resolvers"})
 	if err != nil {
 		t.Fatalf("cannot create the group: %v", err)
 	}
 	if group.ID != 1 {
 		t.Fatalf("group id = %d, want 1", group.ID)
 	}
+	env.putInGroup(t, group.ID, 1, 2, 3)
 
 	if _, err := env.records.Refresh(ctx); err != nil {
 		t.Fatalf("cannot fill the cache: %v", err)

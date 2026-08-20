@@ -1,5 +1,6 @@
-{{/* Both tables re-render together, because a change to one can move rows in
-     the other: deleting a server also removes it from every group. */}}
+{{/* Both tables re-render together, because a change to one moves rows in the
+     other: a server names the group it belongs to, so an edit on the left
+     changes the membership shown on the right. */}}
 {{define "server-tables"}}
 <div class="card mb-4">
   <div class="card-header">
@@ -12,6 +13,7 @@
         <tr>
           <th scope="col">{{t "common.name"}}</th>
           <th scope="col">{{t "servers.endpoint"}}</th>
+          <th scope="col">{{t "servers.group_column"}}</th>
           <th scope="col">{{t "servers.status"}}</th>
           <th scope="col">{{t "servers.records"}}</th>
           <th scope="col">{{t "servers.last_contact"}}</th>
@@ -35,6 +37,10 @@
           <td class="text-muted" data-field="endpoint">
             {{if eq .Transport "agent"}}{{.Host}}:{{.AgentPort}}
             {{else}}{{.SSHUser}}@{{.Host}}:{{.SSHPort}}{{end}}
+          </td>
+          <td data-field="group">
+            {{if .GroupName}}{{.GroupName}}
+            {{else}}<span class="text-muted">{{t "servers.no_group"}}</span>{{end}}
           </td>
           <td>
             {{template "server-status" .}}
@@ -89,7 +95,7 @@
         </tr>
         {{else}}
         <tr>
-          <td colspan="6" class="text-center text-muted py-4">
+          <td colspan="7" class="text-center text-muted py-4">
             {{t "servers.none"}}
           </td>
         </tr>
@@ -115,6 +121,7 @@
           <th scope="col">{{t "common.name"}}</th>
           <th scope="col">{{t "servers.description"}}</th>
           <th scope="col">{{t "servers.members"}}</th>
+          <th scope="col">{{t "servers.source_column"}}</th>
           <th scope="col" class="text-end">{{t "common.actions"}}</th>
         </tr>
       </thead>
@@ -126,6 +133,10 @@
           <td>
             {{range .Members}}<span class="badge bg-label-primary me-1">{{.Name}}</span>{{end}}
             {{if not .Members}}<span class="text-muted">{{t "servers.empty_group"}}</span>{{end}}
+          </td>
+          <td data-field="source">
+            {{if .SourceName}}{{.SourceName}}
+            {{else}}<span class="text-muted">{{t "servers.no_source"}}</span>{{end}}
           </td>
           <td class="text-end">
             <button class="btn btn-sm btn-outline-primary" type="button"
@@ -142,7 +153,7 @@
         </tr>
         {{else}}
         <tr>
-          <td colspan="4" class="text-center text-muted py-4">
+          <td colspan="5" class="text-center text-muted py-4">
             {{t "servers.no_groups"}}
           </td>
         </tr>

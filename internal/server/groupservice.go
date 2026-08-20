@@ -8,11 +8,15 @@ import (
 )
 
 // CreateGroup stores a new group.
+//
+// A new group has no member yet, so it can carry no source. The form offers
+// none either, and the check below is what keeps a hand written request from
+// naming one.
 func (s *Service) CreateGroup(ctx context.Context, actor Actor, group Group) (Group, error) {
 	if err := group.Validate(); err != nil {
 		return Group{}, fmt.Errorf("%w: %v", ErrValidation, err)
 	}
-	if err := s.requireExistingServers(ctx, group.ServerIDs); err != nil {
+	if err := s.requireSourceIsMember(ctx, group); err != nil {
 		return Group{}, err
 	}
 
@@ -25,12 +29,16 @@ func (s *Service) CreateGroup(ctx context.Context, actor Actor, group Group) (Gr
 	return stored, nil
 }
 
-// UpdateGroup writes a group and replaces its membership.
+// UpdateGroup writes the group.
+//
+// Which servers are in it is not decided here. A server names its own group, so
+// this only carries the name, the description and the reference a mirror copies
+// from.
 func (s *Service) UpdateGroup(ctx context.Context, actor Actor, group Group) error {
 	if err := group.Validate(); err != nil {
 		return fmt.Errorf("%w: %v", ErrValidation, err)
 	}
-	if err := s.requireExistingServers(ctx, group.ServerIDs); err != nil {
+	if err := s.requireSourceIsMember(ctx, group); err != nil {
 		return err
 	}
 	if err := s.groups.Update(ctx, group); err != nil {
@@ -38,11 +46,13 @@ func (s *Service) UpdateGroup(ctx context.Context, actor Actor, group Group) err
 	}
 
 	s.write(ctx, actor, audit.ActionGroupUpdate, nil, fmt.Sprintf(
-		"Updated group #%d: %s (%d members)", group.ID, group.Name, len(group.ServerIDs)))
+		"Updated group #%d: %s (source %s)",
+		group.ID, group.Name, idLabel(group.SourceServerID)))
 	return nil
 }
 
-// DeleteGroup removes a group. The servers themselves stay.
+// DeleteGroup removes a group. The servers themselves stay, and the foreign key
+// leaves them ungrouped.
 func (s *Service) DeleteGroup(ctx context.Context, actor Actor, id int64) error {
 	group, err := s.groups.Get(ctx, id)
 	if err != nil {
@@ -86,29 +96,89 @@ func (s *Service) Targets(ctx context.Context, groupID int64) ([]Server, error) 
 	return members, nil
 }
 
-// requireExistingServers rejects a membership that names a server which is not
-// there.
+// SourceServer returns the server a mirror onto this group copies from.
 //
-// The foreign key would refuse it as well, but the message would name a
-// constraint rather than the server the operator picked.
-func (s *Service) requireExistingServers(ctx context.Context, ids []int64) error {
-	if len(ids) == 0 {
+// A source that has left the group, been disabled or lost its host key reads as
+// none, so the answer is what may actually be copied rather than what the row
+// last said.
+func (s *Service) SourceServer(ctx context.Context, groupID int64) (Server, bool, error) {
+	if groupID <= 0 {
+		return Server{}, false, nil
+	}
+
+	group, err := s.groups.Get(ctx, groupID)
+	if err != nil {
+		return Server{}, false, err
+	}
+	if group.SourceServerID <= 0 {
+		return Server{}, false, nil
+	}
+
+	record, err := s.servers.Get(ctx, group.SourceServerID)
+	if err != nil {
+		return Server{}, false, nil
+	}
+	if record.GroupID != groupID || !record.Enabled || !record.Trusted() {
+		return Server{}, false, nil
+	}
+	return record, true, nil
+}
+
+// requireSourceIsMember refuses a reference that is not in the group.
+//
+// The database would allow it: the column only says the row is a server. What
+// makes it wrong is that a mirror copies the source onto every member, so a
+// source from elsewhere would replace the group's records with another group's.
+func (s *Service) requireSourceIsMember(ctx context.Context, group Group) error {
+	if group.SourceServerID == 0 {
 		return nil
 	}
 
-	known := map[int64]bool{}
-	servers, err := s.servers.List(ctx)
+	record, err := s.servers.Get(ctx, group.SourceServerID)
+	if err != nil {
+		return fmt.Errorf("%w: server %d does not exist", ErrValidation, group.SourceServerID)
+	}
+	if record.GroupID != group.ID {
+		return fmt.Errorf("%w: %s is not a member of this group", ErrValidation, record.Name)
+	}
+	if !record.Enabled {
+		return fmt.Errorf("%w: %s is disabled", ErrValidation, record.Name)
+	}
+	return nil
+}
+
+// releaseSourceOf clears every group that names this server as its source but
+// no longer holds it.
+//
+// It runs after a server moved group or was disabled. A reference that points
+// at a server the group cannot copy from would leave the operator a button that
+// fails at the far end.
+func (s *Service) releaseSourceOf(ctx context.Context, record Server) error {
+	groups, err := s.groups.List(ctx)
 	if err != nil {
 		return err
 	}
-	for _, record := range servers {
-		known[record.ID] = true
-	}
 
-	for _, id := range ids {
-		if !known[id] {
-			return fmt.Errorf("%w: server %d does not exist", ErrValidation, id)
+	for _, group := range groups {
+		if group.SourceServerID != record.ID {
+			continue
+		}
+		if group.ID == record.GroupID && record.Enabled {
+			continue
+		}
+
+		group.SourceServerID = 0
+		if err := s.groups.Update(ctx, group); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+// idLabel writes an optional identifier for an audit line.
+func idLabel(id int64) string {
+	if id <= 0 {
+		return "none"
+	}
+	return fmt.Sprintf("#%d", id)
 }

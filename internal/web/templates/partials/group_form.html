@@ -16,21 +16,25 @@
              value="{{.Group.Description}}" maxlength="255">
     </div>
 
-    <div class="col-12">
-      <span class="form-label d-block">{{t "groupform.members"}}</span>
-      {{range .Servers}}
-      <div class="form-check">
-        <input class="form-check-input" type="checkbox" id="member-{{.ID}}"
-               name="server_ids" value="{{.ID}}"
-               {{if index $.Chosen .ID}}checked{{end}}>
-        <label class="form-check-label" for="member-{{.ID}}">
-          {{.Name}} <span class="text-muted">({{.SSHUser}}@{{.Host}})</span>
-          {{if not .Enabled}}<span class="badge bg-label-info ms-1">{{t "groupform.disabled"}}</span>{{end}}
-        </label>
+    {{/* Which servers are in the group is chosen on each server, so this form
+         only names the member a synchronisation copies from. The list is the
+         group's own members, because copying anything else over them would
+         replace this group's records with another group's. */}}
+    <div class="col-md-6">
+      <label class="form-label" for="source_server_id">{{t "groupform.source"}}</label>
+      <select class="form-select" id="source_server_id" name="source_server_id">
+        <option value="0" {{if eq $.Group.SourceServerID 0}}selected{{end}}>
+          {{t "groupform.source_none"}}
+        </option>
+        {{range .Members}}
+        <option value="{{.ID}}" {{if eq $.Group.SourceServerID .ID}}selected{{end}}>
+          {{.Name}}
+        </option>
+        {{end}}
+      </select>
+      <div class="form-text">
+        {{if .Members}}{{t "groupform.source_help"}}{{else}}{{t "groupform.source_needs_members"}}{{end}}
       </div>
-      {{else}}
-      <p class="text-muted mb-0">{{t "groupform.no_servers"}}</p>
-      {{end}}
     </div>
 
     <div class="col-12 dns-toolbar">

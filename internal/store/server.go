@@ -26,7 +26,7 @@ const serverColumns = `
     records_path, reload_cmd, status_cmd,
     base64_path, tee_path, mv_path, sha256_path,
     check_conf_cmd, reload_fallback_cmd, restart_cmd, ensure_include_cmd,
-    enabled, last_seen_at, last_error, created_at, updated_at`
+    group_id, enabled, last_seen_at, last_error, created_at, updated_at`
 
 // Create inserts a server and returns it with its identifier.
 func (s *Servers) Create(ctx context.Context, record server.Server) (server.Server, error) {
@@ -36,8 +36,8 @@ INSERT INTO servers
      records_path, reload_cmd, status_cmd,
      base64_path, tee_path, mv_path, sha256_path,
      check_conf_cmd, reload_fallback_cmd, restart_cmd, ensure_include_cmd,
-     enabled)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+     group_id, enabled)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	result, err := s.db.ExecContext(ctx, query,
 		record.Name, record.Host, record.SSHPort, record.Transport, record.AgentPort,
@@ -46,7 +46,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 		record.Base64Path, record.TeePath, record.MvPath, record.Sha256Path,
 		record.CheckConfCmd, record.ReloadFallbackCmd, record.RestartCmd,
 		record.EnsureIncludeCmd,
-		boolToInt(record.Enabled),
+		nullableID(record.GroupID), boolToInt(record.Enabled),
 	)
 	if err != nil {
 		if isUniqueViolation(err) {
@@ -74,7 +74,7 @@ UPDATE servers
        base64_path = ?, tee_path = ?, mv_path = ?, sha256_path = ?,
        check_conf_cmd = ?, reload_fallback_cmd = ?, restart_cmd = ?,
        ensure_include_cmd = ?,
-       enabled = ?
+       group_id = ?, enabled = ?
  WHERE id = ?`
 
 	result, err := s.db.ExecContext(ctx, query,
@@ -83,7 +83,7 @@ UPDATE servers
 		record.Base64Path, record.TeePath, record.MvPath, record.Sha256Path,
 		record.CheckConfCmd, record.ReloadFallbackCmd, record.RestartCmd,
 		record.EnsureIncludeCmd,
-		boolToInt(record.Enabled), record.ID,
+		nullableID(record.GroupID), boolToInt(record.Enabled), record.ID,
 	)
 	if err != nil {
 		if isUniqueViolation(err) {
@@ -223,6 +223,7 @@ func scanServer(row scanner) (server.Server, error) {
 	var (
 		record             server.Server
 		enabled            int
+		group              sql.NullInt64
 		lastSeen           sql.NullString
 		created, updated   string
 		parsedSeen         time.Time
@@ -237,12 +238,13 @@ func scanServer(row scanner) (server.Server, error) {
 		&record.Base64Path, &record.TeePath, &record.MvPath, &record.Sha256Path,
 		&record.CheckConfCmd, &record.ReloadFallbackCmd, &record.RestartCmd,
 		&record.EnsureIncludeCmd,
-		&enabled, &lastSeen, &record.LastError, &created, &updated,
+		&group, &enabled, &lastSeen, &record.LastError, &created, &updated,
 	)
 	if err != nil {
 		return server.Server{}, err
 	}
 
+	record.GroupID = group.Int64
 	record.Enabled = enabled == 1
 
 	if record.CreatedAt, errCreated = parseTime(created); errCreated != nil {

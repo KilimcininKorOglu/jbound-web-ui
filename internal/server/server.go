@@ -105,6 +105,10 @@ type Server struct {
 	// prepared before this command existed.
 	EnsureIncludeCmd string
 
+	// GroupID is the group this server belongs to. Zero means none, and an
+	// ungrouped server can only be reached by naming it on its own.
+	GroupID int64
+
 	Enabled    bool
 	LastSeenAt *time.Time
 	LastError  string
@@ -195,6 +199,9 @@ func (s Server) inputProblems() []string {
 	}
 	if !hostPattern.MatchString(s.Host) {
 		problems = append(problems, "host is not a valid host name or address")
+	}
+	if s.GroupID < 0 {
+		problems = append(problems, "group id is not valid")
 	}
 	if s.Transport != TransportSSH && s.Transport != TransportAgent {
 		problems = append(problems,

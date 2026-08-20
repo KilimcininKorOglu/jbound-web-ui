@@ -26,15 +26,16 @@ func newCacheFixture(t *testing.T) *cacheFixture {
 	t.Helper()
 
 	base := newFixture(t)
-	first := base.mustCreate(t, "dns1")
-	second := base.mustCreate(t, "dns2")
 
-	group, err := base.groups.Create(context.Background(), server.Group{
-		Name: "resolvers", ServerIDs: []int64{first.ID},
-	})
+	group, err := base.groups.Create(context.Background(), server.Group{Name: "resolvers"})
 	if err != nil {
 		t.Fatalf("cannot create the group: %v", err)
 	}
+
+	// Only the first server is in the group, so a group scoped listing has to
+	// leave the second one out.
+	first := base.mustCreateIn(t, "dns1", group.ID)
+	second := base.mustCreate(t, "dns2")
 
 	return &cacheFixture{
 		fixture: base,

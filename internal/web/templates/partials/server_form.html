@@ -44,6 +44,24 @@
       {{end}}
     </div>
 
+    {{/* The group owns the records this server holds, so it is chosen here
+         rather than on the group. A server may be in none, and then only an
+         action that names it on its own reaches it. */}}
+    <div class="col-md-3">
+      <label class="form-label" for="group_id">{{t "serverform.group"}}</label>
+      <select class="form-select" id="group_id" name="group_id">
+        <option value="0" {{if eq $.Server.GroupID 0}}selected{{end}}>
+          {{t "serverform.group_none"}}
+        </option>
+        {{range .Groups}}
+        <option value="{{.ID}}" {{if eq $.Server.GroupID .ID}}selected{{end}}>{{.Name}}</option>
+        {{end}}
+      </select>
+      {{if not .Groups}}
+      <div class="form-text">{{t "serverform.group_help"}}</div>
+      {{end}}
+    </div>
+
     {{/* Everything from here to the tool paths belongs to one transport or the
          other. The blocks are marked rather than hidden by a script writing
          style, because the content security policy allows no inline script and

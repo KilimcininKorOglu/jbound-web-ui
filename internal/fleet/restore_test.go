@@ -111,7 +111,7 @@ func TestAMirrorKeepsTheFileItReplaced(t *testing.T) {
 	before := seeded + "local-data: \"stray.example.net. A 192.0.2.77\"\n"
 	h.targets["dns2"].content = []byte(before)
 
-	if _, err := h.writer.Mirror(context.Background(), testActor(), groupTarget(), 1); err != nil {
+	if _, err := h.writer.Mirror(context.Background(), testActor(), groupTarget()); err != nil {
 		t.Fatalf("Mirror returned an error: %v", err)
 	}
 	if strings.Contains(h.targets["dns2"].file(), "stray.example.net") {

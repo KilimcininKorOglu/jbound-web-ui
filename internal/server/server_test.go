@@ -151,14 +151,14 @@ func TestTransportConfigResolvesTheKeyAgainstTheDataDirectory(t *testing.T) {
 	}
 }
 
-func TestGroupValidateRefusesADuplicateMember(t *testing.T) {
-	group := Group{Name: "resolvers", ServerIDs: []int64{1, 2, 1}}
+func TestGroupValidateRefusesANegativeSource(t *testing.T) {
+	group := Group{Name: "resolvers", SourceServerID: -1}
 
 	err := group.Validate()
 	if err == nil {
-		t.Fatal("Validate accepted a server listed twice")
+		t.Fatal("Validate accepted a source server that cannot exist")
 	}
-	if !strings.Contains(err.Error(), "twice") {
+	if !strings.Contains(err.Error(), "source server id") {
 		t.Errorf("the error does not name the problem: %v", err)
 	}
 }

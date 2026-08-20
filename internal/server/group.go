@@ -6,20 +6,29 @@ import (
 	"time"
 )
 
-// Group targets several servers with one operation.
+// Group owns the servers a record action targets.
 //
-// A server may belong to more than one group, so a pair of resolvers can be
-// changed together while each still appears in a narrower group of its own.
+// A server belongs to one group at most, which is what lets a record belong to
+// the group as well: the file a member holds is the group's records and nothing
+// else. Which group a server is in is chosen on the server, not here.
 type Group struct {
 	ID          int64
 	Name        string
 	Description string
-	ServerIDs   []int64
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+
+	// SourceServerID names the member a synchronisation copies from. Zero means
+	// no reference is chosen, and then nothing may be mirrored onto the group.
+	SourceServerID int64
+
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 // Validate checks a group before it is stored.
+//
+// Whether the source is a member of this group is not decided here, because
+// membership lives on the server rows. The service checks it against the
+// database.
 func (g Group) Validate() error {
 	var problems []string
 
@@ -30,17 +39,9 @@ func (g Group) Validate() error {
 	if len(g.Description) > 255 {
 		problems = append(problems, "description is longer than 255 characters")
 	}
-
-	seen := map[int64]bool{}
-	for _, id := range g.ServerIDs {
-		if id <= 0 {
-			problems = append(problems, fmt.Sprintf("server id %d is not valid", id))
-			continue
-		}
-		if seen[id] {
-			problems = append(problems, fmt.Sprintf("server %d is listed twice", id))
-		}
-		seen[id] = true
+	if g.SourceServerID < 0 {
+		problems = append(problems,
+			fmt.Sprintf("source server id %d is not valid", g.SourceServerID))
 	}
 
 	if len(problems) > 0 {

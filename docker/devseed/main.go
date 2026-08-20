@@ -124,9 +124,19 @@ func run() error {
 	// the way it would if somebody had added these by hand.
 	actor := server.Actor{UID: 1001, Username: "dnsadmin", IPAddress: "127.0.0.1"}
 
+	// The group comes first, because a server names the group it joins. It is
+	// created without a source: no member exists yet to be one.
+	group, err := service.CreateGroup(ctx, actor, server.Group{
+		Name:        groupName,
+		Description: "Every target of the development stack",
+	})
+	if err != nil {
+		return fmt.Errorf("cannot create the group: %w", err)
+	}
+
 	var ids []int64
 	for _, name := range targets {
-		id, err := addTarget(ctx, service, actor, name, string(material))
+		id, err := addTarget(ctx, service, actor, group.ID, name, string(material))
 		if err != nil {
 			return err
 		}
@@ -142,29 +152,28 @@ func run() error {
 	}
 
 	for _, name := range agentTargets {
-		id, err := addAgentTarget(ctx, service, actor, dataDir, name, token)
+		id, err := addAgentTarget(ctx, service, actor, group.ID, dataDir, name, token)
 		if err != nil {
 			return err
 		}
 		ids = append(ids, id)
 	}
 
-	downID, err := addDownTarget(ctx, service, servers, actor, string(material))
+	downID, err := addDownTarget(ctx, service, servers, actor, group.ID, string(material))
 	if err != nil {
 		return err
 	}
 	ids = append(ids, downID)
 
-	if _, err := service.CreateGroup(ctx, actor, server.Group{
-		Name:        groupName,
-		Description: "Every target of the development stack",
-		ServerIDs:   ids,
-	}); err != nil {
-		return fmt.Errorf("cannot create the group: %w", err)
+	// The first ssh target is the reference a synchronisation copies from, so
+	// the stack can exercise that button without a click on the group form.
+	group.SourceServerID = ids[0]
+	if err := service.UpdateGroup(ctx, actor, group); err != nil {
+		return fmt.Errorf("cannot name the source of the group: %w", err)
 	}
 
 	slog.Info("the development panel is seeded",
-		"servers", len(ids), "group", groupName)
+		"servers", len(ids), "group", groupName, "source", targets[0])
 	return nil
 }
 
@@ -175,11 +184,12 @@ func run() error {
 // same stack, started from the same key pair a moment ago, so there is nothing
 // for a person to compare against.
 func addTarget(ctx context.Context, service *server.Service, actor server.Actor,
-	name, material string) (int64, error) {
+	groupID int64, name, material string) (int64, error) {
 
 	record, _, err := service.Create(ctx, actor, server.CreateInput{
 		Server: server.Server{
 			Name: name, Host: name, SSHUser: "dnsops", Enabled: true,
+			GroupID: groupID,
 			// The containers carry no systemd, so the init script answers.
 			StatusCmd: "/usr/sbin/service unbound status",
 		},
@@ -210,11 +220,12 @@ func addTarget(ctx context.Context, service *server.Service, actor server.Actor,
 // containers of the same stack, started a moment ago, so there is nothing for a
 // person to compare against.
 func addAgentTarget(ctx context.Context, service *server.Service,
-	actor server.Actor, dataDir, name, token string) (int64, error) {
+	actor server.Actor, groupID int64, dataDir, name, token string) (int64, error) {
 
 	record, _, err := service.Create(ctx, actor, server.CreateInput{
 		Server: server.Server{
 			Name: name, Host: name, Transport: server.TransportAgent, Enabled: true,
+			GroupID: groupID,
 		},
 	})
 	if err != nil {
@@ -255,11 +266,12 @@ func addAgentTarget(ctx context.Context, service *server.Service,
 // compared, because the comparison happens after a handshake that never gets
 // that far.
 func addDownTarget(ctx context.Context, service *server.Service, servers *store.Servers,
-	actor server.Actor, material string) (int64, error) {
+	actor server.Actor, groupID int64, material string) (int64, error) {
 
 	record, _, err := service.Create(ctx, actor, server.CreateInput{
 		Server: server.Server{
 			Name: downName, Host: downHost, SSHUser: "dnsops", Enabled: true,
+			GroupID:   groupID,
 			StatusCmd: "/usr/sbin/service unbound status",
 		},
 		PrivateKey: material,

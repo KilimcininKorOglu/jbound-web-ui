@@ -7,8 +7,6 @@ import (
 	"net/url"
 	"strings"
 	"testing"
-
-	"jbound/internal/settings"
 )
 
 // drift makes one server hold something the others do not, which is what the
@@ -209,41 +207,33 @@ func TestTheDiffTableSaysWhenNoSourceIsChosen(t *testing.T) {
 func TestTheDiffTableMarksTheSourceColumn(t *testing.T) {
 	env := newFleetEnv(t)
 
-	form := env.settingsForm(t, map[string]string{settings.SourceServerID: "1"})
-	if recorder := env.do(t, postForm("/settings", form), env.adminCookie(t)); recorder.Code != http.StatusOK {
-		t.Fatalf("cannot choose the source: %d", recorder.Code)
-	}
+	env.chooseSource(t, 1, 1)
 
-	body := env.diffTable(t, "")
+	// The source belongs to the group, so the badge and the button only appear
+	// once the comparison names that group.
+	body := env.diffTable(t, "scope=group&group_id=1")
 	if !strings.Contains(body, `data-field="source"`) {
 		t.Errorf("the source column carries no badge:\n%s", body)
 	}
-
-	// The comparison has to name a target a change may reach, which the whole
-	// fleet is not.
-	body = env.diffTable(t, "scope=group&group_id=1")
 	if !strings.Contains(body, `data-field="sync-from-source"`) {
 		t.Errorf("the table offers no synchronisation:\n%s", body)
 	}
 }
 
 func TestNoSynchronisationIsOfferedForTheWholeFleet(t *testing.T) {
-	// The page opens comparing every server, and no write may target that. The
-	// button would answer a refusal to everyone who pressed it before
-	// narrowing the comparison.
+	// The source belongs to a group, so a comparison that spans the whole fleet
+	// has none. That is what stops one group's records being copied over
+	// another's, and it is why no button is offered here.
 	env := newFleetEnv(t)
 
-	form := env.settingsForm(t, map[string]string{settings.SourceServerID: "1"})
-	if recorder := env.do(t, postForm("/settings", form), env.adminCookie(t)); recorder.Code != http.StatusOK {
-		t.Fatalf("cannot choose the source: %d", recorder.Code)
-	}
+	env.chooseSource(t, 1, 1)
 
 	body := env.diffTable(t, "scope=all")
 	if strings.Contains(body, `data-field="sync-from-source"`) {
 		t.Errorf("the table offers a synchronisation of the whole fleet:\n%s", body)
 	}
-	if !strings.Contains(body, `data-field="whole-fleet"`) {
-		t.Errorf("the table does not say what to narrow to:\n%s", body)
+	if !strings.Contains(body, `data-field="no-source"`) {
+		t.Errorf("the table does not say why there is nothing to copy from:\n%s", body)
 	}
 }
 
@@ -253,10 +243,7 @@ func TestOnlyAnAdminIsOfferedTheSynchronisation(t *testing.T) {
 	// a permission.
 	env := newFleetEnv(t)
 
-	form := env.settingsForm(t, map[string]string{settings.SourceServerID: "1"})
-	if recorder := env.do(t, postForm("/settings", form), env.adminCookie(t)); recorder.Code != http.StatusOK {
-		t.Fatalf("cannot choose the source: %d", recorder.Code)
-	}
+	env.chooseSource(t, 1, 1)
 
 	plain := env.login(t, "dnsuser")
 	recorder := env.do(t, httptest.NewRequest(http.MethodGet, "/diff/table", nil), plain)
@@ -268,13 +255,14 @@ func TestOnlyAnAdminIsOfferedTheSynchronisation(t *testing.T) {
 	}
 }
 
-func TestTheMissingSourceNoteLeadsToTheSetting(t *testing.T) {
-	// Naming the settings page and leaving the reader to find the control is
-	// the difference between a note and a way out.
+func TestTheMissingSourceNoteLeadsToTheGroup(t *testing.T) {
+	// Naming the page and leaving the reader to find the control is the
+	// difference between a note and a way out. The reference lives on the
+	// group, so the link lands where a group is edited.
 	env := newFleetEnv(t)
 
-	body := env.diffTable(t, "")
-	if !strings.Contains(body, `href="/settings#source_server_id"`) {
+	body := env.diffTable(t, "scope=group&group_id=1")
+	if !strings.Contains(body, `href="/servers"`) {
 		t.Errorf("the note does not lead anywhere:\n%s", body)
 	}
 }

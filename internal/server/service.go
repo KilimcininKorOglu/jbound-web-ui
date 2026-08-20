@@ -215,8 +215,16 @@ func (s *Service) Update(ctx context.Context, actor Actor, record Server) error 
 	// to go even when nothing about it changed.
 	s.pool.Remove(record.ID)
 
+	// A server that left its group, or that was just disabled, cannot be the
+	// reference a mirror copies from any more.
+	if err := s.releaseSourceOf(ctx, record); err != nil {
+		logging.From(ctx).Error("cannot clear the source of a group",
+			"server", record.ID, "error", err)
+	}
+
 	s.writeFor(ctx, actor, audit.ActionServerUpdate, &record.ID, record.Name,
-		fmt.Sprintf("Updated server #%d: %s", record.ID, record.Name))
+		fmt.Sprintf("Updated server #%d: %s (group %s)",
+			record.ID, record.Name, idLabel(record.GroupID)))
 	return nil
 }
 

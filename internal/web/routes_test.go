@@ -162,29 +162,38 @@ func TestAnApprovalWithoutAFingerprintIsRefused(t *testing.T) {
 	}
 }
 
-func TestTheGroupFormListsTheServersAndTheMembers(t *testing.T) {
+func TestTheGroupFormOffersOnlyItsOwnMembersAsTheSource(t *testing.T) {
+	// A source from outside the group would be copied over every member, which
+	// is how one group's records used to replace another's. The form cannot
+	// offer that.
 	env := newFleetEnv(t)
+	env.addServer(t, env.cookie, "stranger")
 
 	recorder := env.do(t,
-		httptest.NewRequest(http.MethodGet, "/groups/new", nil), env.cookie)
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", recorder.Code)
-	}
-	for _, want := range []string{"dns1", "dns2", "dns3"} {
-		if !strings.Contains(recorder.Body.String(), want) {
-			t.Errorf("the form does not offer %s", want)
-		}
-	}
-
-	// The edit form of the seeded group carries its membership, which is what
-	// the operator changes rather than retypes.
-	recorder = env.do(t,
 		httptest.NewRequest(http.MethodGet, "/groups/1/edit", nil), env.cookie)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", recorder.Code)
 	}
-	if count := strings.Count(recorder.Body.String(), "checked"); count != 3 {
-		t.Errorf("%d members are marked, want 3:\n%s", count, recorder.Body.String())
+
+	body := recorder.Body.String()
+	for _, want := range []string{"dns1", "dns2", "dns3"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the form does not offer %s:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "stranger") {
+		t.Errorf("the form offers a server that is not in the group:\n%s", body)
+	}
+
+	// A new group holds nothing yet, so it has no source to offer and says so.
+	recorder = env.do(t,
+		httptest.NewRequest(http.MethodGet, "/groups/new", nil), env.cookie)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+	if !strings.Contains(recorder.Body.String(), "Put a server in this group first") {
+		t.Errorf("the empty form does not say why it offers no source:\n%s",
+			recorder.Body.String())
 	}
 }
 
@@ -442,18 +451,21 @@ func TestTheDefaultsFillTheFieldsTheFormLeftEmpty(t *testing.T) {
 	}
 }
 
-func TestAMemberThatWillNotParseIsNotCounted(t *testing.T) {
+func TestASourceThatWillNotParseReadsAsNone(t *testing.T) {
+	// A refusal would be worse than none here: the field is a select, so a
+	// value that will not parse is a hand written request rather than a
+	// mistake the operator can correct on the form.
 	form := url.Values{
-		"name":       {"resolvers"},
-		"server_ids": {"1", "two", "3"},
+		"name":             {"resolvers"},
+		"source_server_id": {"two"},
 	}
 	request := httptest.NewRequest(http.MethodPost, "/groups",
 		strings.NewReader(form.Encode()))
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	group := groupFromForm(request)
-	if len(group.ServerIDs) != 2 {
-		t.Errorf("membership = %v, want the two identifiers that are ones", group.ServerIDs)
+	if group.SourceServerID != 0 {
+		t.Errorf("source = %d, want none", group.SourceServerID)
 	}
 }
 

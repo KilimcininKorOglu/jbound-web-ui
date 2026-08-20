@@ -154,10 +154,10 @@ func TestTheLogPagesAndSummarises(t *testing.T) {
 	env := newFleetEnv(t)
 	env.seedLog(t)
 
-	// Eleven entries: three servers added, one group created, three record
-	// changes, three reloads and the login itself.
+	// Fourteen entries: three servers added, one group created, three servers
+	// moved into it, three record changes, three reloads and the login itself.
 	body := env.logTable(t, "per_page=10&page=1")
-	if !strings.Contains(body, "Showing 10 of 11 entries (Page 1/2)") {
+	if !strings.Contains(body, "Showing 10 of 14 entries (Page 1/2)") {
 		t.Errorf("the summary is wrong:\n%s", body)
 	}
 	if !strings.Contains(body, "page-link") {
@@ -165,7 +165,7 @@ func TestTheLogPagesAndSummarises(t *testing.T) {
 	}
 
 	body = env.logTable(t, "per_page=10&page=2")
-	if !strings.Contains(body, "Showing 1 of 11 entries (Page 2/2)") {
+	if !strings.Contains(body, "Showing 4 of 14 entries (Page 2/2)") {
 		t.Errorf("the second page is wrong:\n%s", body)
 	}
 }

@@ -367,6 +367,11 @@ type Writer struct {
 type GroupSource interface {
 	GetGroup(ctx context.Context, id int64) (server.Group, error)
 	Targets(ctx context.Context, groupID int64) ([]server.Server, error)
+
+	// SourceServer answers with the member a mirror copies from, and whether
+	// there is one at all. A reference that has left the group or gone out of
+	// reach reads as none.
+	SourceServer(ctx context.Context, groupID int64) (server.Server, bool, error)
 }
 
 // NewWriter builds the writer.

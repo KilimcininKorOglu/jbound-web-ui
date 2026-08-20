@@ -12,7 +12,6 @@ import (
 	"jbound/internal/i18n"
 	"jbound/internal/logging"
 	"jbound/internal/server"
-	"jbound/internal/settings"
 	"jbound/internal/store"
 	"jbound/internal/transport"
 )
@@ -47,26 +46,41 @@ type serverRow struct {
 	// the restore button would be offered on every row and answer most of them
 	// with nothing to restore.
 	HasBackup bool
+
+	// GroupName is the group this server belongs to, empty when it is in none.
+	// The row shows the name rather than the identifier the record carries.
+	GroupName string
 }
 
 // groupRow is one line of the group table.
 type groupRow struct {
 	server.Group
 	Members []server.Server
+
+	// SourceName is the member a synchronisation copies from, empty when the
+	// group names none.
+	SourceName string
 }
 
 // serverFormData feeds the create and edit form.
 type serverFormData struct {
-	Server  server.Server
+	Server server.Server
+
+	// Groups are what the group selector offers. A server belongs to one of
+	// them or to none, and that choice is made here rather than on the group.
+	Groups []server.Group
+
 	IsNew   bool
 	Problem string
 }
 
 // groupFormData feeds the group form.
+//
+// Members are the servers already in the group, which is the only list the
+// source may be picked from. A new group has none, and the form says so.
 type groupFormData struct {
 	Group   server.Group
-	Servers []server.Server
-	Chosen  map[int64]bool
+	Members []server.Server
 	IsNew   bool
 	Problem string
 }
@@ -139,9 +153,20 @@ func (a *App) serversPageData(r *http.Request) (serversPageData, error) {
 
 	catalog := a.catalog(r)
 	byID := map[int64]server.Server{}
+	groupNames := map[int64]string{}
+	for _, group := range groups {
+		groupNames[group.ID] = group.Name
+	}
+
+	// Membership is read off the server rows, because that is where it lives
+	// now. One pass fills both tables.
+	members := map[int64][]server.Server{}
 	rows := make([]serverRow, 0, len(servers))
 	for _, record := range servers {
 		byID[record.ID] = record
+		if record.GroupID != 0 {
+			members[record.GroupID] = append(members[record.GroupID], record)
+		}
 
 		state := states[record.ID]
 		rows = append(rows, serverRow{
@@ -151,18 +176,17 @@ func (a *App) serversPageData(r *http.Request) (serversPageData, error) {
 			Records:   state.RecordCount,
 			Failure:   cacheErrorText(catalog, record.LastError),
 			HasBackup: restorable[record.ID],
+			GroupName: groupNames[record.GroupID],
 		})
 	}
 
 	groupRows := make([]groupRow, 0, len(groups))
 	for _, group := range groups {
-		members := make([]server.Server, 0, len(group.ServerIDs))
-		for _, id := range group.ServerIDs {
-			if member, ok := byID[id]; ok {
-				members = append(members, member)
-			}
-		}
-		groupRows = append(groupRows, groupRow{Group: group, Members: members})
+		groupRows = append(groupRows, groupRow{
+			Group:      group,
+			Members:    members[group.ID],
+			SourceName: byID[group.SourceServerID].Name,
+		})
 	}
 
 	return serversPageData{Servers: rows, Groups: groupRows}, nil
@@ -204,13 +228,33 @@ func (a *App) handleServerForm(w http.ResponseWriter, r *http.Request) {
 		}
 		data = serverFormData{Server: record}
 	}
-	a.RenderPartial(w, r, http.StatusOK, "server-form", data)
+	a.renderServerForm(w, r, http.StatusOK, data)
+}
+
+// renderServerForm sends the form back with the groups it offers.
+//
+// The list is loaded here rather than by each caller, so a refused submission
+// cannot come back with an empty group selector and lose the choice the
+// operator made.
+func (a *App) renderServerForm(w http.ResponseWriter, r *http.Request,
+	status int, data serverFormData) {
+
+	groups, err := a.Servers.ListGroups(r.Context())
+	if err != nil {
+		// The rest of the form is still worth showing. The selector falls back
+		// to the empty choice, which changes nothing that is stored.
+		logging.From(r.Context()).Error("cannot list the groups for the server form",
+			"error", err)
+	}
+
+	data.Groups = groups
+	a.RenderPartial(w, r, status, "server-form", data)
 }
 
 func (a *App) handleServerCreate(w http.ResponseWriter, r *http.Request) {
 	record, err := serverFromForm(r)
 	if err != nil {
-		a.RenderPartial(w, r, http.StatusUnprocessableEntity, "server-form",
+		a.renderServerForm(w, r, http.StatusUnprocessableEntity,
 			serverFormData{Server: record, IsNew: true, Problem: err.Error()})
 		return
 	}
@@ -220,7 +264,7 @@ func (a *App) handleServerCreate(w http.ResponseWriter, r *http.Request) {
 		PrivateKey: strings.TrimSpace(r.PostFormValue("private_key")),
 	})
 	if err != nil {
-		a.RenderPartial(w, r, formStatus(err), "server-form",
+		a.renderServerForm(w, r, formStatus(err),
 			serverFormData{Server: record, IsNew: true, Problem: userMessage(r.Context(), a.catalog(r), err)})
 		return
 	}
@@ -242,21 +286,17 @@ func (a *App) handleServerUpdate(w http.ResponseWriter, r *http.Request) {
 	record, err := serverFromForm(r)
 	if err != nil {
 		record.ID = id
-		a.RenderPartial(w, r, http.StatusUnprocessableEntity, "server-form",
+		a.renderServerForm(w, r, http.StatusUnprocessableEntity,
 			serverFormData{Server: record, Problem: err.Error()})
 		return
 	}
 	record.ID = id
 
 	if err := a.Servers.Update(r.Context(), a.actor(r), record); err != nil {
-		a.RenderPartial(w, r, formStatus(err), "server-form",
+		a.renderServerForm(w, r, formStatus(err),
 			serverFormData{Server: record, Problem: userMessage(r.Context(), a.catalog(r), err)})
 		return
 	}
-	if !record.Enabled {
-		a.releaseSourceServer(r.Context(), id)
-	}
-
 	SetToast(w, ToastSuccess, a.catalog(r).Tf("toast.server_updated", record.Name))
 	a.closePanel(w)
 }
@@ -271,28 +311,9 @@ func (a *App) handleServerDelete(w http.ResponseWriter, r *http.Request) {
 		a.notFoundOrError(w, r, "cannot delete the server", err)
 		return
 	}
-	a.releaseSourceServer(r.Context(), id)
 
 	SetToast(w, ToastSuccess, a.catalog(r).T("toast.server_deleted"))
 	a.closePanel(w)
-}
-
-// releaseSourceServer clears the source setting when it names this server.
-//
-// A server that is gone or disabled cannot be the reference of a comparison,
-// and a dangling identifier would leave the drift page pointing at nothing.
-func (a *App) releaseSourceServer(ctx context.Context, id int64) {
-	if a.Settings.Values().Int64(settings.SourceServerID) != id {
-		return
-	}
-
-	if err := a.Settings.Save(ctx, map[string]string{settings.SourceServerID: ""}); err != nil {
-		// The server change already happened. The stale identifier is worth
-		// reporting but not worth failing the request over, and the drift page
-		// treats a source it cannot resolve as no source at all.
-		logging.From(ctx).Error("cannot clear the source server setting",
-			"server", id, "error", err)
-	}
 }
 
 func (a *App) handleServerKey(w http.ResponseWriter, r *http.Request) {
@@ -444,13 +465,7 @@ func (a *App) handleServerTrust(w http.ResponseWriter, r *http.Request) {
 // --- Groups ----------------------------------------------------------------
 
 func (a *App) handleGroupForm(w http.ResponseWriter, r *http.Request) {
-	servers, err := a.Servers.List(r.Context())
-	if err != nil {
-		a.internalError(w, r, "cannot load the servers", err)
-		return
-	}
-
-	data := groupFormData{Servers: servers, Chosen: map[int64]bool{}, IsNew: true}
+	data := groupFormData{IsNew: true}
 
 	if raw := r.PathValue("id"); raw != "" {
 		id, err := strconv.ParseInt(raw, 10, 64)
@@ -465,8 +480,14 @@ func (a *App) handleGroupForm(w http.ResponseWriter, r *http.Request) {
 		}
 		data.Group = group
 		data.IsNew = false
-		for _, memberID := range group.ServerIDs {
-			data.Chosen[memberID] = true
+
+		// Only the members can be the reference, so the list is the group's own
+		// servers rather than every server the panel knows.
+		if data.Members, err = a.Servers.Targets(r.Context(), id); err != nil {
+			// An empty group is refused there rather than answered with an
+			// empty list, and here that is not a failure: the form simply has
+			// no source to offer yet.
+			data.Members = nil
 		}
 	}
 	a.RenderPartial(w, r, http.StatusOK, "group-form", data)
@@ -522,21 +543,14 @@ func (a *App) handleGroupDelete(w http.ResponseWriter, r *http.Request) {
 func (a *App) renderGroupProblem(w http.ResponseWriter, r *http.Request,
 	group server.Group, isNew bool, cause error) {
 
-	servers, err := a.Servers.List(r.Context())
+	members, err := a.Servers.Targets(r.Context(), group.ID)
 	if err != nil {
-		a.internalError(w, r, "cannot load the servers", err)
-		return
-	}
-
-	chosen := map[int64]bool{}
-	for _, id := range group.ServerIDs {
-		chosen[id] = true
+		members = nil
 	}
 
 	a.RenderPartial(w, r, formStatus(cause), "group-form", groupFormData{
 		Group:   group,
-		Servers: servers,
-		Chosen:  chosen,
+		Members: members,
 		IsNew:   isNew,
 		Problem: userMessage(r.Context(), a.catalog(r), cause),
 	})
@@ -588,6 +602,7 @@ func serverFromForm(r *http.Request) (server.Server, error) {
 		RestartCmd:        strings.TrimSpace(r.PostFormValue("restart_cmd")),
 		EnsureIncludeCmd:  strings.TrimSpace(r.PostFormValue("ensure_include_cmd")),
 
+		GroupID: parseID(r.PostFormValue("group_id")),
 		Enabled: r.PostFormValue("enabled") != "",
 	}
 
@@ -620,22 +635,11 @@ func serverFromForm(r *http.Request) (server.Server, error) {
 func groupFromForm(r *http.Request) server.Group {
 	_ = r.ParseForm()
 
-	group := server.Group{
-		Name:        strings.TrimSpace(r.PostFormValue("name")),
-		Description: strings.TrimSpace(r.PostFormValue("description")),
+	return server.Group{
+		Name:           strings.TrimSpace(r.PostFormValue("name")),
+		Description:    strings.TrimSpace(r.PostFormValue("description")),
+		SourceServerID: parseID(r.PostFormValue("source_server_id")),
 	}
-
-	for _, raw := range r.PostForm["server_ids"] {
-		id, err := strconv.ParseInt(raw, 10, 64)
-		if err != nil {
-			// A member that will not parse cannot be honoured, and dropping it
-			// silently would leave the group missing a server the operator
-			// ticked. The service refuses the identifier instead.
-			continue
-		}
-		group.ServerIDs = append(group.ServerIDs, id)
-	}
-	return group
 }
 
 // formStatus maps an error to the status its response carries.

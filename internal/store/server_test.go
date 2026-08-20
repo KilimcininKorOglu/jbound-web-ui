@@ -57,6 +57,21 @@ func (f *fixture) mustCreate(t *testing.T, name string) server.Server {
 	return record
 }
 
+// mustCreateIn creates a server that belongs to a group, which is how
+// membership is written now.
+func (f *fixture) mustCreateIn(t *testing.T, name string, groupID int64) server.Server {
+	t.Helper()
+
+	input := sampleServer(name)
+	input.GroupID = groupID
+
+	record, err := f.servers.Create(context.Background(), input)
+	if err != nil {
+		t.Fatalf("cannot create the server %s: %v", name, err)
+	}
+	return record
+}
+
 func TestServerRoundTrip(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
@@ -234,26 +249,23 @@ func TestGetReportsAMissingServer(t *testing.T) {
 	}
 }
 
-func TestGroupRoundTripWithMembership(t *testing.T) {
+func TestGroupMembershipComesFromTheServers(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
 
-	first := f.mustCreate(t, "dns1")
-	second := f.mustCreate(t, "dns2")
-
-	created, err := f.groups.Create(ctx, server.Group{
+	group, err := f.groups.Create(ctx, server.Group{
 		Name:        "resolvers",
 		Description: "the pair that answers the office",
-		ServerIDs:   []int64{first.ID, second.ID},
 	})
 	if err != nil {
 		t.Fatalf("Create returned an error: %v", err)
 	}
-	if len(created.ServerIDs) != 2 {
-		t.Fatalf("got %d members, want 2", len(created.ServerIDs))
-	}
 
-	members, err := f.groups.Members(ctx, created.ID)
+	f.mustCreateIn(t, "dns2", group.ID)
+	f.mustCreateIn(t, "dns1", group.ID)
+	f.mustCreate(t, "dns3")
+
+	members, err := f.groups.Members(ctx, group.ID)
 	if err != nil {
 		t.Fatalf("Members returned an error: %v", err)
 	}
@@ -262,22 +274,55 @@ func TestGroupRoundTripWithMembership(t *testing.T) {
 	}
 }
 
-func TestGroupUpdateReplacesTheMembership(t *testing.T) {
-	// The form submits the whole set, so a merge would make unchecking a
-	// server do nothing.
+func TestAServerBelongsToOneGroupAtATime(t *testing.T) {
+	// The column holds a single identifier, so moving a server is what takes it
+	// out of the group it was in. Nothing has to be removed by hand.
 	f := newFixture(t)
 	ctx := context.Background()
 
-	first := f.mustCreate(t, "dns1")
-	second := f.mustCreate(t, "dns2")
+	first, err := f.groups.Create(ctx, server.Group{Name: "resolvers"})
+	if err != nil {
+		t.Fatalf("cannot create the first group: %v", err)
+	}
+	second, err := f.groups.Create(ctx, server.Group{Name: "office"})
+	if err != nil {
+		t.Fatalf("cannot create the second group: %v", err)
+	}
 
-	group, err := f.groups.Create(ctx, server.Group{
-		Name: "resolvers", ServerIDs: []int64{first.ID, second.ID}})
+	record := f.mustCreateIn(t, "dns1", first.ID)
+	record.GroupID = second.ID
+	if err := f.servers.Update(ctx, record); err != nil {
+		t.Fatalf("Update returned an error: %v", err)
+	}
+
+	left, err := f.groups.Members(ctx, first.ID)
+	if err != nil {
+		t.Fatalf("Members returned an error: %v", err)
+	}
+	if len(left) != 0 {
+		t.Errorf("the old group still holds %+v", left)
+	}
+
+	joined, err := f.groups.Members(ctx, second.ID)
+	if err != nil {
+		t.Fatalf("Members returned an error: %v", err)
+	}
+	if len(joined) != 1 || joined[0].ID != record.ID {
+		t.Errorf("the new group holds %+v, want only dns1", joined)
+	}
+}
+
+func TestTheSourceOfAGroupSurvivesARoundTrip(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+
+	group, err := f.groups.Create(ctx, server.Group{Name: "resolvers"})
 	if err != nil {
 		t.Fatalf("Create returned an error: %v", err)
 	}
+	record := f.mustCreateIn(t, "dns1", group.ID)
 
-	group.ServerIDs = []int64{second.ID}
+	group.SourceServerID = record.ID
 	if err := f.groups.Update(ctx, group); err != nil {
 		t.Fatalf("Update returned an error: %v", err)
 	}
@@ -286,34 +331,8 @@ func TestGroupUpdateReplacesTheMembership(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get returned an error: %v", err)
 	}
-	if len(read.ServerIDs) != 1 || read.ServerIDs[0] != second.ID {
-		t.Errorf("membership = %v, want only dns2", read.ServerIDs)
-	}
-}
-
-func TestAServerMayBelongToSeveralGroups(t *testing.T) {
-	f := newFixture(t)
-	ctx := context.Background()
-	record := f.mustCreate(t, "dns1")
-
-	for _, name := range []string{"resolvers", "office"} {
-		if _, err := f.groups.Create(ctx, server.Group{
-			Name: name, ServerIDs: []int64{record.ID}}); err != nil {
-			t.Fatalf("cannot create the group %s: %v", name, err)
-		}
-	}
-
-	groups, err := f.groups.List(ctx)
-	if err != nil {
-		t.Fatalf("List returned an error: %v", err)
-	}
-	if len(groups) != 2 {
-		t.Fatalf("got %d groups, want 2", len(groups))
-	}
-	for _, group := range groups {
-		if len(group.ServerIDs) != 1 || group.ServerIDs[0] != record.ID {
-			t.Errorf("group %s has membership %v", group.Name, group.ServerIDs)
-		}
+	if read.SourceServerID != record.ID {
+		t.Errorf("source = %d, want %d", read.SourceServerID, record.ID)
 	}
 }
 
@@ -333,36 +352,43 @@ func TestGroupNameIsUnique(t *testing.T) {
 func TestDeletingAGroupKeepsItsServers(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
-	record := f.mustCreate(t, "dns1")
 
-	group, err := f.groups.Create(ctx, server.Group{
-		Name: "resolvers", ServerIDs: []int64{record.ID}})
+	group, err := f.groups.Create(ctx, server.Group{Name: "resolvers"})
 	if err != nil {
 		t.Fatalf("Create returned an error: %v", err)
 	}
+	record := f.mustCreateIn(t, "dns1", group.ID)
 
 	if err := f.groups.Delete(ctx, group.ID); err != nil {
 		t.Fatalf("Delete returned an error: %v", err)
 	}
-	if _, err := f.servers.Get(ctx, record.ID); err != nil {
+
+	read, err := f.servers.Get(ctx, record.ID)
+	if err != nil {
 		t.Fatalf("the server was removed with its group: %v", err)
+	}
+	if read.GroupID != 0 {
+		t.Errorf("group = %d, want the server left ungrouped", read.GroupID)
 	}
 }
 
-func TestDeletingAServerRemovesItFromEveryGroup(t *testing.T) {
+func TestDeletingTheSourceClearsIt(t *testing.T) {
+	// A dangling reference would leave the drift page offering a mirror from a
+	// server that is gone.
 	f := newFixture(t)
 	ctx := context.Background()
 
-	first := f.mustCreate(t, "dns1")
-	second := f.mustCreate(t, "dns2")
-
-	group, err := f.groups.Create(ctx, server.Group{
-		Name: "resolvers", ServerIDs: []int64{first.ID, second.ID}})
+	group, err := f.groups.Create(ctx, server.Group{Name: "resolvers"})
 	if err != nil {
 		t.Fatalf("Create returned an error: %v", err)
 	}
+	record := f.mustCreateIn(t, "dns1", group.ID)
 
-	if err := f.servers.Delete(ctx, first.ID); err != nil {
+	group.SourceServerID = record.ID
+	if err := f.groups.Update(ctx, group); err != nil {
+		t.Fatalf("Update returned an error: %v", err)
+	}
+	if err := f.servers.Delete(ctx, record.ID); err != nil {
 		t.Fatalf("Delete returned an error: %v", err)
 	}
 
@@ -370,18 +396,18 @@ func TestDeletingAServerRemovesItFromEveryGroup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get returned an error: %v", err)
 	}
-	if len(read.ServerIDs) != 1 || read.ServerIDs[0] != second.ID {
-		t.Errorf("membership = %v, want only dns2", read.ServerIDs)
+	if read.SourceServerID != 0 {
+		t.Errorf("source = %d, want it cleared", read.SourceServerID)
 	}
 }
 
-func TestGroupCreateRefusesAMemberThatDoesNotExist(t *testing.T) {
+func TestGroupCreateRefusesASourceThatDoesNotExist(t *testing.T) {
 	f := newFixture(t)
 
 	_, err := f.groups.Create(context.Background(), server.Group{
-		Name: "resolvers", ServerIDs: []int64{404}})
+		Name: "resolvers", SourceServerID: 404})
 	if err == nil {
-		t.Fatal("Create accepted a member that does not exist")
+		t.Fatal("Create accepted a source that does not exist")
 	}
 }
 

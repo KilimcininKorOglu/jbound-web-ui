@@ -32,6 +32,12 @@ const (
 	ActionGroupUpdate = "group_update"
 	ActionGroupDelete = "group_delete"
 
+	// ActionGroupCollapse marks a membership the migration to one group per
+	// server had to drop. The row is written by the migration itself, because a
+	// server that quietly left a group is the one change an operator has no
+	// other way to see.
+	ActionGroupCollapse = "group_collapse"
+
 	ActionDNSAdd     = "dns_add"
 	ActionDNSEdit    = "dns_edit"
 	ActionDNSDelete  = "dns_delete"

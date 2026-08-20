@@ -8,7 +8,6 @@ import (
 	"jbound/internal/fleet"
 	"jbound/internal/i18n"
 	"jbound/internal/server"
-	"jbound/internal/settings"
 )
 
 // diffPageData feeds the drift page and its table fragment.
@@ -103,7 +102,7 @@ func (a *App) diffPageData(r *http.Request) (diffPageData, error) {
 		return diffPageData{}, err
 	}
 
-	sourceID, sourceName := a.sourceServer(r.Context())
+	sourceID, sourceName := a.sourceServer(r.Context(), query)
 	session, _ := SessionFrom(r.Context())
 
 	return diffPageData{
@@ -165,21 +164,29 @@ func diffStaleNote(catalog *i18n.Catalog, diff fleet.Diff) string {
 	return catalog.Tf("diff.stale_note_long", strings.Join(stale, ", "))
 }
 
-// sourceServer resolves the chosen source into an identifier and a name.
+// sourceServer resolves the source of the compared target into an identifier
+// and a name.
 //
-// A source that no longer exists reads as none. The setting is cleared when a
-// server is deleted or disabled, and this is the second line of that rule.
-func (a *App) sourceServer(ctx context.Context) (int64, string) {
-	id := a.Settings.Values().Int64(settings.SourceServerID)
-	if id <= 0 {
-		return 0, ""
+// The reference belongs to the group being compared, so a page showing one
+// group never offers to copy another group's records over it. A comparison of
+// a single server reads the source of the group that server is in, which is
+// what the button would copy from.
+func (a *App) sourceServer(ctx context.Context, query fleet.Query) (int64, string) {
+	groupID := query.GroupID
+
+	if query.Scope == fleet.ScopeServer {
+		record, err := a.Servers.Get(ctx, query.ServerID)
+		if err != nil {
+			return 0, ""
+		}
+		groupID = record.GroupID
 	}
 
-	record, err := a.Servers.Get(ctx, id)
-	if err != nil || !record.Enabled {
+	source, ok, err := a.Servers.SourceServer(ctx, groupID)
+	if err != nil || !ok {
 		return 0, ""
 	}
-	return record.ID, record.Name
+	return source.ID, source.Name
 }
 
 // handleDiffSync makes every server of the target hold what the source holds.
@@ -198,8 +205,7 @@ func (a *App) handleDiffSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sourceID, _ := a.sourceServer(r.Context())
-	report, err := a.Records.Mirror(r.Context(), a.actor(r), target, sourceID)
+	report, err := a.Records.Mirror(r.Context(), a.actor(r), target)
 	if err != nil {
 		a.reportProblem(w, r, recordMessage(r.Context(), a.catalog(r), err), dnsStatus(err))
 		return

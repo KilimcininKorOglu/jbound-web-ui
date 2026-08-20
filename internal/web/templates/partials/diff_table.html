@@ -55,11 +55,11 @@
          pressed it before narrowing the comparison. */}}
     <div class="text-muted small mt-3" data-field="whole-fleet">{{t "dns.apply_note"}}</div>
     {{else if .IsAdmin}}
-    {{/* The note used to name the settings page and leave the reader to find
-         it. The link lands on the control itself. */}}
+    {{/* The reference belongs to the group, so the link lands on the page
+         where the group is edited rather than on a panel wide setting. */}}
     <div class="text-muted small mt-3" data-field="no-source">
       {{t "diff.no_source"}}
-      <a href="/settings#source_server_id">{{t "diff.choose_source"}}</a>
+      <a href="/servers">{{t "diff.choose_source"}}</a>
     </div>
     {{end}}
   </div>

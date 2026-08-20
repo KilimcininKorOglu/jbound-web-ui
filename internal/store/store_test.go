@@ -95,21 +95,19 @@ func TestAnUpdateOfAServerThatIsGoneIsRefused(t *testing.T) {
 	}
 }
 
-func TestAGroupKeepsItsNewMembershipAndDropsTheOld(t *testing.T) {
+func TestAGroupKeepsEveryEditedField(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
-	first := f.mustCreate(t, "dns1")
-	second := f.mustCreate(t, "dns2")
 
-	group, err := f.groups.Create(ctx, server.Group{
-		Name: "resolvers", ServerIDs: []int64{first.ID}})
+	group, err := f.groups.Create(ctx, server.Group{Name: "resolvers"})
 	if err != nil {
 		t.Fatalf("cannot create the group: %v", err)
 	}
+	record := f.mustCreateIn(t, "dns2", group.ID)
 
 	group.Name = "edge"
 	group.Description = "the two that answer"
-	group.ServerIDs = []int64{second.ID}
+	group.SourceServerID = record.ID
 	if err := f.groups.Update(ctx, group); err != nil {
 		t.Fatalf("cannot update the group: %v", err)
 	}
@@ -121,8 +119,8 @@ func TestAGroupKeepsItsNewMembershipAndDropsTheOld(t *testing.T) {
 	if stored.Name != "edge" || stored.Description != "the two that answer" {
 		t.Errorf("the edit did not land: %+v", stored)
 	}
-	if len(stored.ServerIDs) != 1 || stored.ServerIDs[0] != second.ID {
-		t.Errorf("membership = %v, want only dns2", stored.ServerIDs)
+	if stored.SourceServerID != record.ID {
+		t.Errorf("source = %d, want %d", stored.SourceServerID, record.ID)
 	}
 }
 
@@ -137,29 +135,33 @@ func TestAGroupThatIsGoneCannotBeUpdated(t *testing.T) {
 }
 
 func TestDeletingAServerLeavesTheGroupBehind(t *testing.T) {
-	// The membership row goes with the server. The group itself is the
-	// operator's, so removing one machine may not remove it.
+	// The membership goes with the server, because it is a column on the server
+	// row. The group itself is the operator's, so removing one machine may not
+	// remove it.
 	f := newFixture(t)
 	ctx := context.Background()
-	first := f.mustCreate(t, "dns1")
-	second := f.mustCreate(t, "dns2")
 
-	group, err := f.groups.Create(ctx, server.Group{
-		Name: "resolvers", ServerIDs: []int64{first.ID, second.ID}})
+	group, err := f.groups.Create(ctx, server.Group{Name: "resolvers"})
 	if err != nil {
 		t.Fatalf("cannot create the group: %v", err)
 	}
+	first := f.mustCreateIn(t, "dns1", group.ID)
+	second := f.mustCreateIn(t, "dns2", group.ID)
 
 	if err := f.servers.Delete(ctx, first.ID); err != nil {
 		t.Fatalf("cannot delete the server: %v", err)
 	}
 
-	stored, err := f.groups.Get(ctx, group.ID)
-	if err != nil {
-		t.Fatalf("cannot read the group: %v", err)
+	if _, err := f.groups.Get(ctx, group.ID); err != nil {
+		t.Fatalf("the group went with the server: %v", err)
 	}
-	if len(stored.ServerIDs) != 1 || stored.ServerIDs[0] != second.ID {
-		t.Errorf("membership = %v, want only dns2", stored.ServerIDs)
+
+	members, err := f.groups.Members(ctx, group.ID)
+	if err != nil {
+		t.Fatalf("cannot read the members: %v", err)
+	}
+	if len(members) != 1 || members[0].ID != second.ID {
+		t.Errorf("members = %+v, want only dns2", members)
 	}
 }
 

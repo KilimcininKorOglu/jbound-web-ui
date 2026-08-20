@@ -75,6 +75,13 @@ func newGateFleet(t *testing.T) *gateFleet {
 		return http.ErrUseLastResponse
 	}
 
+	group, err := app.Servers.CreateGroup(ctx, gateActor(),
+		server.Group{Name: "resolvers"})
+	if err != nil {
+		t.Fatalf("cannot create the group: %v", err)
+	}
+	fleetEnv.groupID = group.ID
+
 	fleetEnv.signIn(t)
 	for i, name := range []string{"dns1", "dns2", "dns3"} {
 		fleetEnv.register(t, name, name)
@@ -84,13 +91,6 @@ func newGateFleet(t *testing.T) *gateFleet {
 	// unapproved and every write to it is refused. That is what the partial
 	// failure report is measured against.
 	fleetEnv.register(t, "dns-down", downHost)
-
-	group, err := app.Servers.CreateGroup(ctx, gateActor(),
-		server.Group{Name: "resolvers", ServerIDs: []int64{1, 2, 3, 4}})
-	if err != nil {
-		t.Fatalf("cannot create the group: %v", err)
-	}
-	fleetEnv.groupID = group.ID
 
 	if _, err := app.Records.Refresh(ctx); err != nil {
 		t.Fatalf("cannot fill the cache: %v", err)
@@ -218,7 +218,7 @@ func (g *gateFleet) register(t *testing.T, name, host string) {
 	_, _, err = g.servers.Create(context.Background(), gateActor(), server.CreateInput{
 		Server: server.Server{
 			Name: name, Host: host, SSHUser: "dnsops", Enabled: true,
-			StatusCmd: devStatusCmd,
+			StatusCmd: devStatusCmd, GroupID: g.groupID,
 		},
 		PrivateKey: string(material),
 	})

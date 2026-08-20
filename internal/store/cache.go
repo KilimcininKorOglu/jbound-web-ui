@@ -75,7 +75,10 @@ const recordKey = " GROUP BY c.fqdn, c.type, c.value, c.priority"
 func (r *Records) List(ctx context.Context, query fleet.Query) (fleet.Page, error) {
 	query.Normalise()
 
-	where, args := recordFilter(query)
+	where, args, err := recordFilter(query)
+	if err != nil {
+		return fleet.Page{}, err
+	}
 
 	// The count is over the groups rather than the rows, because the page
 	// numbers have to match the rows the page shows.
@@ -157,7 +160,10 @@ func serverIDs(joined string) ([]int64, error) {
 // limit. It is bounded by the target instead: a diff runs against a group.
 func (r *Records) ByServer(ctx context.Context, query fleet.Query) (map[int64][]dnsfile.Record, error) {
 	query.Normalise()
-	where, args := recordFilter(query)
+	where, args, err := recordFilter(query)
+	if err != nil {
+		return nil, err
+	}
 
 	// #nosec G202 -- no value is concatenated, only the placeholder fragment.
 	rows, err := r.db.QueryContext(ctx, `
@@ -191,7 +197,11 @@ SELECT c.server_id, c.line, c.fqdn, c.type, c.value, c.priority, c.raw
 
 // recordFilter builds the shared WHERE clause of the count and the page, so
 // the two can never disagree about which rows the page is counted from.
-func recordFilter(query fleet.Query) (string, []any) {
+//
+// A scope that names neither a server nor a group is refused rather than left
+// out of the clause. An unfiltered listing would answer with every record the
+// panel holds, under a heading that says otherwise.
+func recordFilter(query fleet.Query) (string, []any, error) {
 	var (
 		clauses []string
 		args    []any
@@ -203,8 +213,11 @@ func recordFilter(query fleet.Query) (string, []any) {
 		args = append(args, query.ServerID)
 	case fleet.ScopeGroup:
 		clauses = append(clauses,
-			"c.server_id IN (SELECT server_id FROM server_group_members WHERE group_id = ?)")
+			"c.server_id IN (SELECT id FROM servers WHERE group_id = ?)")
 		args = append(args, query.GroupID)
+	case fleet.ScopeAll:
+	default:
+		return "", nil, fmt.Errorf("%w: %q", fleet.ErrScope, query.Scope)
 	}
 
 	if search := strings.TrimSpace(query.Search); search != "" {
@@ -221,9 +234,9 @@ func recordFilter(query fleet.Query) (string, []any) {
 	}
 
 	if len(clauses) == 0 {
-		return "", args
+		return "", args, nil
 	}
-	return " WHERE " + strings.Join(clauses, " AND "), args
+	return " WHERE " + strings.Join(clauses, " AND "), args, nil
 }
 
 // escapeLike neutralises the wildcards of a LIKE pattern.

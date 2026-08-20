@@ -557,30 +557,22 @@ var ErrNoSource = errors.New("no source server is chosen")
 var ErrEmptySource = errors.New("the source server holds no record")
 
 // Mirror makes every server of the target hold what the source holds.
-func (s *Service) Mirror(ctx context.Context, actor server.Actor, target Target,
-	sourceID int64) (Report, error) {
-
-	return s.writer.Mirror(ctx, actor, target, sourceID)
+func (s *Service) Mirror(ctx context.Context, actor server.Actor, target Target) (Report, error) {
+	return s.writer.Mirror(ctx, actor, target)
 }
 
 // Mirror copies the records of one server onto the rest of the target.
 //
 // It deletes as well as adds, so a target server ends up holding exactly what
 // the source holds. Nothing happens on its own: the operator names the source
-// on the settings page and starts the synchronisation by hand.
-func (w *Writer) Mirror(ctx context.Context, actor server.Actor, target Target,
-	sourceID int64) (Report, error) {
-
-	if sourceID <= 0 {
-		return Report{}, ErrNoSource
-	}
-
-	source, err := w.servers.Get(ctx, sourceID)
+// on the group and starts the synchronisation by hand.
+//
+// The source is not passed in. It is the reference of the group being mirrored,
+// which is what keeps one group's records from being copied over another's.
+func (w *Writer) Mirror(ctx context.Context, actor server.Actor, target Target) (Report, error) {
+	source, err := w.sourceFor(ctx, target)
 	if err != nil {
 		return Report{}, err
-	}
-	if !source.Enabled || !source.Trusted() {
-		return Report{}, ErrNoSource
 	}
 
 	// The source is read from the file rather than from the cache, for the
@@ -607,6 +599,33 @@ func (w *Writer) Mirror(ctx context.Context, actor server.Actor, target Target,
 	})
 
 	return Report{Results: results, GroupName: groupName}, nil
+}
+
+// sourceFor resolves the reference a mirror onto this target copies from.
+//
+// A group names its own source. A single server target takes the source of the
+// group that server is in, so a mirror onto one machine still copies from the
+// same reference the rest of its group is measured against. A server in no
+// group has no reference at all.
+func (w *Writer) sourceFor(ctx context.Context, target Target) (server.Server, error) {
+	groupID := target.GroupID
+
+	if target.Scope == ScopeServer {
+		record, err := w.servers.Get(ctx, target.ServerID)
+		if err != nil {
+			return server.Server{}, err
+		}
+		groupID = record.GroupID
+	}
+
+	source, ok, err := w.groups.SourceServer(ctx, groupID)
+	if err != nil {
+		return server.Server{}, err
+	}
+	if !ok {
+		return server.Server{}, ErrNoSource
+	}
+	return source, nil
 }
 
 // readSource reads the records of the server the mirror copies from.

@@ -374,7 +374,7 @@ func TestAMirrorMakesEveryServerHoldWhatTheSourceHolds(t *testing.T) {
 	h.targets["dns3"].content = []byte(seeded +
 		"local-data: \"stray.example.net. A 192.0.2.77\"\n")
 
-	report, err := h.writer.Mirror(context.Background(), testActor(), groupTarget(), 1)
+	report, err := h.writer.Mirror(context.Background(), testActor(), groupTarget())
 	if err != nil {
 		t.Fatalf("Mirror returned an error: %v", err)
 	}
@@ -405,7 +405,7 @@ func TestAMirrorLeavesTheSourceAlone(t *testing.T) {
 		"local-data: \"extra.example.net. A 192.0.2.50\"\n")
 	before := h.targets["dns1"].file()
 
-	out, err := h.writer.Mirror(context.Background(), testActor(), groupTarget(), 1)
+	out, err := h.writer.Mirror(context.Background(), testActor(), groupTarget())
 	if err != nil {
 		t.Fatalf("Mirror returned an error: %v", err)
 	}
@@ -427,7 +427,7 @@ func TestAMirrorRefusesASourceThatHoldsNothing(t *testing.T) {
 	h.targets["dns1"].content = []byte("# nothing here\n")
 	before := h.targets["dns2"].file()
 
-	_, err := h.writer.Mirror(context.Background(), testActor(), groupTarget(), 1)
+	_, err := h.writer.Mirror(context.Background(), testActor(), groupTarget())
 	if !errors.Is(err, ErrEmptySource) {
 		t.Fatalf("got %v, want ErrEmptySource", err)
 	}
@@ -439,7 +439,26 @@ func TestAMirrorRefusesASourceThatHoldsNothing(t *testing.T) {
 func TestAMirrorNeedsASource(t *testing.T) {
 	h := newWriteHarness(t, 3)
 
-	if _, err := h.writer.Mirror(context.Background(), testActor(), groupTarget(), 0); !errors.Is(err, ErrNoSource) {
+	group := h.groups.groups[1]
+	group.SourceServerID = 0
+	h.groups.groups[1] = group
+
+	if _, err := h.writer.Mirror(context.Background(), testActor(), groupTarget()); !errors.Is(err, ErrNoSource) {
+		t.Errorf("got %v, want ErrNoSource", err)
+	}
+}
+
+func TestAMirrorTakesTheSourceOfTheTargetGroup(t *testing.T) {
+	// The source used to come from a panel wide setting, which nothing tied to
+	// the group being synchronised. A reference that belongs to another group
+	// would have replaced this group's records with that group's.
+	h := newWriteHarness(t, 3)
+
+	group := h.groups.groups[1]
+	group.SourceServerID = 99
+	h.groups.groups[1] = group
+
+	if _, err := h.writer.Mirror(context.Background(), testActor(), groupTarget()); !errors.Is(err, ErrNoSource) {
 		t.Errorf("got %v, want ErrNoSource", err)
 	}
 }
@@ -447,11 +466,14 @@ func TestAMirrorNeedsASource(t *testing.T) {
 func TestAMirrorRefusesADisabledSource(t *testing.T) {
 	h := newWriteHarness(t, 3)
 
+	// The member list is what SourceServer reads, so the disabled record has to
+	// reach it as well as the server store.
 	record := h.servers.records[1]
 	record.Enabled = false
 	h.servers.records[1] = record
+	h.groups.members[1][0] = record
 
-	if _, err := h.writer.Mirror(context.Background(), testActor(), groupTarget(), 1); !errors.Is(err, ErrNoSource) {
+	if _, err := h.writer.Mirror(context.Background(), testActor(), groupTarget()); !errors.Is(err, ErrNoSource) {
 		t.Errorf("got %v, want ErrNoSource", err)
 	}
 }
@@ -461,7 +483,7 @@ func TestAMirrorIsAudited(t *testing.T) {
 	h.targets["dns1"].content = []byte(seeded +
 		"local-data: \"extra.example.net. A 192.0.2.50\"\n")
 
-	if _, err := h.writer.Mirror(context.Background(), testActor(), groupTarget(), 1); err != nil {
+	if _, err := h.writer.Mirror(context.Background(), testActor(), groupTarget()); err != nil {
 		t.Fatalf("Mirror returned an error: %v", err)
 	}
 

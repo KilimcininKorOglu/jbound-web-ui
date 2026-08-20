@@ -41,6 +41,22 @@ func (f *fakeGroups) Targets(_ context.Context, id int64) ([]server.Server, erro
 	return members, nil
 }
 
+// SourceServer answers the way the service does: a reference that is not a
+// member of this group, or not reachable, reads as none.
+func (f *fakeGroups) SourceServer(_ context.Context, id int64) (server.Server, bool, error) {
+	group, ok := f.groups[id]
+	if !ok || group.SourceServerID == 0 {
+		return server.Server{}, false, nil
+	}
+
+	for _, member := range f.members[id] {
+		if member.ID == group.SourceServerID && member.Enabled && member.Trusted() {
+			return member, true, nil
+		}
+	}
+	return server.Server{}, false, nil
+}
+
 type fakeAudit struct {
 	mu      sync.Mutex
 	entries []audit.Entry
@@ -285,7 +301,7 @@ func newWriteHarness(t *testing.T, count int) *writeHarness {
 		record := server.Server{
 			ID: id, Name: name, Host: name, SSHUser: "dnsops",
 			SSHKeyPath: server.KeyRelPath(id), HostKey: "ssh-ed25519 AAAAapproved",
-			Enabled: true,
+			GroupID: 1, Enabled: true,
 		}
 		record.ApplyDefaults()
 
@@ -294,8 +310,10 @@ func newWriteHarness(t *testing.T, count int) *writeHarness {
 		writable[name] = newWritableTarget(seeded)
 	}
 
+	// dns1 is the reference the group is measured against, which is what a
+	// mirror copies from.
 	groups := &fakeGroups{
-		groups:  map[int64]server.Group{1: {ID: 1, Name: "resolvers"}},
+		groups:  map[int64]server.Group{1: {ID: 1, Name: "resolvers", SourceServerID: 1}},
 		members: map[int64][]server.Server{1: members},
 	}
 

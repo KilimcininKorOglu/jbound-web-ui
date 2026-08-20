@@ -13,7 +13,6 @@ import (
 	"jbound/internal/auth"
 	"jbound/internal/i18n"
 	"jbound/internal/server"
-	"jbound/internal/settings"
 	"jbound/internal/store"
 	"jbound/internal/transport"
 )
@@ -43,6 +42,41 @@ func (e *testEnv) addServer(t *testing.T, cookie *http.Cookie, name string) *htt
 		"ssh_user": {"dnsops"},
 		"enabled":  {"1"},
 	})
+}
+
+// chooseSource names the reference a mirror onto this group copies from. The
+// source lives on the group, so this is where a test sets it.
+func (e *testEnv) chooseSource(t *testing.T, groupID, serverID int64) {
+	t.Helper()
+	ctx := t.Context()
+
+	group, err := e.servers.GetGroup(ctx, groupID)
+	if err != nil {
+		t.Fatalf("cannot read group %d: %v", groupID, err)
+	}
+
+	group.SourceServerID = serverID
+	if err := e.servers.UpdateGroup(ctx, server.Actor{UID: 1001, Username: "dnsadmin"}, group); err != nil {
+		t.Fatalf("cannot name server %d as the source: %v", serverID, err)
+	}
+}
+
+// putInGroup moves servers into a group, which is how membership is written:
+// the server names the group it belongs to.
+func (e *testEnv) putInGroup(t *testing.T, groupID int64, ids ...int64) {
+	t.Helper()
+	ctx := t.Context()
+
+	for _, id := range ids {
+		record, err := e.servers.Get(ctx, id)
+		if err != nil {
+			t.Fatalf("cannot read server %d: %v", id, err)
+		}
+		record.GroupID = groupID
+		if err := e.servers.Update(ctx, server.Actor{UID: 1001, Username: "dnsadmin"}, record); err != nil {
+			t.Fatalf("cannot put server %d in group %d: %v", id, groupID, err)
+		}
+	}
 }
 
 func TestRotatingAKeyShowsTheNewPublicHalfAndKeepsTheServer(t *testing.T) {
@@ -541,11 +575,11 @@ func TestGroupCreateListsItsMembers(t *testing.T) {
 	recorder := env.adminForm(t, http.MethodPost, "/groups", cookie, url.Values{
 		"name":        {"resolvers"},
 		"description": {"the office pair"},
-		"server_ids":  {"1", "2"},
 	})
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200:\n%s", recorder.Code, recorder.Body.String())
 	}
+	env.putInGroup(t, 1, 1, 2)
 	// The panel is emptied and the tables reload themselves on the event.
 	if !strings.Contains(recorder.Header().Get("HX-Trigger"), "servers-changed") {
 		t.Error("the tables were not asked to reload")
@@ -560,13 +594,13 @@ func TestGroupCreateListsItsMembers(t *testing.T) {
 	}
 }
 
-func TestGroupCreateRefusesAMemberThatDoesNotExist(t *testing.T) {
+func TestGroupCreateRefusesASourceThatDoesNotExist(t *testing.T) {
 	env := newTestEnv(t)
 	cookie := env.login(t, "dnsadmin")
 
 	recorder := env.adminForm(t, http.MethodPost, "/groups", cookie, url.Values{
-		"name":       {"resolvers"},
-		"server_ids": {"404"},
+		"name":             {"resolvers"},
+		"source_server_id": {"404"},
 	})
 
 	if recorder.Code != http.StatusUnprocessableEntity {
@@ -574,31 +608,51 @@ func TestGroupCreateRefusesAMemberThatDoesNotExist(t *testing.T) {
 	}
 }
 
-func TestGroupUpdateReplacesTheMembership(t *testing.T) {
+func TestGroupUpdateStoresTheSource(t *testing.T) {
 	env := newTestEnv(t)
 	cookie := env.login(t, "dnsadmin")
 	env.addServer(t, cookie, "dns1")
 	env.addServer(t, cookie, "dns2")
 
 	env.adminForm(t, http.MethodPost, "/groups", cookie, url.Values{
-		"name":       {"resolvers"},
-		"server_ids": {"1", "2"},
+		"name": {"resolvers"},
 	})
+	env.putInGroup(t, 1, 1, 2)
 
 	recorder := env.adminForm(t, http.MethodPost, "/groups/1", cookie, url.Values{
-		"name":       {"resolvers"},
-		"server_ids": {"2"},
+		"name":             {"resolvers"},
+		"source_server_id": {"2"},
 	})
 	if recorder.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", recorder.Code)
+		t.Fatalf("status = %d, want 200:\n%s", recorder.Code, recorder.Body.String())
 	}
 
 	group, err := env.servers.GetGroup(t.Context(), 1)
 	if err != nil {
 		t.Fatalf("cannot read the group: %v", err)
 	}
-	if len(group.ServerIDs) != 1 || group.ServerIDs[0] != 2 {
-		t.Errorf("membership = %v, want only the second server", group.ServerIDs)
+	if group.SourceServerID != 2 {
+		t.Errorf("source = %d, want the second server", group.SourceServerID)
+	}
+}
+
+func TestGroupUpdateRefusesASourceFromOutsideTheGroup(t *testing.T) {
+	env := newTestEnv(t)
+	cookie := env.login(t, "dnsadmin")
+	env.addServer(t, cookie, "dns1")
+	env.addServer(t, cookie, "dns2")
+
+	env.adminForm(t, http.MethodPost, "/groups", cookie, url.Values{
+		"name": {"resolvers"},
+	})
+	env.putInGroup(t, 1, 1)
+
+	recorder := env.adminForm(t, http.MethodPost, "/groups/1", cookie, url.Values{
+		"name":             {"resolvers"},
+		"source_server_id": {"2"},
+	})
+	if recorder.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422", recorder.Code)
 	}
 }
 
@@ -681,35 +735,31 @@ func TestTheServerTableMarksUnappliedChanges(t *testing.T) {
 	}
 }
 
-func TestDeletingTheSourceServerClearsTheSetting(t *testing.T) {
+func TestDeletingTheSourceServerClearsItOnTheGroup(t *testing.T) {
 	// A dangling identifier would leave the drift page pointing at a machine
 	// that is no longer there.
 	env := newFleetEnv(t)
-
-	body := env.settingsForm(t, map[string]string{settings.SourceServerID: "2"})
-	if recorder := env.do(t, postForm("/settings", body), env.adminCookie(t)); recorder.Code != http.StatusOK {
-		t.Fatalf("cannot choose the source: %d", recorder.Code)
-	}
+	env.chooseSource(t, 1, 2)
 
 	recorder := env.adminForm(t, http.MethodDelete, "/servers/2", env.cookie, url.Values{})
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("DELETE /servers/2 = %d", recorder.Code)
 	}
 
-	if got := env.app.Settings.String(settings.SourceServerID); got != "" {
-		t.Errorf("the source setting still reads %q", got)
+	group, err := env.servers.GetGroup(t.Context(), 1)
+	if err != nil {
+		t.Fatalf("cannot read the group: %v", err)
+	}
+	if group.SourceServerID != 0 {
+		t.Errorf("the group still names server %d as its source", group.SourceServerID)
 	}
 }
 
-func TestDisablingTheSourceServerClearsTheSetting(t *testing.T) {
+func TestDisablingTheSourceServerClearsItOnTheGroup(t *testing.T) {
 	// A disabled server joins no operation, so it cannot be the reference of
 	// one either.
 	env := newFleetEnv(t)
-
-	body := env.settingsForm(t, map[string]string{settings.SourceServerID: "3"})
-	if recorder := env.do(t, postForm("/settings", body), env.adminCookie(t)); recorder.Code != http.StatusOK {
-		t.Fatalf("cannot choose the source: %d", recorder.Code)
-	}
+	env.chooseSource(t, 1, 3)
 
 	// An unchecked switch sends nothing at all, which is how the handler reads
 	// a disabled server.
@@ -717,13 +767,45 @@ func TestDisablingTheSourceServerClearsTheSetting(t *testing.T) {
 		"name":     {"dns3"},
 		"host":     {"dns3.example"},
 		"ssh_user": {"dnsops"},
+		"group_id": {"1"},
 	}
 	if recorder := env.adminForm(t, http.MethodPost, "/servers/3", env.cookie, form); recorder.Code != http.StatusOK {
 		t.Fatalf("PUT /servers/3 = %d: %s", recorder.Code, recorder.Body.String())
 	}
 
-	if got := env.app.Settings.String(settings.SourceServerID); got != "" {
-		t.Errorf("the source setting still reads %q", got)
+	group, err := env.servers.GetGroup(t.Context(), 1)
+	if err != nil {
+		t.Fatalf("cannot read the group: %v", err)
+	}
+	if group.SourceServerID != 0 {
+		t.Errorf("the group still names server %d as its source", group.SourceServerID)
+	}
+}
+
+func TestMovingTheSourceOutOfTheGroupClearsIt(t *testing.T) {
+	// The reference belongs to the group, so a server that leaves takes the
+	// reference with it. Otherwise the page would offer a mirror from a server
+	// the group no longer holds.
+	env := newFleetEnv(t)
+	env.chooseSource(t, 1, 2)
+
+	form := url.Values{
+		"name":     {"dns2"},
+		"host":     {"dns2.example"},
+		"ssh_user": {"dnsops"},
+		"enabled":  {"1"},
+		"group_id": {"0"},
+	}
+	if recorder := env.adminForm(t, http.MethodPost, "/servers/2", env.cookie, form); recorder.Code != http.StatusOK {
+		t.Fatalf("POST /servers/2 = %d: %s", recorder.Code, recorder.Body.String())
+	}
+
+	group, err := env.servers.GetGroup(t.Context(), 1)
+	if err != nil {
+		t.Fatalf("cannot read the group: %v", err)
+	}
+	if group.SourceServerID != 0 {
+		t.Errorf("the group still names server %d as its source", group.SourceServerID)
 	}
 }
 

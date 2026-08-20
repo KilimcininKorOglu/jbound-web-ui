@@ -118,10 +118,13 @@ func (f *fakeRepo) Delete(_ context.Context, id int64) error {
 type fakeGroupRepo struct {
 	groups map[int64]Group
 	nextID int64
+
+	// servers is where membership lives, because a server names its own group.
+	servers *fakeRepo
 }
 
-func newFakeGroupRepo() *fakeGroupRepo {
-	return &fakeGroupRepo{groups: map[int64]Group{}, nextID: 1}
+func newFakeGroupRepo(servers *fakeRepo) *fakeGroupRepo {
+	return &fakeGroupRepo{groups: map[int64]Group{}, nextID: 1, servers: servers}
 }
 
 func (f *fakeGroupRepo) Create(_ context.Context, group Group) (Group, error) {
@@ -156,13 +159,15 @@ func (f *fakeGroupRepo) List(_ context.Context) ([]Group, error) {
 }
 
 func (f *fakeGroupRepo) Members(_ context.Context, id int64) ([]Server, error) {
-	group, ok := f.groups[id]
-	if !ok {
+	if _, ok := f.groups[id]; !ok {
 		return nil, errors.New("not found")
 	}
-	members := make([]Server, 0, len(group.ServerIDs))
-	for _, serverID := range group.ServerIDs {
-		members = append(members, Server{ID: serverID})
+
+	var members []Server
+	for _, record := range f.servers.records {
+		if record.GroupID == id {
+			members = append(members, record)
+		}
 	}
 	return members, nil
 }
@@ -252,7 +257,7 @@ func newHarness(t *testing.T) *harness {
 	}
 
 	servers := newFakeRepo()
-	groups := newFakeGroupRepo()
+	groups := newFakeGroupRepo(servers)
 	connector := &fakeConnector{transport: &fakeTransport{}}
 	auditRepo := &fakeAuditRepo{}
 
@@ -676,15 +681,90 @@ func TestAFailedConnectionTestIsAuditedByItsClass(t *testing.T) {
 	}
 }
 
-func TestCreateGroupChecksItsMembers(t *testing.T) {
+func TestCreateGroupRefusesASourceThatIsNotThere(t *testing.T) {
 	// The foreign key would refuse this as well, but the message would name a
 	// constraint rather than the server the operator picked.
 	h := newHarness(t)
 
 	_, err := h.service.CreateGroup(context.Background(), testActor(), Group{
-		Name: "resolvers", ServerIDs: []int64{404}})
+		Name: "resolvers", SourceServerID: 404})
 	if !errors.Is(err, ErrValidation) {
 		t.Fatalf("got %v, want ErrValidation", err)
+	}
+}
+
+func TestAGroupRefusesASourceFromAnotherGroup(t *testing.T) {
+	// This is the whole point of moving the reference onto the group. A mirror
+	// copies the source over every member, so a source from elsewhere would
+	// replace this group's records with another group's.
+	h := newHarness(t)
+	ctx := context.Background()
+
+	other, err := h.service.CreateGroup(ctx, testActor(), Group{Name: "others"})
+	if err != nil {
+		t.Fatalf("cannot create the other group: %v", err)
+	}
+	stranger, _, err := h.service.Create(ctx, testActor(), newServerInput("dns9"))
+	if err != nil {
+		t.Fatalf("cannot create the server: %v", err)
+	}
+	stranger.GroupID = other.ID
+	if err := h.service.Update(ctx, testActor(), stranger); err != nil {
+		t.Fatalf("cannot put the server in the other group: %v", err)
+	}
+
+	group, err := h.service.CreateGroup(ctx, testActor(), Group{Name: "resolvers"})
+	if err != nil {
+		t.Fatalf("cannot create the group: %v", err)
+	}
+
+	group.SourceServerID = stranger.ID
+	err = h.service.UpdateGroup(ctx, testActor(), group)
+	if !errors.Is(err, ErrValidation) {
+		t.Fatalf("got %v, want ErrValidation", err)
+	}
+	if !strings.Contains(err.Error(), "not a member") {
+		t.Errorf("the refusal does not say why: %v", err)
+	}
+}
+
+func TestASourceThatLeavesTheGroupIsReleased(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+
+	group, err := h.service.CreateGroup(ctx, testActor(), Group{Name: "resolvers"})
+	if err != nil {
+		t.Fatalf("cannot create the group: %v", err)
+	}
+
+	record, _, err := h.service.Create(ctx, testActor(), newServerInput("dns1"))
+	if err != nil {
+		t.Fatalf("cannot create the server: %v", err)
+	}
+	record.GroupID = group.ID
+	if err := h.service.Update(ctx, testActor(), record); err != nil {
+		t.Fatalf("cannot put the server in the group: %v", err)
+	}
+
+	group.SourceServerID = record.ID
+	if err := h.service.UpdateGroup(ctx, testActor(), group); err != nil {
+		t.Fatalf("cannot name the source: %v", err)
+	}
+
+	// The server leaves the group. The reference has to go with it, otherwise
+	// the page would offer a synchronisation from a server the group no longer
+	// holds.
+	record.GroupID = 0
+	if err := h.service.Update(ctx, testActor(), record); err != nil {
+		t.Fatalf("cannot move the server out: %v", err)
+	}
+
+	after, err := h.service.GetGroup(ctx, group.ID)
+	if err != nil {
+		t.Fatalf("cannot read the group: %v", err)
+	}
+	if after.SourceServerID != 0 {
+		t.Errorf("source = %d, want it cleared", after.SourceServerID)
 	}
 }
 
@@ -692,13 +772,11 @@ func TestGroupActionsAreAudited(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
 
-	record, _, err := h.service.Create(ctx, testActor(), newServerInput("dns1"))
-	if err != nil {
+	if _, _, err := h.service.Create(ctx, testActor(), newServerInput("dns1")); err != nil {
 		t.Fatalf("Create returned an error: %v", err)
 	}
 
-	group, err := h.service.CreateGroup(ctx, testActor(), Group{
-		Name: "resolvers", ServerIDs: []int64{record.ID}})
+	group, err := h.service.CreateGroup(ctx, testActor(), Group{Name: "resolvers"})
 	if err != nil {
 		t.Fatalf("CreateGroup returned an error: %v", err)
 	}
@@ -805,12 +883,11 @@ func TestTheGroupReadsGoStraightToTheStore(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
 
-	created, _, err := h.service.Create(ctx, testActor(), newServerInput("dns1"))
-	if err != nil {
+	if _, _, err := h.service.Create(ctx, testActor(), newServerInput("dns1")); err != nil {
 		t.Fatalf("cannot create the server: %v", err)
 	}
-	group, err := h.service.CreateGroup(ctx, testActor(), Group{
-		Name: "resolvers", ServerIDs: []int64{created.ID}})
+
+	group, err := h.service.CreateGroup(ctx, testActor(), Group{Name: "resolvers"})
 	if err != nil {
 		t.Fatalf("cannot create the group: %v", err)
 	}

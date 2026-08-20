@@ -123,7 +123,8 @@ func newHarness(t *testing.T) *harness {
 func (h *harness) cached(t *testing.T) fleet.Page {
 	t.Helper()
 
-	page, err := h.records.List(context.Background(), fleet.Query{PerPage: paging.Max})
+	page, err := h.records.List(context.Background(), fleet.Query{
+		Scope: fleet.ScopeServer, ServerID: h.record.ID, PerPage: paging.Max})
 	if err != nil {
 		t.Fatalf("cannot read the cached records: %v", err)
 	}

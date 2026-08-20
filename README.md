@@ -679,8 +679,13 @@ scripts              the verification scripts the make targets run
 
 ## Licence of the assets it serves
 
-The panel embeds its stylesheets, scripts, icons and fonts, so it redistributes
-them. `deploy/licenses/` carries the licence of each one and `install.sh` places
-the directory under `/usr/local/share/doc/jbound/licenses`. Everything there is
-MIT, 0BSD or the SIL Open Font License, and all three ask only that the notice
-travels with the copies.
+The panel embeds its stylesheets, scripts and icons, so it redistributes them.
+`deploy/licenses/` carries the licence of each one and `install.sh` places the
+directory under `/usr/local/share/doc/jbound/licenses`. Three assets are
+somebody else's, all MIT or 0BSD: htmx, SweetAlert2 and Boxicons. Both licences
+ask only that the notice travels with the copies.
+
+Everything else on the page is the panel's own. There is no vendor template and
+no framework: `panel.css` is the whole appearance and `app.js` is the whole
+behaviour that htmx does not cover. The text is set in the fonts the reader's
+system already has, so no font is shipped and no page reaches a font host.

@@ -681,12 +681,17 @@ func TestAWriteReopensTheUnappliedMarker(t *testing.T) {
 	}
 }
 
-func TestTheStatusBarCannotApplyToTheWholeFleet(t *testing.T) {
+func TestAListingWithNoTargetFallsBackToTheFirstGroup(t *testing.T) {
+	// There is no listing of every server any more. A request that names no
+	// target, and a link that names the scope the panel used to offer, both
+	// land on a group rather than on every server at once.
 	env := newFleetEnv(t)
 
-	body := env.table(t, "")
-	if !strings.Contains(body, "Choose a single server or a group to apply the rules.") {
-		t.Errorf("the status bar does not say why the button is unavailable:\n%s", body)
+	for _, query := range []string{"", "scope=all"} {
+		body := env.table(t, query)
+		if !strings.Contains(body, "3 of 3 servers") {
+			t.Errorf("the listing for %q did not land on the group:\n%s", query, body)
+		}
 	}
 }
 
@@ -773,17 +778,18 @@ func TestAQueryRefusesAnInvalidName(t *testing.T) {
 	}
 }
 
-func TestAQueryMayCoverTheWholeFleet(t *testing.T) {
-	// A query reads. Unlike a write, it does not need a target somebody built
-	// on purpose.
+func TestAQueryWithNoTargetIsRefused(t *testing.T) {
+	// A query reads rather than writes, and it still reaches servers. Which
+	// ones is not something to guess at: an unnamed target used to mean every
+	// server the panel manages.
 	env := newFleetEnv(t)
 
-	recorder := env.query(t, url.Values{"scope": {"all"}, "domain": {"www.example.local"}})
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200:\n%s", recorder.Code, recorder.Body.String())
+	recorder := env.query(t, url.Values{"domain": {"www.example.local"}})
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400:\n%s", recorder.Code, recorder.Body.String())
 	}
-	if len(env.queries.questions()) != 3 {
-		t.Errorf("asked = %v, want every server", env.queries.questions())
+	if asked := env.queries.questions(); len(asked) != 0 {
+		t.Errorf("asked = %v, want no server", asked)
 	}
 }
 

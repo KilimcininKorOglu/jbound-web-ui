@@ -91,7 +91,7 @@ func (s *Service) Query(ctx context.Context, actor server.Actor, target Target,
 		}
 	}
 
-	members, groupName, err := s.writer.Members(ctx, target)
+	members, groupName, err := s.writer.Targets(ctx, target)
 	if err != nil {
 		return QueryReport{}, err
 	}

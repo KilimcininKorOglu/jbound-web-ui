@@ -220,20 +220,19 @@ func TestTheDiffTableMarksTheSourceColumn(t *testing.T) {
 	}
 }
 
-func TestNoSynchronisationIsOfferedForTheWholeFleet(t *testing.T) {
-	// The source belongs to a group, so a comparison that spans the whole fleet
-	// has none. That is what stops one group's records being copied over
-	// another's, and it is why no button is offered here.
+func TestAComparisonWithNoTargetFallsBackToTheFirstGroup(t *testing.T) {
+	// A comparison is between the servers of one group. A request that names
+	// no target, and a link that names the scope the panel used to offer, both
+	// land on a group rather than on every server at once.
 	env := newFleetEnv(t)
 
 	env.chooseSource(t, 1, 1)
 
-	body := env.diffTable(t, "scope=all")
-	if strings.Contains(body, `data-field="sync-from-source"`) {
-		t.Errorf("the table offers a synchronisation of the whole fleet:\n%s", body)
-	}
-	if !strings.Contains(body, `data-field="no-source"`) {
-		t.Errorf("the table does not say why there is nothing to copy from:\n%s", body)
+	for _, query := range []string{"", "scope=all"} {
+		body := env.diffTable(t, query)
+		if !strings.Contains(body, `data-field="sync-from-source"`) {
+			t.Errorf("the comparison for %q did not land on the group:\n%s", query, body)
+		}
 	}
 }
 

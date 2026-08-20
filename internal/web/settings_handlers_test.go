@@ -492,7 +492,8 @@ func TestTheConfiguredPageSizeReachesTheRecordListing(t *testing.T) {
 		t.Fatalf("POST /settings = %d, want 200", recorder.Code)
 	}
 
-	page, err := env.records.Page(context.Background(), fleet.Query{})
+	listing := fleet.Query{Scope: fleet.ScopeGroup, GroupID: 1}
+	page, err := env.records.Page(context.Background(), listing)
 	if err != nil {
 		t.Fatalf("cannot read the listing: %v", err)
 	}
@@ -502,7 +503,8 @@ func TestTheConfiguredPageSizeReachesTheRecordListing(t *testing.T) {
 
 	// A request that names its own size still wins, because that is the
 	// control the reader just used.
-	page, err = env.records.Page(context.Background(), fleet.Query{PerPage: 50})
+	listing.PerPage = 50
+	page, err = env.records.Page(context.Background(), listing)
 	if err != nil {
 		t.Fatalf("cannot read the listing: %v", err)
 	}

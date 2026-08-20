@@ -24,10 +24,6 @@ type ServerStatus struct {
 type Status struct {
 	Servers   []ServerStatus
 	GroupName string
-
-	// CanApply is false while the listing covers the whole fleet, because a
-	// reload needs a single server or a group somebody built on purpose.
-	CanApply bool
 }
 
 // Counts returns how many servers a reload would cover and how many of them

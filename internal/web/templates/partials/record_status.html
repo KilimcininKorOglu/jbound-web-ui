@@ -11,11 +11,6 @@
       {{if .StaleNote}}
       <div class="text-muted small" data-field="stale-note">{{.StaleNote}}</div>
       {{end}}
-      {{if not .Status.CanApply}}
-      <div class="text-muted small" data-field="apply-note">
-        {{t "dns.apply_note"}}
-      </div>
-      {{end}}
     </div>
 
     {{/* Nothing to apply is a disabled button rather than a hidden one, so the
@@ -25,7 +20,7 @@
             hx-target="#record-panel" hx-swap="innerHTML"
             hx-confirm="{{t "dns.apply_question"}}"
             data-confirm-title="{{t "dns.apply_rules"}}"
-            {{if not (and .Status.CanApply .Status.Pending)}}disabled{{end}}>
+            {{if not .Status.Pending}}disabled{{end}}>
       <i class="bx bx-refresh" aria-hidden="true"></i> {{t "dns.apply_rules"}}
     </button>
   </div>

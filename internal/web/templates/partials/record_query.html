@@ -35,9 +35,6 @@
         <div class="col-md-4">
           <label class="form-label" for="query_target">{{t "query.ask_label"}}</label>
           <select class="form-select" id="query_target" name="target">
-            <option value="all:0" {{if eq $query.Scope "all"}}selected{{end}}>
-              {{t "common.every_server"}}
-            </option>
             {{if .Groups}}
             <optgroup label="{{t "common.groups"}}">
               {{range .Groups}}

@@ -21,7 +21,7 @@
          offered only when a source is chosen, and only to an account that may
          press it. A button everybody can see and only some can use answers 403
          to the rest. */}}
-    {{if and .Writable .HasDifferences}}
+    {{if .HasDifferences}}
     {{/* The batch of the per record button beside it. It adds and never
          removes, so it needs no source and it takes nothing away from the
          server whose extra record was the one worth keeping. */}}
@@ -37,7 +37,7 @@
     </div>
     {{end}}
 
-    {{if and .SourceName .IsAdmin .Writable}}
+    {{if and .SourceName .IsAdmin}}
     {{/* Outlined and in the danger colour, because this one deletes. */}}
     <div class="dns-toolbar mt-2 mb-0">
       <button class="btn btn-outline-danger" type="button" data-field="sync-from-source"
@@ -49,11 +49,6 @@
       </button>
       <span class="form-text ms-1">{{t "diff.sync_help"}}</span>
     </div>
-    {{else if and .SourceName .IsAdmin}}
-    {{/* The page compares the whole fleet by default and a change may not
-         target it, so the button would answer a refusal to everyone who
-         pressed it before narrowing the comparison. */}}
-    <div class="text-muted small mt-3" data-field="whole-fleet">{{t "dns.apply_note"}}</div>
     {{else if .IsAdmin}}
     {{/* The reference belongs to the group, so the link lands on the page
          where the group is edited rather than on a panel wide setting. */}}

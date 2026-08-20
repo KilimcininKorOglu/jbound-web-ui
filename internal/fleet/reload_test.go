@@ -112,10 +112,10 @@ func TestADisabledServerIsSkippedByAReload(t *testing.T) {
 	}
 }
 
-func TestAReloadAgainstEveryServerIsRefused(t *testing.T) {
+func TestAReloadAgainstNoTargetIsRefused(t *testing.T) {
 	h := newWriteHarness(t, 2)
 
-	_, err := h.writer.Reload(context.Background(), testActor(), Target{Scope: ScopeAll})
+	_, err := h.writer.Reload(context.Background(), testActor(), Target{})
 	if !errors.Is(err, ErrScope) {
 		t.Fatalf("got %v, want ErrScope", err)
 	}

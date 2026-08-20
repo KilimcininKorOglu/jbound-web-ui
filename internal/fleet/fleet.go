@@ -53,10 +53,14 @@ func (s State) Stale(now time.Time, after time.Duration) bool {
 }
 
 // Scope names which servers a listing covers.
+//
+// There is no scope for the whole fleet. Two groups holding different records
+// is the ordinary state of a panel that manages more than one of them, so a
+// comparison across all of them reports drift that is not drift, and a write
+// across all of them is not something an operator asks for by accident.
 const (
 	ScopeServer = "server"
 	ScopeGroup  = "group"
-	ScopeAll    = "all"
 )
 
 // DefaultPerPage is what a listing that names no page size falls back to when
@@ -81,11 +85,11 @@ type Query struct {
 	PerPage int
 }
 
-// Normalise fills in the scope and clamps the paging fields.
+// Normalise clamps the paging fields.
+//
+// It fills in no scope. A listing that names none is refused rather than
+// widened, because the widest reading of an unnamed target is every server.
 func (q *Query) Normalise() {
-	if q.Scope == "" {
-		q.Scope = ScopeAll
-	}
 	q.Page, q.PerPage = paging.Clamp(q.Page, q.PerPage, DefaultPerPage)
 }
 

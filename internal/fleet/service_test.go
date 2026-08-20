@@ -126,7 +126,7 @@ func TestAStaleRowIsMarkedRatherThanHidden(t *testing.T) {
 	}}}
 	service := harness.service(lister, &stubQuerier{})
 
-	page, err := service.Page(context.Background(), Query{})
+	page, err := service.Page(context.Background(), Query{Scope: ScopeGroup, GroupID: 1})
 	if err != nil {
 		t.Fatalf("cannot read the page: %v", err)
 	}
@@ -158,7 +158,8 @@ func TestAServerNobodyHasReadIsStale(t *testing.T) {
 		t.Fatalf("states = %v, want an empty map", states)
 	}
 
-	status, err := service.Status(context.Background(), Query{Scope: ScopeAll})
+	status, err := service.Status(context.Background(),
+		Query{Scope: ScopeGroup, GroupID: 1})
 	if err != nil {
 		t.Fatalf("cannot read the status: %v", err)
 	}
@@ -180,25 +181,19 @@ func TestTheStatusOfAGroupCarriesItsName(t *testing.T) {
 	if status.GroupName != "resolvers" {
 		t.Errorf("group name = %q, want resolvers", status.GroupName)
 	}
-	if !status.CanApply {
-		t.Error("a group cannot be applied to, and it is the point of a group")
-	}
 	if len(status.Servers) != 3 {
 		t.Errorf("%d servers came back, want 3", len(status.Servers))
 	}
 }
 
-func TestTheWholeFleetCannotBeAppliedTo(t *testing.T) {
-	// A reload needs a single server or a group somebody built on purpose.
+func TestTheStatusOfAnUnnamedTargetIsRefused(t *testing.T) {
+	// The status bar sits above a listing, and a listing that names no target
+	// is refused rather than answered for every server.
 	harness := newWriteHarness(t, 2)
 	service := harness.service(&fakeLister{}, &stubQuerier{})
 
-	status, err := service.Status(context.Background(), Query{Scope: ScopeAll})
-	if err != nil {
-		t.Fatalf("cannot read the status: %v", err)
-	}
-	if status.CanApply {
-		t.Error("the status bar offers a reload of the whole fleet")
+	if _, err := service.Status(context.Background(), Query{}); !errors.Is(err, ErrScope) {
+		t.Fatalf("got %v, want ErrScope", err)
 	}
 }
 
@@ -457,12 +452,12 @@ func TestTheQueryBoundsAreClamped(t *testing.T) {
 		perPage int
 		page    int
 	}{
-		{name: "an empty query covers the fleet",
-			scope: ScopeAll, perPage: DefaultPerPage, page: 1},
+		{name: "an empty query names no target",
+			perPage: DefaultPerPage, page: 1},
 		{name: "a page of one is raised to the minimum",
-			query: Query{PerPage: 1}, scope: ScopeAll, perPage: paging.Min, page: 1},
+			query: Query{PerPage: 1}, perPage: paging.Min, page: 1},
 		{name: "a page of a thousand is cut to the maximum",
-			query: Query{PerPage: 1000}, scope: ScopeAll, perPage: paging.Max, page: 1},
+			query: Query{PerPage: 1000}, perPage: paging.Max, page: 1},
 		{name: "a scope that was chosen is kept",
 			query: Query{Scope: ScopeGroup, GroupID: 1, Page: -2},
 			scope: ScopeGroup, perPage: DefaultPerPage, page: 1},

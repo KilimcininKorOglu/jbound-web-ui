@@ -162,9 +162,7 @@ func (a *App) dnsPageData(r *http.Request) (dnsPageData, error) {
 	if err := r.ParseForm(); err != nil {
 		return dnsPageData{}, err
 	}
-	query := listingFrom(r.Form)
-
-	page, err := a.Records.Page(r.Context(), query)
+	query, err := a.listing(r.Context(), r.Form)
 	if err != nil {
 		return dnsPageData{}, err
 	}
@@ -174,6 +172,24 @@ func (a *App) dnsPageData(r *http.Request) (dnsPageData, error) {
 		return dnsPageData{}, err
 	}
 	groups, err := a.Servers.ListGroups(r.Context())
+	if err != nil {
+		return dnsPageData{}, err
+	}
+
+	// Nothing to list against. The selector is empty as well, so the page says
+	// where a group is made instead of showing a table of nothing.
+	if query.Scope == "" {
+		return dnsPageData{
+			Query:      query,
+			Servers:    servers,
+			Groups:     groups,
+			Types:      dnsfile.Types,
+			ShowServer: true,
+			Summary:    catalog.T("dns.no_group"),
+		}, nil
+	}
+
+	page, err := a.Records.Page(r.Context(), query)
 	if err != nil {
 		return dnsPageData{}, err
 	}
@@ -233,19 +249,20 @@ func listingFrom(values valueSource) fleet.Query {
 			chosen.Scope, chosen.ServerID, chosen.GroupID
 	}
 
-	// A scope without its identifier would list the whole fleet under a label
-	// that says otherwise.
+	// A scope without its identifier names nothing, and so does a scope the
+	// panel does not know. Either one is cleared rather than widened, because
+	// the widest reading of an unnamed target is every server at once.
 	switch query.Scope {
 	case fleet.ScopeServer:
 		if query.ServerID == 0 {
-			query.Scope = fleet.ScopeAll
+			query.Scope = ""
 		}
 	case fleet.ScopeGroup:
 		if query.GroupID == 0 {
-			query.Scope = fleet.ScopeAll
+			query.Scope = ""
 		}
 	default:
-		query.Scope = fleet.ScopeAll
+		query.Scope = ""
 	}
 
 	if query.Type != "" && dnsfile.ValidateRecordType(query.Type) != nil {
@@ -254,6 +271,31 @@ func listingFrom(values valueSource) fleet.Query {
 
 	query.Normalise()
 	return query
+}
+
+// listing reads the controls and names a target when the request carries none.
+//
+// A page opened from the menu carries no controls at all, and there is no
+// scope for the whole fleet to fall back on. It takes the first group by name,
+// which is what the selector shows first. A panel with no group at all keeps
+// an empty scope, and the page says so rather than listing nothing without a
+// reason.
+func (a *App) listing(ctx context.Context, values valueSource) (fleet.Query, error) {
+	query := listingFrom(values)
+	if query.Scope != "" {
+		return query, nil
+	}
+
+	groups, err := a.Servers.ListGroups(ctx)
+	if err != nil {
+		return fleet.Query{}, err
+	}
+	if len(groups) == 0 {
+		return query, nil
+	}
+
+	query.Scope, query.GroupID = fleet.ScopeGroup, groups[0].ID
+	return query, nil
 }
 
 // summary reads "Showing X of Y records (Page A/B)".
@@ -501,8 +543,11 @@ func (a *App) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 	target, err := targetFromValues(r.Form)
 	if err != nil {
-		// A query reads, so the whole fleet is a fair target here.
-		target = fleet.Target{Scope: fleet.ScopeAll}
+		// A query reads, but it still reaches servers, and which ones is not
+		// something to guess at.
+		data.Problem = recordMessage(r.Context(), a.catalog(r), err)
+		a.RenderPartial(w, r, dnsStatus(err), "record-query", data)
+		return
 	}
 
 	report, err := a.Records.Query(r.Context(), a.actor(r), target, data.Domain, data.Type)
@@ -679,8 +724,6 @@ func splitTarget(raw string) (fleet.Target, bool) {
 		return fleet.Target{Scope: scope, ServerID: id}, true
 	case fleet.ScopeGroup:
 		return fleet.Target{Scope: scope, GroupID: id}, true
-	case fleet.ScopeAll:
-		return fleet.Target{Scope: scope}, true
 	default:
 		return fleet.Target{}, false
 	}

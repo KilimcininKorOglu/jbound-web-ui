@@ -19,7 +19,7 @@ func englishCatalog(t *testing.T) Catalog {
 }
 
 func statusOf(entries ...ServerStatus) Status {
-	return Status{Servers: entries, CanApply: true}
+	return Status{Servers: entries}
 }
 
 func TestTheSummaryNamesHowManyServersLagBehind(t *testing.T) {

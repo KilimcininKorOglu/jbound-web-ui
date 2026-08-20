@@ -87,7 +87,7 @@ func (s *Service) Page(ctx context.Context, query Query) (Page, error) {
 		return Page{}, err
 	}
 
-	members, _, err := s.writer.Members(ctx,
+	members, _, err := s.writer.Targets(ctx,
 		Target{Scope: query.Scope, ServerID: query.ServerID, GroupID: query.GroupID})
 	if err != nil {
 		return Page{}, err
@@ -169,13 +169,10 @@ func (s *Service) States(ctx context.Context) (map[int64]State, error) {
 }
 
 // Status reports where the servers of one target stand.
-//
-// It answers for the whole fleet as well, because the records page keeps its
-// status bar next to a listing that may cover every server.
 func (s *Service) Status(ctx context.Context, query Query) (Status, error) {
 	target := Target{Scope: query.Scope, ServerID: query.ServerID, GroupID: query.GroupID}
 
-	members, groupName, err := s.writer.Members(ctx, target)
+	members, groupName, err := s.writer.Targets(ctx, target)
 	if err != nil {
 		return Status{}, err
 	}
@@ -188,7 +185,6 @@ func (s *Service) Status(ctx context.Context, query Query) (Status, error) {
 	now := s.now()
 	status := Status{
 		GroupName: groupName,
-		CanApply:  query.Scope != ScopeAll,
 		Servers:   make([]ServerStatus, 0, len(members)),
 	}
 

@@ -628,13 +628,13 @@ func TestAnEditValidatesTheRecordItReplaces(t *testing.T) {
 	}
 }
 
-func TestAWriteAgainstEveryServerIsRefused(t *testing.T) {
-	// Changing the whole fleet at once has to be a group somebody built on
-	// purpose, not a scope left over from a listing.
+func TestAWriteAgainstNoTargetIsRefused(t *testing.T) {
+	// A change has to name the servers it reaches. An unnamed target used to
+	// mean the whole fleet, which is the one reading nobody asks for.
 	h := newWriteHarness(t, 2)
 
 	_, err := h.writer.Apply(context.Background(), testActor(),
-		Target{Scope: ScopeAll}, addOperation())
+		Target{}, addOperation())
 	if !errors.Is(err, ErrScope) {
 		t.Fatalf("got %v, want ErrScope", err)
 	}

@@ -42,11 +42,6 @@ type diffPageData struct {
 	// everybody can see and only some can press answers 403 to the rest.
 	IsAdmin bool
 
-	// Writable reports whether the comparison names a target a change may
-	// reach. The page compares the whole fleet by default, and no write may
-	// target that.
-	Writable bool
-
 	// HasDifferences reports whether there is anything to repair, so the batch
 	// button is absent on a target that already agrees.
 	HasDifferences bool
@@ -79,18 +74,16 @@ func (a *App) diffPageData(r *http.Request) (diffPageData, error) {
 		return diffPageData{}, err
 	}
 
-	query := listingFrom(r.Form)
+	query, err := a.listing(r.Context(), r.Form)
+	if err != nil {
+		return diffPageData{}, err
+	}
 	only := r.Form.Get("only_mismatches") != ""
 
 	// The page opens on the filter, so a first load with no controls at all
 	// still shows the differences rather than every record twice over.
 	if _, chosen := r.Form["view"]; !chosen {
 		only = true
-	}
-
-	diff, err := a.Records.Diff(r.Context(), query, only)
-	if err != nil {
-		return diffPageData{}, err
 	}
 
 	groups, err := a.Servers.ListGroups(r.Context())
@@ -102,6 +95,24 @@ func (a *App) diffPageData(r *http.Request) (diffPageData, error) {
 		return diffPageData{}, err
 	}
 
+	// Nothing to compare. The selector is empty as well, so the page says what
+	// a comparison is between rather than showing an empty table.
+	if query.Scope == "" {
+		return diffPageData{
+			Query:          query,
+			Groups:         groups,
+			Servers:        servers,
+			OnlyMismatches: only,
+			Summary:        catalog.T("diff.no_group"),
+			Columns:        4,
+		}, nil
+	}
+
+	diff, err := a.Records.Diff(r.Context(), query, only)
+	if err != nil {
+		return diffPageData{}, err
+	}
+
 	sourceID, sourceName := a.sourceServer(r.Context(), query)
 	session, _ := SessionFrom(r.Context())
 
@@ -109,7 +120,6 @@ func (a *App) diffPageData(r *http.Request) (diffPageData, error) {
 		SourceID:       sourceID,
 		SourceName:     sourceName,
 		IsAdmin:        session.IsAdmin(),
-		Writable:       query.Scope == fleet.ScopeServer || query.Scope == fleet.ScopeGroup,
 		HasDifferences: diff.Mismatches() > 0,
 		Diff:           diff,
 		Query:          query,

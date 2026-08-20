@@ -215,7 +215,6 @@ func recordFilter(query fleet.Query) (string, []any, error) {
 		clauses = append(clauses,
 			"c.server_id IN (SELECT id FROM servers WHERE group_id = ?)")
 		args = append(args, query.GroupID)
-	case fleet.ScopeAll:
 	default:
 		return "", nil, fmt.Errorf("%w: %q", fleet.ErrScope, query.Scope)
 	}
@@ -233,9 +232,6 @@ func recordFilter(query fleet.Query) (string, []any, error) {
 		args = append(args, query.Type)
 	}
 
-	if len(clauses) == 0 {
-		return "", args, nil
-	}
 	return " WHERE " + strings.Join(clauses, " AND "), args, nil
 }
 

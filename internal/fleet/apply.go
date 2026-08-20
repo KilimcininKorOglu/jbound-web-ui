@@ -403,25 +403,12 @@ func (w *Writer) transportConfig(record server.Server) transport.Config {
 	return record.TransportConfig(w.dataDir, timeouts.Connect, timeouts.Command)
 }
 
-// Targets resolves a target into the servers an operation will reach.
+// Targets resolves a target into the servers it covers.
 //
 // A disabled server stays in the list. It produces a skipped result, so the
 // operator sees that it was left out rather than wondering why the count is
 // short.
 func (w *Writer) Targets(ctx context.Context, target Target) ([]server.Server, string, error) {
-	if target.Scope == ScopeAll {
-		// A change to every server at once is not something an operator asks
-		// for by accident, so it has to be a group they built on purpose.
-		return nil, "", fmt.Errorf("%w: a write needs a server or a group", ErrScope)
-	}
-	return w.Members(ctx, target)
-}
-
-// Members resolves a target into the servers it covers.
-//
-// It answers for every scope, including the whole fleet, because a listing may
-// span what a write may not.
-func (w *Writer) Members(ctx context.Context, target Target) ([]server.Server, string, error) {
 	switch target.Scope {
 	case ScopeServer:
 		record, err := w.servers.Get(ctx, target.ServerID)
@@ -440,13 +427,6 @@ func (w *Writer) Members(ctx context.Context, target Target) ([]server.Server, s
 			return nil, "", err
 		}
 		return members, group.Name, nil
-
-	case ScopeAll:
-		members, err := w.servers.ListEnabled(ctx)
-		if err != nil {
-			return nil, "", err
-		}
-		return members, "", nil
 
 	default:
 		return nil, "", fmt.Errorf("%w: %q", ErrScope, target.Scope)

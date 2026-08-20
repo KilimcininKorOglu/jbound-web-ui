@@ -12,13 +12,15 @@ import (
 	"jbound/internal/store"
 )
 
-// cacheFixture holds a database with two servers and a group over both.
+// cacheFixture holds a database with two servers in one group, and a third
+// that is in no group at all.
 type cacheFixture struct {
 	*fixture
 	records *store.Records
 	states  *store.States
 	first   server.Server
 	second  server.Server
+	outside server.Server
 	group   server.Group
 }
 
@@ -32,10 +34,12 @@ func newCacheFixture(t *testing.T) *cacheFixture {
 		t.Fatalf("cannot create the group: %v", err)
 	}
 
-	// Only the first server is in the group, so a group scoped listing has to
-	// leave the second one out.
 	first := base.mustCreateIn(t, "dns1", group.ID)
-	second := base.mustCreate(t, "dns2")
+	second := base.mustCreateIn(t, "dns2", group.ID)
+
+	// The third belongs to no group, so a group scoped listing has to leave it
+	// out.
+	outside := base.mustCreate(t, "dns3")
 
 	return &cacheFixture{
 		fixture: base,
@@ -43,8 +47,18 @@ func newCacheFixture(t *testing.T) *cacheFixture {
 		states:  store.NewStates(base.db),
 		first:   first,
 		second:  second,
+		outside: outside,
 		group:   group,
 	}
+}
+
+// inGroup scopes a listing to the group both servers are in.
+//
+// There is no scope for the whole cache. A listing names a server or a group,
+// so a test that wants everything it filled asks for the group that holds it.
+func (f *cacheFixture) inGroup(query fleet.Query) fleet.Query {
+	query.Scope, query.GroupID = fleet.ScopeGroup, f.group.ID
+	return query
 }
 
 func cached(line int, fqdn, recordType, value string) dnsfile.Record {
@@ -67,7 +81,7 @@ func TestReplaceStoresEveryField(t *testing.T) {
 		dnsfile.Record{Line: 4, FQDN: "mail.example.net", Type: "MX",
 			Value: "mx1.example.net", Priority: 20, Raw: `local-data: "mail.example.net. MX 20 mx1.example.net"`})
 
-	page, err := f.records.List(context.Background(), fleet.Query{})
+	page, err := f.records.List(context.Background(), f.inGroup(fleet.Query{}))
 	if err != nil {
 		t.Fatalf("List returned an error: %v", err)
 	}
@@ -102,7 +116,7 @@ func TestReplaceSwapsTheWholeSet(t *testing.T) {
 		cached(2, "gone.example.net", "A", "192.0.2.11"))
 	f.fill(t, f.first.ID, cached(1, "new.example.net", "A", "192.0.2.20"))
 
-	page, err := f.records.List(ctx, fleet.Query{})
+	page, err := f.records.List(ctx, f.inGroup(fleet.Query{}))
 	if err != nil {
 		t.Fatalf("List returned an error: %v", err)
 	}
@@ -118,7 +132,7 @@ func TestReplaceLeavesTheOtherServersAlone(t *testing.T) {
 	f.fill(t, f.second.ID, cached(1, "two.example.net", "A", "192.0.2.20"))
 	f.fill(t, f.first.ID, cached(1, "three.example.net", "A", "192.0.2.30"))
 
-	page, err := f.records.List(context.Background(), fleet.Query{})
+	page, err := f.records.List(context.Background(), f.inGroup(fleet.Query{}))
 	if err != nil {
 		t.Fatalf("List returned an error: %v", err)
 	}
@@ -134,7 +148,7 @@ func TestReplaceWithNothingEmptiesTheServer(t *testing.T) {
 	f.fill(t, f.first.ID, cached(1, "one.example.net", "A", "192.0.2.10"))
 	f.fill(t, f.first.ID)
 
-	page, err := f.records.List(context.Background(), fleet.Query{})
+	page, err := f.records.List(context.Background(), f.inGroup(fleet.Query{}))
 	if err != nil {
 		t.Fatalf("List returned an error: %v", err)
 	}
@@ -161,7 +175,7 @@ func TestListScopesToOneServer(t *testing.T) {
 func TestListScopesToAGroup(t *testing.T) {
 	f := newCacheFixture(t)
 	f.fill(t, f.first.ID, cached(1, "one.example.net", "A", "192.0.2.10"))
-	f.fill(t, f.second.ID, cached(1, "two.example.net", "A", "192.0.2.20"))
+	f.fill(t, f.outside.ID, cached(1, "elsewhere.example.net", "A", "192.0.2.20"))
 
 	page, err := f.records.List(context.Background(), fleet.Query{
 		Scope: fleet.ScopeGroup, GroupID: f.group.ID})
@@ -180,7 +194,7 @@ func TestListSearchesTheNameAndTheValueWithoutRegardToCase(t *testing.T) {
 		cached(2, "other.example.net", "CNAME", "WWW.example.net"),
 		cached(3, "unrelated.example.net", "A", "198.51.100.7"))
 
-	page, err := f.records.List(context.Background(), fleet.Query{Search: "wWw"})
+	page, err := f.records.List(context.Background(), f.inGroup(fleet.Query{Search: "wWw"}))
 	if err != nil {
 		t.Fatalf("List returned an error: %v", err)
 	}
@@ -197,7 +211,7 @@ func TestListTreatsAWildcardAsText(t *testing.T) {
 		cached(1, "a_b.example.net", "A", "192.0.2.10"),
 		cached(2, "axb.example.net", "A", "192.0.2.11"))
 
-	page, err := f.records.List(context.Background(), fleet.Query{Search: "a_b"})
+	page, err := f.records.List(context.Background(), f.inGroup(fleet.Query{Search: "a_b"}))
 	if err != nil {
 		t.Fatalf("List returned an error: %v", err)
 	}
@@ -205,7 +219,7 @@ func TestListTreatsAWildcardAsText(t *testing.T) {
 		t.Errorf("got %+v, want only the literal match", page.Rows)
 	}
 
-	page, err = f.records.List(context.Background(), fleet.Query{Search: "%"})
+	page, err = f.records.List(context.Background(), f.inGroup(fleet.Query{Search: "%"}))
 	if err != nil {
 		t.Fatalf("List returned an error: %v", err)
 	}
@@ -220,7 +234,7 @@ func TestListFiltersOnTheType(t *testing.T) {
 		cached(1, "one.example.net", "A", "192.0.2.10"),
 		cached(2, "two.example.net", "AAAA", "2001:db8::1"))
 
-	page, err := f.records.List(context.Background(), fleet.Query{Type: "AAAA"})
+	page, err := f.records.List(context.Background(), f.inGroup(fleet.Query{Type: "AAAA"}))
 	if err != nil {
 		t.Fatalf("List returned an error: %v", err)
 	}
@@ -238,7 +252,7 @@ func TestListCountsTheFilteredSetRatherThanTheWholeCache(t *testing.T) {
 		cached(2, "other.example.net", "A", "192.0.2.11"),
 		cached(3, "another.example.net", "A", "192.0.2.12"))
 
-	page, err := f.records.List(context.Background(), fleet.Query{Search: "match"})
+	page, err := f.records.List(context.Background(), f.inGroup(fleet.Query{Search: "match"}))
 	if err != nil {
 		t.Fatalf("List returned an error: %v", err)
 	}
@@ -256,7 +270,7 @@ func TestListPagesThroughTheRecords(t *testing.T) {
 	}
 	f.fill(t, f.first.ID, records...)
 
-	first, err := f.records.List(context.Background(), fleet.Query{PerPage: 10, Page: 1})
+	first, err := f.records.List(context.Background(), f.inGroup(fleet.Query{PerPage: 10, Page: 1}))
 	if err != nil {
 		t.Fatalf("List returned an error: %v", err)
 	}
@@ -264,7 +278,7 @@ func TestListPagesThroughTheRecords(t *testing.T) {
 		t.Fatalf("got %d rows of %d over %d pages", len(first.Rows), first.Total, first.TotalPages)
 	}
 
-	last, err := f.records.List(context.Background(), fleet.Query{PerPage: 10, Page: 3})
+	last, err := f.records.List(context.Background(), f.inGroup(fleet.Query{PerPage: 10, Page: 3}))
 	if err != nil {
 		t.Fatalf("List returned an error: %v", err)
 	}
@@ -282,7 +296,7 @@ func TestListClampsAPageBeyondTheEnd(t *testing.T) {
 	f := newCacheFixture(t)
 	f.fill(t, f.first.ID, cached(1, "one.example.net", "A", "192.0.2.10"))
 
-	page, err := f.records.List(context.Background(), fleet.Query{Page: 99})
+	page, err := f.records.List(context.Background(), f.inGroup(fleet.Query{Page: 99}))
 	if err != nil {
 		t.Fatalf("List returned an error: %v", err)
 	}
@@ -299,7 +313,7 @@ func TestListKeepsAStableOrder(t *testing.T) {
 		cached(2, "c.example.net", "A", "192.0.2.12"),
 		cached(1, "a.example.net", "A", "192.0.2.11"))
 
-	page, err := f.records.List(context.Background(), fleet.Query{})
+	page, err := f.records.List(context.Background(), f.inGroup(fleet.Query{}))
 	if err != nil {
 		t.Fatalf("List returned an error: %v", err)
 	}
@@ -321,7 +335,7 @@ func TestDeletingAServerDropsItsCache(t *testing.T) {
 		t.Fatalf("Delete returned an error: %v", err)
 	}
 
-	page, err := f.records.List(ctx, fleet.Query{})
+	page, err := f.records.List(ctx, f.inGroup(fleet.Query{}))
 	if err != nil {
 		t.Fatalf("List returned an error: %v", err)
 	}
@@ -484,7 +498,7 @@ func TestListFoldsARecordTheServersAgreeOn(t *testing.T) {
 	f.fill(t, f.first.ID, shared)
 	f.fill(t, f.second.ID, shared)
 
-	page, err := f.records.List(context.Background(), fleet.Query{})
+	page, err := f.records.List(context.Background(), f.inGroup(fleet.Query{}))
 	if err != nil {
 		t.Fatalf("List returned an error: %v", err)
 	}
@@ -512,7 +526,7 @@ func TestListKeepsTwoValuesApart(t *testing.T) {
 	f.fill(t, f.first.ID, cached(1, "www.example.net", "A", "192.0.2.10"))
 	f.fill(t, f.second.ID, cached(1, "www.example.net", "A", "192.0.2.99"))
 
-	page, err := f.records.List(context.Background(), fleet.Query{})
+	page, err := f.records.List(context.Background(), f.inGroup(fleet.Query{}))
 	if err != nil {
 		t.Fatalf("List returned an error: %v", err)
 	}
@@ -541,7 +555,7 @@ func TestListKeepsTwoPrioritiesApart(t *testing.T) {
 	f.fill(t, f.first.ID, first)
 	f.fill(t, f.second.ID, second)
 
-	page, err := f.records.List(context.Background(), fleet.Query{})
+	page, err := f.records.List(context.Background(), f.inGroup(fleet.Query{}))
 	if err != nil {
 		t.Fatalf("List returned an error: %v", err)
 	}
@@ -563,8 +577,7 @@ func TestTheTotalCountsFoldedRows(t *testing.T) {
 	f.fill(t, f.first.ID, records...)
 	f.fill(t, f.second.ID, records...)
 
-	page, err := f.records.List(context.Background(),
-		fleet.Query{Page: 2, PerPage: 25})
+	page, err := f.records.List(context.Background(), f.inGroup(fleet.Query{Page: 2, PerPage: 25}))
 	if err != nil {
 		t.Fatalf("List returned an error: %v", err)
 	}

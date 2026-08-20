@@ -13,11 +13,8 @@
 
       <div class="col-md-5">
         <label class="form-label" for="diff_target">{{t "diff.compare"}}</label>
+        {{$query := .Data.Query}}
         <select class="form-select" id="diff_target" name="target">
-          <option value="all:0" {{if eq .Data.Query.Scope "all"}}selected{{end}}>
-            {{t "common.every_server"}}
-          </option>
-          {{$query := .Data.Query}}
           {{if .Data.Groups}}
           <optgroup label="{{t "common.groups"}}">
             {{range .Data.Groups}}

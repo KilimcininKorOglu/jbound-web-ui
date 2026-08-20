@@ -187,7 +187,7 @@ func TestTheCachedRecordsOfOneServerAreDropped(t *testing.T) {
 		t.Fatalf("cannot delete the server: %v", err)
 	}
 
-	byServer, err := f.records.ByServer(ctx, fleet.Query{})
+	byServer, err := f.records.ByServer(ctx, f.inGroup(fleet.Query{}))
 	if err != nil {
 		t.Fatalf("cannot read the cache: %v", err)
 	}
@@ -215,7 +215,7 @@ func TestTheDiffReadsWholeFilesRatherThanAPage(t *testing.T) {
 		t.Fatalf("cannot fill the cache: %v", err)
 	}
 
-	byServer, err := f.records.ByServer(ctx, fleet.Query{})
+	byServer, err := f.records.ByServer(ctx, f.inGroup(fleet.Query{}))
 	if err != nil {
 		t.Fatalf("cannot read the cache: %v", err)
 	}
@@ -233,7 +233,7 @@ func TestTheDiffCanBeNarrowedToOneGroup(t *testing.T) {
 		[]dnsfile.Record{cached(1, "www.example.local", "A", "10.0.0.1")}); err != nil {
 		t.Fatalf("cannot fill the cache: %v", err)
 	}
-	if err := f.records.Replace(ctx, f.second.ID,
+	if err := f.records.Replace(ctx, f.outside.ID,
 		[]dnsfile.Record{cached(1, "mail.example.local", "A", "10.0.0.2")}); err != nil {
 		t.Fatalf("cannot fill the cache: %v", err)
 	}

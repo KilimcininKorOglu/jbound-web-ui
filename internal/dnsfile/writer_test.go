@@ -610,3 +610,118 @@ func TestAnEmptyFileGetsTheClauseHeader(t *testing.T) {
 		t.Errorf("EnsureHeader wrote %q, want the header alone", got)
 	}
 }
+
+func TestTakenByNamesTheRecordInTheWay(t *testing.T) {
+	// The name already answers with another address. Writing the second one
+	// would leave which of the two an answer carries to the resolver.
+	content := []byte("local-data: \"www.example.net. A 192.0.2.10\"\n")
+
+	held, taken := dnsfile.TakenBy(content, record("www.example.net", "A", "192.0.2.99"))
+	if !taken {
+		t.Fatal("the name reads as free while the file answers for it")
+	}
+	if held.Value != "192.0.2.10" {
+		t.Errorf("the record in the way is %+v", held)
+	}
+}
+
+func TestTakenByIgnoresTheRecordItself(t *testing.T) {
+	// The same record is a duplicate rather than a conflict, and the two call
+	// for different words in front of the operator.
+	content := []byte("local-data: \"www.example.net. A 192.0.2.10\"\n")
+
+	if _, taken := dnsfile.TakenBy(content, record("www.example.net", "A", "192.0.2.10")); taken {
+		t.Error("a record the file already holds reads as a conflict")
+	}
+}
+
+func TestTakenByKeepsTheTypesApart(t *testing.T) {
+	// One name answering on both address families is the ordinary way to run
+	// dual stack, so an AAAA does not take the name an A holds.
+	content := []byte("local-data: \"www.example.net. A 192.0.2.10\"\n")
+
+	if _, taken := dnsfile.TakenBy(content, record("www.example.net", "AAAA", "2001:db8::1")); taken {
+		t.Error("an AAAA reads as taken by an A")
+	}
+	if _, taken := dnsfile.TakenBy(content, record("other.example.net", "A", "192.0.2.20")); taken {
+		t.Error("another name reads as taken")
+	}
+}
+
+func TestTakenByLeavesTheTypesThatCarrySeveralValues(t *testing.T) {
+	// A name carries several mail exchangers, which is what a preference is
+	// for, and several pieces of text.
+	content := []byte("local-data: \"example.net. MX 10 mx1.example.net\"\n" +
+		"local-data: \"example.net. TXT v=spf1 -all\"\n")
+
+	if _, taken := dnsfile.TakenBy(content, mxRecord("example.net", "mx2.example.net", 20)); taken {
+		t.Error("a second mail exchanger reads as a conflict")
+	}
+	if _, taken := dnsfile.TakenBy(content, record("example.net", "TXT", "another one")); taken {
+		t.Error("a second text record reads as a conflict")
+	}
+}
+
+func TestSetReplacesTheValueInPlace(t *testing.T) {
+	content := []byte("# managed by the panel\n" +
+		"local-data: \"www.example.net. A 192.0.2.10\"\n" +
+		"local-data: \"mail.example.net. A 192.0.2.20\"\n")
+
+	updated, err := dnsfile.Set(content, record("www.example.net", "A", "192.0.2.99"))
+	if err != nil {
+		t.Fatalf("Set returned an error: %v", err)
+	}
+
+	lines := strings.Split(strings.TrimSuffix(string(updated), "\n"), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("got %d lines, want 3:\n%s", len(lines), updated)
+	}
+	if lines[1] != `local-data: "www.example.net. A 192.0.2.99"` {
+		t.Errorf("the new value did not take the place of the old one: %q", lines[1])
+	}
+	if lines[2] != `local-data: "mail.example.net. A 192.0.2.20"` {
+		t.Errorf("another name was touched: %q", lines[2])
+	}
+}
+
+func TestSetLeavesOneValueBehind(t *testing.T) {
+	// A file somebody gave two addresses by hand ends up with the one that was
+	// asked for, or the panel would show a record it did not write.
+	content := []byte("local-data: \"www.example.net. A 192.0.2.10\"\n" +
+		"local-data: \"www.example.net. A 192.0.2.11\"\n")
+
+	updated, err := dnsfile.Set(content, record("www.example.net", "A", "192.0.2.99"))
+	if err != nil {
+		t.Fatalf("Set returned an error: %v", err)
+	}
+
+	records := dnsfile.Parse(updated)
+	if len(records) != 1 || records[0].Value != "192.0.2.99" {
+		t.Errorf("got %+v, want the one value that was set", records)
+	}
+}
+
+func TestSetWritesAValueTheFileDoesNotHold(t *testing.T) {
+	// The same operation runs against a server that holds another value and
+	// against one that holds nothing, which is what lets one answer cover a
+	// group where only some servers know the name.
+	updated, err := dnsfile.Set(nil, record("www.example.net", "A", "192.0.2.99"))
+	if err != nil {
+		t.Fatalf("Set returned an error: %v", err)
+	}
+
+	if string(updated) != "local-data: \"www.example.net. A 192.0.2.99\"\n" {
+		t.Errorf("got %q", updated)
+	}
+}
+
+func TestSetRefusesATypeThatCarriesSeveralValues(t *testing.T) {
+	// Setting one mail exchanger would delete the others, which is a removal
+	// nobody asked for.
+	content := []byte("local-data: \"example.net. MX 10 mx1.example.net\"\n")
+
+	_, err := dnsfile.Set(content, mxRecord("example.net", "mx2.example.net", 20))
+	if !errors.Is(err, dnsfile.ErrInvalid) {
+		t.Fatalf("got %v, want ErrInvalid", err)
+	}
+}

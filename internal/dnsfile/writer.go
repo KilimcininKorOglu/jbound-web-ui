@@ -17,6 +17,96 @@ var ErrNotFound = errors.New("the record is not in the file")
 // ErrDuplicate marks an addition that is already in the file.
 var ErrDuplicate = errors.New("the record is already in the file")
 
+// ErrNameTaken marks an addition whose name already answers with another
+// value.
+//
+// It is its own class because the answer to it is a choice rather than a
+// correction: the operator either replaces what is there or leaves it alone.
+var ErrNameTaken = errors.New("the file already holds another value for this name")
+
+// OneValuePerName reports whether a type carries a single value for one name.
+//
+// A name may legitimately carry several MX records, which is what a
+// preference is for, and several TXT records, which is how a name holds more
+// than one piece of text. A behaviour is not a record and brings its own zone
+// line, where "one name, one zone line" is already the rule Add enforces.
+//
+// A second A or AAAA for one name is legal DNS as well, and the resolver would
+// answer both. The panel does not write one: which of the two an answer
+// carries is then the resolver's decision, and an operator reading the list
+// would see two rows where one address is what they meant.
+func OneValuePerName(recordType string) bool {
+	switch recordType {
+	case TypeA, TypeAAAA, TypeCNAME:
+		return true
+	default:
+		return false
+	}
+}
+
+// TakenBy returns the record the content already holds for the same name and
+// type, and whether there is one.
+//
+// A record the file holds exactly is not reported here. That one is a
+// duplicate rather than a conflict, and the two call for different words.
+func TakenBy(content []byte, record Record) (Record, bool) {
+	if !OneValuePerName(record.Type) {
+		return Record{}, false
+	}
+
+	for _, other := range Parse(content) {
+		if sameName(other, record) && other.Value != record.Value {
+			return other, true
+		}
+	}
+	return Record{}, false
+}
+
+// sameName reports whether two records compete for one answer.
+func sameName(a, b Record) bool {
+	return a.Type == b.Type &&
+		strings.TrimSuffix(a.FQDN, ".") == strings.TrimSuffix(b.FQDN, ".")
+}
+
+// Set makes the content hold exactly this record for its name and type.
+//
+// The new line takes the place of the first one it replaces, so a file keeps
+// the order somebody put it in. Any further line for the same name goes, which
+// is what makes this different from an edit: it does not need to be told what
+// it is replacing, so it can be run against a server that holds another value
+// and against one that holds nothing at all.
+func Set(content []byte, record Record) ([]byte, error) {
+	if err := record.Validate(); err != nil {
+		return nil, err
+	}
+	if !OneValuePerName(record.Type) {
+		return nil, fmt.Errorf(
+			"%w: a %s name carries more than one value, so it cannot be set to one",
+			ErrInvalid, record.Type)
+	}
+
+	line := record.BuildLine()
+	lines := split(content)
+
+	kept := make([]string, 0, len(lines))
+	written := false
+	for _, existing := range lines {
+		parsed := Parse([]byte(existing))
+		if len(parsed) != 1 || !sameName(parsed[0], record) {
+			kept = append(kept, existing)
+			continue
+		}
+		if !written {
+			kept = append(kept, line)
+			written = true
+		}
+	}
+	if !written {
+		kept = append(kept, line)
+	}
+	return join(kept), nil
+}
+
 // BuildLine renders one record the way the file holds it.
 //
 // The trailing dot makes the name absolute, which is what Unbound expects.

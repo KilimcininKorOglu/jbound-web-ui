@@ -26,11 +26,6 @@ const (
 
 	// KindText is free text the operator types, such as the panel name.
 	KindText = "text"
-
-	// KindServer holds the identifier of a managed server, or nothing at all.
-	// The registry cannot check that the server exists, because this package
-	// does not know about servers, so the page that offers the choices does.
-	KindServer = "server"
 )
 
 // Groups. They are the cards of the settings page, in this order.
@@ -38,7 +33,6 @@ const (
 	GroupTiming    = "timing"
 	GroupLimits    = "limits"
 	GroupSIEM      = "siem"
-	GroupFleet     = "fleet"
 	GroupInterface = "interface"
 )
 
@@ -72,8 +66,6 @@ const (
 	SIEMProtocol     = "siem_protocol"
 	SIEMReceiverHost = "siem_receiver_host"
 	SIEMReceiverPort = "siem_receiver_port"
-
-	SourceServerID = "source_server_id"
 
 	PanelName = "panel_name"
 
@@ -203,11 +195,6 @@ var registry = []Definition{
 	},
 
 	{
-		Key: SourceServerID, Group: GroupFleet, Kind: KindServer,
-		Default: "",
-	},
-
-	{
 		Key: PanelName, Group: GroupInterface, Kind: KindText,
 		Default: "JBound", MaxLen: 60,
 	},
@@ -230,7 +217,7 @@ func Definitions() []Definition {
 
 // Groups returns the group names in page order.
 func Groups() []string {
-	return []string{GroupTiming, GroupLimits, GroupSIEM, GroupFleet, GroupInterface}
+	return []string{GroupTiming, GroupLimits, GroupSIEM, GroupInterface}
 }
 
 // Lookup returns the definition of one key.

@@ -326,55 +326,6 @@ func TestTheSettingsFormIsRefusedWithoutTheToken(t *testing.T) {
 	}
 }
 
-func TestTheSourceServerOffersTheEnabledServers(t *testing.T) {
-	// A disabled server joins no operation, so naming it as the reference
-	// would point at a machine nothing can be copied from.
-	env := newFleetEnv(t)
-
-	recorder := env.do(t, httptest.NewRequest(http.MethodGet, "/settings", nil), env.cookie)
-	body := recorder.Body.String()
-
-	if !strings.Contains(body, `data-field="source_server_id"`) {
-		t.Fatalf("the settings page carries no source control:\n%s", body)
-	}
-	for _, name := range []string{"dns1", "dns2", "dns3"} {
-		if !strings.Contains(body, ">"+name+"<") {
-			t.Errorf("the source control does not offer %s:\n%s", name, body)
-		}
-	}
-	if !strings.Contains(body, "No source server") {
-		t.Errorf("the source control has no empty choice:\n%s", body)
-	}
-}
-
-func TestASourceServerThatDoesNotExistIsRefused(t *testing.T) {
-	env := newFleetEnv(t)
-
-	body := env.settingsForm(t, map[string]string{settings.SourceServerID: "4711"})
-	recorder := env.do(t, postForm("/settings", body), env.adminCookie(t))
-
-	if recorder.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("status = %d, want 422:\n%s", recorder.Code, recorder.Body.String())
-	}
-	if env.app.Settings.String(settings.SourceServerID) != "" {
-		t.Error("a source nobody could reach was stored")
-	}
-}
-
-func TestTheChosenSourceServerIsStored(t *testing.T) {
-	env := newFleetEnv(t)
-
-	body := env.settingsForm(t, map[string]string{settings.SourceServerID: "2"})
-	recorder := env.do(t, postForm("/settings", body), env.adminCookie(t))
-
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200:\n%s", recorder.Code, recorder.Body.String())
-	}
-	if got := env.app.Settings.Values().Int64(settings.SourceServerID); got != 2 {
-		t.Errorf("stored source = %d, want 2", got)
-	}
-}
-
 func TestThePanelNameReachesEveryBrandSurface(t *testing.T) {
 	// The name used to live in three catalogue keys and a drawn wordmark. An
 	// operator who renames the panel has to see the new name everywhere, or

@@ -49,23 +49,6 @@
             {{end}}
           </div>
 
-          {{else if eq .Kind "server"}}
-          <div class="mb-4">
-            <label class="form-label" for="{{.Key}}">{{t (print "setting." .Key ".label")}}</label>
-            <select class="form-select{{if .Problem}} is-invalid{{end}}" id="{{.Key}}" name="{{.Key}}"
-                    aria-describedby="{{.Key}}-help{{if .Problem}} {{.Key}}-error{{end}}"
-                    {{if .Problem}}aria-invalid="true"{{end}} data-field="{{.Key}}">
-              {{$field := .}}
-              {{range .Choices}}
-              <option value="{{.Value}}" {{if eq .Value $field.Value}}selected{{end}}>{{.Label}}</option>
-              {{end}}
-            </select>
-            <div class="form-text" id="{{.Key}}-help">{{t (print "setting." .Key ".help")}}</div>
-            {{if .Problem}}
-            <div class="invalid-feedback d-block" id="{{.Key}}-error">{{.Problem}}</div>
-            {{end}}
-          </div>
-
           {{else if eq .Kind "text"}}
           <div class="mb-4">
             <label class="form-label" for="{{.Key}}">{{t (print "setting." .Key ".label")}}</label>

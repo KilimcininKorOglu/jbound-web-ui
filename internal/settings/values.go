@@ -148,16 +148,13 @@ const (
 	CodeTextEmpty      = "text_empty"
 	CodeTextLength     = "text_length"
 	CodeTextCharacters = "text_characters"
-	CodeServerRef      = "server_ref"
-	CodeUnknownServer  = "unknown_server"
 )
 
 // problemCodes is every code the package raises.
 var problemCodes = []string{
 	CodeNotASetting, CodeDuration, CodeDurationRange, CodeInt, CodeIntRange,
 	CodeBool, CodeEnum, CodeUnknownKind, CodeStaleTooShort, CodeLifetimeTooShort,
-	CodeTextEmpty, CodeTextLength, CodeTextCharacters, CodeServerRef,
-	CodeUnknownServer,
+	CodeTextEmpty, CodeTextLength, CodeTextCharacters,
 }
 
 // Codes returns every problem code.
@@ -209,10 +206,6 @@ func (p *Problem) sentence() string {
 		return fmt.Sprintf("must be at most %v characters, got %v", p.Args...)
 	case CodeTextCharacters:
 		return "cannot hold a control character"
-	case CodeServerRef:
-		return fmt.Sprintf("must name a server, got %q", p.Args...)
-	case CodeUnknownServer:
-		return "must name a server that exists and is enabled"
 	case CodeLifetimeTooShort:
 		return fmt.Sprintf("(%v) must be at least the idle timeout (%v)", p.Args...)
 	default:
@@ -267,16 +260,6 @@ func Validate(definition Definition, value string) error {
 		// alike, where it reads as nothing and hides what follows it.
 		if strings.ContainsFunc(trimmed, unicode.IsControl) {
 			return refuse(CodeTextCharacters)
-		}
-
-	case KindServer:
-		// Empty means no server was chosen, which is a legitimate state.
-		if trimmed == "" {
-			return nil
-		}
-		id, err := strconv.ParseInt(trimmed, 10, 64)
-		if err != nil || id <= 0 {
-			return refuse(CodeServerRef, value)
 		}
 
 	default:

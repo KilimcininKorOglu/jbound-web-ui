@@ -316,6 +316,21 @@ one bad row refuses the whole batch rather than writing the good half. The rows
 that pass reach each server as a single write followed by a single reload, and
 leave one audit row per server saying how many records went.
 
+A name carries one address. Adding a record to a name the target already
+answers for stops the write and asks: replace the value that is there, or
+leave the record alone. The answer covers the whole target at once, so the
+servers holding the old value have it replaced and the ones that never knew
+the name have it written. A record every server already holds is said so
+rather than sent out to be refused; one that only some of them hold is written
+to the others, and the servers that were already right are reported as
+skipped.
+
+The rule covers A, AAAA and CNAME. It does not reach MX or TXT, because a name
+carries several mail exchangers, which is what a preference is for, and several
+pieces of text. It also does not reach a file edited by hand on the target: a
+name given two addresses there goes on being listed, edited and deleted, and a
+synchronisation copies it as it stands.
+
 A record is written to every server of the target at once, so the record list
 folds the servers together: one line per record, with a badge saying how many of
 the targeted servers hold it. A badge below the target count links to **Record
@@ -323,10 +338,14 @@ Diff**, where the servers are compared side by side and a missing or different
 record can be repaired.
 
 The comparison closes in three ways. Each row carries a button that writes that
-one record to the servers that lack it. Above the table, **Repair every
+one record to the servers that lack it, replacing the value on a server that
+answers for the name with something else. Above the table, **Repair every
 difference** writes what each server lacks in a single pass: every server ends
 up holding every record any of them held, and nothing is deleted, so a server
-whose extra record was the one worth keeping keeps it. Beside it,
+whose extra record was the one worth keeping keeps it. A name two servers
+answer differently for is left alone there, because that button has no source
+to say which of the two values is the right one, and the report says how many
+records it left. Beside it,
 **Synchronise** copies the source server over the others, which does delete: the
 target ends up holding exactly what the source holds. The first needs no source
 and is open to anyone who may write a record. The second copies from the source

@@ -299,8 +299,15 @@ reads the file, writes the current content back over itself, runs the
 configuration check and asks for the service status. A missing sudoers rule
 therefore shows up while you are adding the server, not during a change.
 
-A server can be added to a group. A group is what a record action targets when
-it should reach more than one machine.
+Every server belongs to one group, or to none. The group is chosen on the
+server form, and it is what a record action targets when it should reach more
+than one machine. A server in no group can still be written to on its own, and
+it appears in no group listing and in no comparison.
+
+A group names one of its own servers as its source, which is the reference a
+comparison marks and a synchronisation copies from. The source has to be an
+enabled member of that group, and it is cleared when that server leaves the
+group, is disabled or is deleted.
 
 ## Records
 
@@ -322,13 +329,16 @@ up holding every record any of them held, and nothing is deleted, so a server
 whose extra record was the one worth keeping keeps it. Beside it,
 **Synchronise** copies the source server over the others, which does delete: the
 target ends up holding exactly what the source holds. The first needs no source
-and is open to anyone who may write a record. The second names a source in the
-settings and is admin only, because it removes records nobody named.
+and is open to anyone who may write a record. The second copies from the source
+of the group being compared and is admin only, because it removes records
+nobody named.
 
-Both batch buttons need the comparison narrowed to a group or to one server
-first. The page opens on the whole fleet, which no write may target, so neither
-button is offered until the **Compare** control names something a change can
-reach.
+A comparison is between the servers of one group. There is no view of every
+server at once: two groups holding different records is the ordinary state of a
+panel that manages more than one of them, so such a view would report drift
+that is not drift, and no write may target it. A page opened with no target
+lands on the first group by name. **Synchronise** is offered only once that
+group names a source.
 
 ## Audit trail and SIEM
 
@@ -385,11 +395,10 @@ usually the state an incident is about.
 ## Settings
 
 The **Settings** page stores its values in the database and every change takes
-effect on the next read, without a restart. It covers five groups: timings
+effect on the next read, without a restart. It covers four groups: timings
 (session, cache, SSH, DNS and fleet operation timeouts), limits (login attempts,
-fleet concurrency, page size), the SIEM switch and its collector, the fleet
-source server that a synchronisation copies from, and the interface defaults a
-browser gets before anybody picks a language or a theme.
+fleet concurrency, page size), the SIEM switch and its collector, and the
+interface defaults a browser gets before anybody picks a language or a theme.
 
 The language and the theme of one browser are its own choice and live in a
 cookie. Nothing about a reader is stored server side.
@@ -562,8 +571,8 @@ docker compose -f docker-compose.dev.yml --env-file .env.dev ps
 ```
 
 The first start also fills the panel: the six targets, their approved host keys
-and agent fingerprints, and a group named `resolvers` over all of them, written
-by `docker/devseed`. It goes through the same service an operator goes through,
+and agent fingerprints, and a group named `resolvers` that holds all of them and
+names `dns1` as its source, written by `docker/devseed`. It goes through the same service an operator goes through,
 and it leaves a panel that already holds a server alone, so anything you change
 afterwards stays changed.
 

@@ -70,7 +70,7 @@ func Actions() []string {
 		ActionLogin, ActionLogout, ActionLoginFailed, ActionSessionRevoke,
 		ActionDNSAdd, ActionDNSEdit, ActionDNSDelete,
 		ActionDNSRestart, ActionDNSQuery,
-		ActionScheduleCreate, ActionScheduleCancel, ActionScheduleRun,
+		ActionScheduleCreate, ActionScheduleUpdate, ActionScheduleCancel, ActionScheduleRun,
 		ActionDiffRepair, ActionDiffSync, ActionCacheRefresh, ActionFileRestore,
 		ActionConfigInclude,
 		ActionServerCreate, ActionServerUpdate, ActionServerDelete, ActionServerTrust,

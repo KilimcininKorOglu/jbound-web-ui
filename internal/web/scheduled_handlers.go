@@ -23,6 +23,7 @@ type ScheduleStore interface {
 	List(ctx context.Context) ([]schedule.Job, error)
 	Create(ctx context.Context, job schedule.Job) (schedule.Job, error)
 	Get(ctx context.Context, id int64) (schedule.Job, error)
+	Update(ctx context.Context, job schedule.Job) error
 	Delete(ctx context.Context, id int64) error
 }
 
@@ -53,6 +54,11 @@ type scheduleRow struct {
 // scheduleFormData feeds the create form. One form serves the three kinds; the
 // kind decides which fields it draws.
 type scheduleFormData struct {
+	// JobID is zero for a new job and the job's id when the form edits a pending
+	// one. It decides whether the form posts or puts, and whether it reads as a
+	// creation or an edit.
+	JobID int64
+
 	Kind    string
 	Record  dnsfile.Record
 	Old     dnsfile.Record
@@ -106,33 +112,87 @@ func (a *App) handleScheduledForm(w http.ResponseWriter, r *http.Request) {
 	a.RenderPartial(w, r, http.StatusOK, "scheduled-form", data)
 }
 
+// handleScheduledEdit loads a pending job back into its form.
+func (a *App) handleScheduledEdit(w http.ResponseWriter, r *http.Request) {
+	id := parseID(r.PathValue("id"))
+	if id == 0 {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	job, err := a.Schedules.Get(r.Context(), id)
+	if err != nil {
+		a.internalError(w, r, "cannot read the scheduled job", err)
+		return
+	}
+	servers, groups, err := a.serversAndGroups(r.Context())
+	if err != nil {
+		a.internalError(w, r, "cannot load the targets", err)
+		return
+	}
+
+	data, err := scheduleFormFromJob(job, servers, groups)
+	if err != nil {
+		a.internalError(w, r, "cannot read the scheduled job", err)
+		return
+	}
+	a.RenderPartial(w, r, http.StatusOK, "scheduled-form", data)
+}
+
+// scheduleFormFromJob fills the form with the stored change so an operator
+// edits it rather than typing it again.
+func scheduleFormFromJob(job schedule.Job,
+	servers []server.Server, groups []server.Group) (scheduleFormData, error) {
+
+	var op fleet.Operation
+	if err := json.Unmarshal(job.Operation, &op); err != nil {
+		return scheduleFormData{}, err
+	}
+
+	data := scheduleFormData{
+		JobID:   job.ID,
+		Kind:    job.Kind,
+		Types:   dnsfile.Types,
+		Servers: servers,
+		Groups:  groups,
+		RunAt:   job.RunAt.Local().Format(runAtLayout),
+		Query:   fleet.Query{Scope: job.Scope, ServerID: job.ServerID, GroupID: job.GroupID},
+	}
+	switch job.Kind {
+	case schedule.KindAdd:
+		data.Rows = rowsFromOperation(op)
+	case schedule.KindEdit:
+		data.Old = op.Old
+		data.Record = op.Record
+	default:
+		data.Record = op.Record
+	}
+	return data, nil
+}
+
+// rowsFromOperation turns a stored addition back into form rows.
+func rowsFromOperation(op fleet.Operation) []recordRow {
+	records := op.Records
+	if len(records) == 0 {
+		records = []dnsfile.Record{op.Record}
+	}
+	rows := make([]recordRow, 0, len(records))
+	for _, record := range records {
+		rows = append(rows, recordRow{Record: record, Types: dnsfile.Types})
+	}
+	return rows
+}
+
 // handleScheduledCreate stores one change for its chosen time.
 func (a *App) handleScheduledCreate(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		a.scheduledProblem(w, r, schedule.KindAdd, "The form could not be read.", http.StatusBadRequest)
 		return
 	}
-	kind := formKind(r.Form.Get("kind"))
 
-	op, err := operationFromForm(r.Form, kind)
-	if err != nil {
-		a.scheduledProblem(w, r, kind, recordMessage(r.Context(), a.catalog(r), err), http.StatusBadRequest)
-		return
-	}
-	if err := op.Validate(); err != nil {
-		a.scheduledProblem(w, r, kind, recordMessage(r.Context(), a.catalog(r), err), http.StatusUnprocessableEntity)
-		return
-	}
-
-	target, err := targetFromValues(r.Form)
-	if err != nil {
-		a.scheduledProblem(w, r, kind, recordMessage(r.Context(), a.catalog(r), err), http.StatusBadRequest)
-		return
-	}
-
-	runAt, err := parseRunAt(r.Form.Get("run_at"))
-	if err != nil {
-		a.scheduledProblem(w, r, kind, a.runAtMessage(r, err), http.StatusBadRequest)
+	kind, op, target, runAt, problem, status, ok := a.jobFromForm(r)
+	if !ok {
+		a.scheduledProblem(w, r, kind, problem, status)
 		return
 	}
 
@@ -143,6 +203,70 @@ func (a *App) handleScheduledCreate(w http.ResponseWriter, r *http.Request) {
 
 	SetToast(w, ToastSuccess, a.catalog(r).T("toast.scheduled_created"))
 	a.closeScheduledPanel(w)
+}
+
+// handleScheduledUpdate rewrites a pending job from the edit form.
+func (a *App) handleScheduledUpdate(w http.ResponseWriter, r *http.Request) {
+	id := parseID(r.PathValue("id"))
+	if id == 0 {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		a.scheduledProblem(w, r, schedule.KindAdd, "The form could not be read.", http.StatusBadRequest)
+		return
+	}
+
+	existing, err := a.Schedules.Get(r.Context(), id)
+	if err != nil {
+		a.internalError(w, r, "cannot read the scheduled job", err)
+		return
+	}
+
+	kind, op, target, runAt, problem, status, ok := a.jobFromForm(r)
+	if !ok {
+		a.scheduledProblem(w, r, kind, problem, status)
+		return
+	}
+	if existing.Status != schedule.StatusPending {
+		a.scheduledProblem(w, r, kind, a.catalog(r).T("scheduled.not_pending"), http.StatusConflict)
+		return
+	}
+
+	if err := a.updateJob(r, id, kind, op, target, runAt); err != nil {
+		a.internalError(w, r, "cannot update the scheduled job", err)
+		return
+	}
+
+	SetToast(w, ToastSuccess, a.catalog(r).T("toast.scheduled_updated"))
+	a.closeScheduledPanel(w)
+}
+
+// jobFromForm reads the change, the target and the run time a create or an
+// update posts, or the reason and status to refuse the form with.
+func (a *App) jobFromForm(r *http.Request) (
+	kind string, op fleet.Operation, target fleet.Target,
+	runAt time.Time, problem string, status int, ok bool) {
+
+	catalog := a.catalog(r)
+	kind = formKind(r.Form.Get("kind"))
+
+	op, err := operationFromForm(r.Form, kind)
+	if err != nil {
+		return kind, op, target, runAt, recordMessage(r.Context(), catalog, err), http.StatusBadRequest, false
+	}
+	if err := op.Validate(); err != nil {
+		return kind, op, target, runAt, recordMessage(r.Context(), catalog, err), http.StatusUnprocessableEntity, false
+	}
+	target, err = targetFromValues(r.Form)
+	if err != nil {
+		return kind, op, target, runAt, recordMessage(r.Context(), catalog, err), http.StatusBadRequest, false
+	}
+	runAt, err = parseRunAt(r.Form.Get("run_at"))
+	if err != nil {
+		return kind, op, target, runAt, a.runAtMessage(r, err), http.StatusBadRequest, false
+	}
+	return kind, op, target, runAt, "", 0, true
 }
 
 // closeScheduledPanel empties the form panel and reloads the table on the
@@ -180,6 +304,38 @@ func (a *App) storeJob(r *http.Request, kind string,
 	a.auditSchedule(r, audit.ActionScheduleCreate, fmt.Sprintf(
 		"Scheduled %s (%s) for %s", created.Kind, scheduleSummary(created),
 		created.RunAt.Format(time.RFC3339)))
+	return nil
+}
+
+// updateJob rewrites the job and records that it was rescheduled.
+func (a *App) updateJob(r *http.Request, id int64, kind string,
+	op fleet.Operation, target fleet.Target, runAt time.Time) error {
+
+	raw, err := json.Marshal(op)
+	if err != nil {
+		return err
+	}
+
+	session, _ := SessionFrom(r.Context())
+	err = a.Schedules.Update(r.Context(), schedule.Job{
+		ID:                id,
+		Kind:              kind,
+		Operation:         raw,
+		Scope:             target.Scope,
+		ServerID:          target.ServerID,
+		GroupID:           target.GroupID,
+		OnConflict:        onConflictFrom(r.Form, op),
+		RunAt:             runAt,
+		RequestedUID:      session.UID,
+		RequestedUsername: session.Username,
+	})
+	if err != nil {
+		return err
+	}
+
+	a.auditSchedule(r, audit.ActionScheduleUpdate, fmt.Sprintf(
+		"Rescheduled job #%d (%s: %s) for %s", id, kind, operationSummary(op),
+		runAt.UTC().Format(time.RFC3339)))
 	return nil
 }
 
@@ -266,13 +422,18 @@ func scheduleRowFrom(job schedule.Job, serverNames, groupNames map[int64]string)
 	}
 }
 
-// scheduleSummary renders the change of a job to one line.
+// scheduleSummary renders the change of a stored job to one line.
 func scheduleSummary(job schedule.Job) string {
 	var op fleet.Operation
 	if err := json.Unmarshal(job.Operation, &op); err != nil {
 		return ""
 	}
+	return operationSummary(op)
+}
 
+// operationSummary renders one operation to one line for the table and the
+// audit trail.
+func operationSummary(op fleet.Operation) string {
 	record := op.Record
 	if op.Kind == fleet.OpAddMany && len(op.Records) > 0 {
 		record = op.Records[0]
@@ -393,6 +554,10 @@ func (a *App) scheduledProblem(w http.ResponseWriter, r *http.Request,
 	}
 
 	data := scheduleFormData{
+		// On the update route the path carries the id, so a refused edit posts
+		// back to the same job rather than creating a second one; on the create
+		// route the path has none and this is zero.
+		JobID:   parseID(r.PathValue("id")),
 		Kind:    kind,
 		Record:  recordFromValues(r.Form),
 		Query:   listingFrom(r.Form),

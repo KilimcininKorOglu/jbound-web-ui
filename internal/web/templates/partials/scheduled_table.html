@@ -34,6 +34,13 @@
             {{if .Result}}<div class="text-muted small">{{.Result}}</div>{{end}}
           </td>
           <td class="row-actions">
+            {{if .Pending}}
+            <button class="btn btn-outline-edit btn-sm" type="button"
+                    hx-get="/scheduled/{{.ID}}/edit"
+                    hx-target="#scheduled-panel" hx-swap="innerHTML">
+              {{t "scheduled.edit"}}
+            </button>
+            {{end}}
             <button class="btn btn-outline-delete btn-sm" type="button"
                     hx-delete="/scheduled/{{.ID}}"
                     hx-target="#scheduled-panel" hx-swap="innerHTML"

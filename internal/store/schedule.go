@@ -91,6 +91,29 @@ func (s *Schedule) Due(ctx context.Context, now time.Time) ([]schedule.Job, erro
 	return scanJobs(rows)
 }
 
+// Update rewrites a pending job.
+//
+// It changes a job that has not run only, guarded by the status in the WHERE
+// clause, so a job that ran between the form opening and the save is left as it
+// stands rather than reopened. The requesting account is rewritten too, because
+// the run is audited against whoever last shaped the job.
+func (s *Schedule) Update(ctx context.Context, job schedule.Job) error {
+	result, err := s.db.ExecContext(ctx, `
+UPDATE scheduled_jobs
+   SET kind = ?, operation = ?, scope = ?, server_id = ?, group_id = ?,
+       on_conflict = ?, run_at = ?, requested_uid = ?, requested_username = ?
+ WHERE id = ? AND status = ?`,
+		job.Kind, string(job.Operation), job.Scope,
+		nullableID(job.ServerID), nullableID(job.GroupID),
+		job.OnConflict, formatTime(job.RunAt),
+		job.RequestedUID, job.RequestedUsername,
+		job.ID, schedule.StatusPending)
+	if err != nil {
+		return fmt.Errorf("cannot update the scheduled job: %w", err)
+	}
+	return requireOneRow(result, "scheduled job", fmt.Sprint(job.ID))
+}
+
 // Delete removes a job. It is how an operator cancels one that has not run yet.
 func (s *Schedule) Delete(ctx context.Context, id int64) error {
 	result, err := s.db.ExecContext(ctx, "DELETE FROM scheduled_jobs WHERE id = ?", id)

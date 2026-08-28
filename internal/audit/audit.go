@@ -49,6 +49,7 @@ const (
 	// change it makes is also written under its own dns_* action, so the run
 	// row is what ties that change to the job an operator scheduled.
 	ActionScheduleCreate = "schedule_create"
+	ActionScheduleUpdate = "schedule_update"
 	ActionScheduleCancel = "schedule_cancel"
 	ActionScheduleRun    = "schedule_run"
 

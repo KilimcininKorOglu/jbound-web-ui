@@ -5,10 +5,13 @@
 {{$query := .Query}}
 <div class="card">
   <div class="card-header">
-    <h2 class="h6 mb-0">{{t (printf "scheduled.title_%s" .Kind)}}</h2>
+    <h2 class="h6 mb-0">
+      {{if .JobID}}{{t "scheduled.edit_title"}}{{else}}{{t (printf "scheduled.title_%s" .Kind)}}{{end}}
+    </h2>
   </div>
   <div class="card-body">
-    <form hx-post="/scheduled" hx-target="#scheduled-panel" hx-swap="innerHTML">
+    <form hx-{{if .JobID}}put="/scheduled/{{.JobID}}"{{else}}post="/scheduled"{{end}}
+          hx-target="#scheduled-panel" hx-swap="innerHTML">
 
       {{if .Problem}}{{template "alert" (alert "error" .Problem)}}{{end}}
 
@@ -147,7 +150,9 @@
       </div>
 
       <div class="dns-toolbar mt-4">
-        <button class="btn btn-create" type="submit">{{t "scheduled.submit"}}</button>
+        <button class="btn btn-create" type="submit">
+          {{if .JobID}}{{t "scheduled.save"}}{{else}}{{t "scheduled.submit"}}{{end}}
+        </button>
         <button class="btn btn-cancel" type="button" data-action="close-scheduled-panel">
           {{t "common.cancel"}}
         </button>

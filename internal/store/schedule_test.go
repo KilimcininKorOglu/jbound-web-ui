@@ -134,6 +134,48 @@ func TestFinishRecordsTheOutcomeOnce(t *testing.T) {
 	}
 }
 
+func TestUpdatingAScheduledJobChangesOnlyPendingOnes(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	jobs := store.NewSchedule(f.db)
+	record := f.mustCreate(t, "dns1")
+
+	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+	created, err := jobs.Create(ctx, sampleJob(record.ID, now.Add(time.Hour)))
+	if err != nil {
+		t.Fatalf("cannot create the job: %v", err)
+	}
+
+	created.RunAt = now.Add(2 * time.Hour)
+	created.Operation = []byte(`{"Kind":"delete","Record":{"FQDN":"gone.example.local","Type":"A"}}`)
+	created.Kind = schedule.KindDelete
+	created.RequestedUID = 1002
+	created.RequestedUsername = "other-admin"
+	if err := jobs.Update(ctx, created); err != nil {
+		t.Fatalf("cannot update the job: %v", err)
+	}
+
+	got, err := jobs.Get(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("cannot read the job: %v", err)
+	}
+	if got.Kind != schedule.KindDelete || !got.RunAt.Equal(now.Add(2*time.Hour)) {
+		t.Errorf("the update did not land: %+v", got)
+	}
+	if got.RequestedUsername != "other-admin" {
+		t.Errorf("requester = %q, want the account that edited it", got.RequestedUsername)
+	}
+
+	// A job that has run cannot be edited, because the guard matches only a
+	// pending row.
+	if err := jobs.Finish(ctx, created.ID, schedule.StatusDone, "1 server updated", now); err != nil {
+		t.Fatalf("cannot finish the job: %v", err)
+	}
+	if err := jobs.Update(ctx, created); err == nil {
+		t.Error("a finished job was edited")
+	}
+}
+
 func TestCancellingAScheduledJobRemovesIt(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()

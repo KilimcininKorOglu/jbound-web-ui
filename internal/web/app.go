@@ -158,11 +158,13 @@ func (a *App) Router() http.Handler {
 		// A scheduled change only writes a row here now; the scheduler applies
 		// it later. So none of these carry the fleet deadline, and creating one
 		// is open to the same accounts that may write a record directly.
-		"GET /scheduled":         a.handleScheduledPage,
-		"GET /scheduled/table":   a.handleScheduledTable,
-		"GET /scheduled/new":     a.handleScheduledForm,
-		"POST /scheduled":        a.handleScheduledCreate,
-		"DELETE /scheduled/{id}": a.handleScheduledCancel,
+		"GET /scheduled":           a.handleScheduledPage,
+		"GET /scheduled/table":     a.handleScheduledTable,
+		"GET /scheduled/new":       a.handleScheduledForm,
+		"POST /scheduled":          a.handleScheduledCreate,
+		"GET /scheduled/{id}/edit": a.handleScheduledEdit,
+		"PUT /scheduled/{id}":      a.handleScheduledUpdate,
+		"DELETE /scheduled/{id}":   a.handleScheduledCancel,
 
 		"GET /diff":             a.handleDiffPage,
 		"GET /diff/table":       a.handleDiffTable,

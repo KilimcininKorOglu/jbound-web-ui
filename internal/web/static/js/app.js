@@ -293,6 +293,12 @@
       return;
     }
 
+    if (trigger.dataset.action === 'close-scheduled-panel') {
+      event.preventDefault();
+      clearPanel('scheduled-panel');
+      return;
+    }
+
     if (trigger.dataset.action === 'add-record-row') {
       event.preventDefault();
       addRecordRow(trigger.closest('form'));

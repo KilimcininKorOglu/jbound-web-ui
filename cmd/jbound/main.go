@@ -268,19 +268,20 @@ func run() error {
 	scheduler.Start(ctx, options.DurationOf(settings.SchedulerCheckInterval))
 
 	app, err := web.NewApp(web.Deps{
-		Config:   cfg,
-		Settings: options,
-		Auth:     authService,
-		Sessions: sessions,
-		Limiter:  limiter,
-		Audit:    auditLog,
-		Servers:  serverService,
-		Records:  recordService,
-		Receiver: sender,
-		Backlog:  queue,
-		Health:   db.Probe,
-		Hostname: panelHost,
-		Started:  time.Now(),
+		Config:    cfg,
+		Settings:  options,
+		Auth:      authService,
+		Sessions:  sessions,
+		Limiter:   limiter,
+		Audit:     auditLog,
+		Servers:   serverService,
+		Records:   recordService,
+		Schedules: schedules,
+		Receiver:  sender,
+		Backlog:   queue,
+		Health:    db.Probe,
+		Hostname:  panelHost,
+		Started:   time.Now(),
 	})
 	if err != nil {
 		return err

@@ -38,6 +38,10 @@ type Deps struct {
 	Servers  *server.Service
 	Records  *fleet.Service
 
+	// Schedules holds the DNS changes an operator left for a later time. The
+	// scheduler runs them; the pages here list, create and cancel them.
+	Schedules ScheduleStore
+
 	// Receiver is the collector the panel sends its trail to, and Backlog is
 	// how far behind that collector is. Both are nil on a panel built without
 	// them, which is what the handler tests do, and the page then reports a
@@ -150,6 +154,15 @@ func (a *App) Router() http.Handler {
 		"POST /dns/apply":      a.withFleetDeadline(a.handleRecordApply),
 		"GET /dns/query":       a.handleQueryForm,
 		"POST /dns/query":      a.withFleetDeadline(a.handleQuery),
+
+		// A scheduled change only writes a row here now; the scheduler applies
+		// it later. So none of these carry the fleet deadline, and creating one
+		// is open to the same accounts that may write a record directly.
+		"GET /scheduled":         a.handleScheduledPage,
+		"GET /scheduled/table":   a.handleScheduledTable,
+		"GET /scheduled/new":     a.handleScheduledForm,
+		"POST /scheduled":        a.handleScheduledCreate,
+		"DELETE /scheduled/{id}": a.handleScheduledCancel,
 
 		"GET /diff":             a.handleDiffPage,
 		"GET /diff/table":       a.handleDiffTable,

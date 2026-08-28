@@ -1,0 +1,31 @@
+{{define "content"}}
+<div class="page-head">
+  <h1>{{t "nav.scheduled"}}</h1>
+  {{/* The button colour follows the change it schedules: green adds, amber
+       edits, red deletes. Each opens its own form in the slot below. */}}
+  <div class="dns-toolbar">
+    <button class="btn btn-create btn-sm" type="button"
+            hx-get="/scheduled/new?kind=add" hx-target="#scheduled-panel" hx-swap="innerHTML">
+      <i class="bx bx-plus" aria-hidden="true"></i> {{t "scheduled.new_add"}}
+    </button>
+    <button class="btn btn-edit btn-sm" type="button"
+            hx-get="/scheduled/new?kind=edit" hx-target="#scheduled-panel" hx-swap="innerHTML">
+      <i class="bx bx-edit" aria-hidden="true"></i> {{t "scheduled.new_edit"}}
+    </button>
+    <button class="btn btn-delete btn-sm" type="button"
+            hx-get="/scheduled/new?kind=delete" hx-target="#scheduled-panel" hx-swap="innerHTML">
+      <i class="bx bx-trash" aria-hidden="true"></i> {{t "scheduled.new_delete"}}
+    </button>
+  </div>
+</div>
+
+{{/* The form lands here and draws its own card, so the slot is empty and takes
+     no room until one does. */}}
+<div id="scheduled-panel" class="panel-slot" aria-live="polite"></div>
+
+{{/* Creating or cancelling a job swaps the panel, so the table reloads itself
+     on the event those handlers raise. */}}
+<div id="scheduled-table"
+     hx-get="/scheduled/table" hx-trigger="scheduled-changed from:body"
+     hx-swap="innerHTML">{{template "scheduled-table" .Data}}</div>
+{{end}}

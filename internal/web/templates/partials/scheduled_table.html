@@ -1,0 +1,55 @@
+{{/* One row per scheduled change. A pending job can still be cancelled; a job
+     that has run stays as a record of what happened, and its row carries the
+     outcome the run wrote. */}}
+{{define "scheduled-table"}}
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-hover">
+      <caption class="visually-hidden">{{t "scheduled.caption"}}</caption>
+      <thead>
+        <tr>
+          <th scope="col">{{t "scheduled.col_kind"}}</th>
+          <th scope="col">{{t "scheduled.col_record"}}</th>
+          <th scope="col">{{t "scheduled.col_target"}}</th>
+          <th scope="col">{{t "scheduled.col_run_at"}}</th>
+          <th scope="col">{{t "scheduled.col_status"}}</th>
+          <th scope="col" class="text-end">{{t "common.actions"}}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Jobs}}
+        <tr>
+          <td>{{t (printf "scheduled.kind_%s" .Kind)}}</td>
+          <td><code>{{.Summary}}</code></td>
+          <td>{{.Target}}</td>
+          <td class="text-muted text-nowrap">{{localTime .RunAt}}</td>
+          <td>
+            {{if eq .Status "pending"}}
+            <span class="badge bg-label-warning">{{t "scheduled.status_pending"}}</span>
+            {{else if eq .Status "done"}}
+            <span class="badge bg-label-success">{{t "scheduled.status_done"}}</span>
+            {{else}}
+            <span class="badge bg-label-danger">{{t "scheduled.status_failed"}}</span>
+            {{end}}
+            {{if .Result}}<div class="text-muted small">{{.Result}}</div>{{end}}
+          </td>
+          <td class="row-actions">
+            <button class="btn btn-outline-delete btn-sm" type="button"
+                    hx-delete="/scheduled/{{.ID}}"
+                    hx-target="#scheduled-panel" hx-swap="innerHTML"
+                    hx-confirm="{{if .Pending}}{{t "scheduled.cancel_question"}}{{else}}{{t "scheduled.remove_question"}}{{end}}"
+                    data-confirm-title="{{if .Pending}}{{t "scheduled.cancel_title"}}{{else}}{{t "scheduled.remove_title"}}{{end}}">
+              {{if .Pending}}{{t "scheduled.cancel"}}{{else}}{{t "scheduled.remove"}}{{end}}
+            </button>
+          </td>
+        </tr>
+        {{else}}
+        <tr>
+          <td colspan="6" class="text-center text-muted py-4">{{t "scheduled.none"}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+{{end}}

@@ -1,0 +1,158 @@
+{{/* One form serves the three kinds of scheduled change. The kind, fixed by
+     the button that opened the form, decides which fields it draws. The target
+     and the run time are common to all three. */}}
+{{define "scheduled-form"}}
+{{$query := .Query}}
+<div class="card">
+  <div class="card-header">
+    <h2 class="h6 mb-0">{{t (printf "scheduled.title_%s" .Kind)}}</h2>
+  </div>
+  <div class="card-body">
+    <form hx-post="/scheduled" hx-target="#scheduled-panel" hx-swap="innerHTML">
+
+      {{if .Problem}}{{template "alert" (alert "error" .Problem)}}{{end}}
+
+      <input type="hidden" name="kind" value="{{.Kind}}">
+
+      {{if eq .Kind "add"}}
+      <div class="row g-2 d-none d-md-flex record-row-head">
+        <div class="col-md-4">{{t "common.name"}}</div>
+        <div class="col-md-2">{{t "common.type"}}</div>
+        <div class="col-md-2">{{t "record.preference"}}</div>
+        <div class="col-md-3">{{t "common.value"}}</div>
+        <div class="col-md-1"></div>
+      </div>
+
+      {{range .Rows}}{{template "record-row" .}}{{end}}
+
+      <div class="mt-2">
+        <button class="btn btn-sm btn-outline-create" type="button"
+                data-action="add-record-row">{{t "record.add_row"}}</button>
+        <span class="form-text ms-2">{{t "record.add_row_help"}}</span>
+      </div>
+
+      <div class="form-check mt-3">
+        <input class="form-check-input" type="checkbox" id="on_conflict"
+               name="on_conflict" value="1">
+        <label class="form-check-label" for="on_conflict">{{t "scheduled.on_conflict"}}</label>
+        <div class="form-text">{{t "scheduled.on_conflict_help"}}</div>
+      </div>
+
+      {{else if eq .Kind "edit"}}
+      {{$old := .Old}}
+      <div class="row g-3">
+        <div class="col-md-5">
+          <label class="form-label" for="old_fqdn">{{t "common.name"}}</label>
+          <input class="form-control" id="old_fqdn" name="old_fqdn" value="{{.Old.FQDN}}"
+                 placeholder="www.example.net" autocapitalize="none"
+                 spellcheck="false" required>
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label" for="old_type">{{t "common.type"}}</label>
+          <select class="form-select" id="old_type" name="old_type" data-action="record-type">
+            {{range .Types}}
+            <option value="{{.}}" {{if eq $old.Type .}}selected{{end}}>{{.}}</option>
+            {{end}}
+          </select>
+        </div>
+
+        <div class="col-md-4" data-field="priority" {{if ne .Old.Type "MX"}}hidden{{end}}>
+          <label class="form-label" for="old_priority">{{t "record.preference"}}</label>
+          <input class="form-control" id="old_priority" name="old_priority" type="number"
+                 min="0" max="65535" value="{{.Old.Priority}}">
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label" for="old_value">{{t "scheduled.current_value"}}</label>
+          <input class="form-control" id="old_value" name="old_value" value="{{.Old.Value}}"
+                 placeholder="192.0.2.10" autocapitalize="none" spellcheck="false" required>
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label" for="value">{{t "scheduled.new_value"}}</label>
+          <input class="form-control" id="value" name="value" value="{{.Record.Value}}"
+                 placeholder="192.0.2.20" autocapitalize="none" spellcheck="false" required>
+        </div>
+      </div>
+
+      {{else}}
+      {{$record := .Record}}
+      <div class="row g-3">
+        <div class="col-md-5">
+          <label class="form-label" for="fqdn">{{t "common.name"}}</label>
+          <input class="form-control" id="fqdn" name="fqdn" value="{{.Record.FQDN}}"
+                 placeholder="www.example.net" autocapitalize="none"
+                 spellcheck="false" required>
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label" for="record_type">{{t "common.type"}}</label>
+          <select class="form-select" id="record_type" name="type" data-action="record-type">
+            {{range .Types}}
+            <option value="{{.}}" {{if eq $record.Type .}}selected{{end}}>{{.}}</option>
+            {{end}}
+          </select>
+        </div>
+
+        <div class="col-md-4" data-field="priority" {{if ne .Record.Type "MX"}}hidden{{end}}>
+          <label class="form-label" for="priority">{{t "record.preference"}}</label>
+          <input class="form-control" id="priority" name="priority" type="number"
+                 min="0" max="65535" value="{{.Record.Priority}}">
+        </div>
+
+        <div class="col-12" data-field="value" {{if policy .Record.Type}}hidden{{end}}>
+          <label class="form-label" for="value">{{t "common.value"}}</label>
+          <input class="form-control" id="value" name="value" value="{{.Record.Value}}"
+                 placeholder="192.0.2.10" autocapitalize="none" spellcheck="false"
+                 {{if not (policy .Record.Type)}}required{{end}}>
+        </div>
+      </div>
+      {{end}}
+
+      <div class="row g-3 mt-1">
+        <div class="col-md-6">
+          <label class="form-label" for="form_target">{{t "record.apply_to"}}</label>
+          <select class="form-select" id="form_target" name="target">
+            {{if .Groups}}
+            <optgroup label="{{t "common.groups"}}">
+              {{range .Groups}}
+              <option value="group:{{.ID}}"
+                      {{if and (eq $query.Scope "group") (eq $query.GroupID .ID)}}selected{{end}}>
+                {{.Name}}
+              </option>
+              {{end}}
+            </optgroup>
+            {{end}}
+            {{if .Servers}}
+            <optgroup label="{{t "common.servers"}}">
+              {{range .Servers}}
+              <option value="server:{{.ID}}"
+                      {{if and (eq $query.Scope "server") (eq $query.ServerID .ID)}}selected{{end}}>
+                {{.Name}}
+              </option>
+              {{end}}
+            </optgroup>
+            {{end}}
+          </select>
+          <div class="form-text">{{t "record.apply_to_help"}}</div>
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label" for="run_at">{{t "scheduled.run_at"}}</label>
+          <input class="form-control" id="run_at" name="run_at" type="datetime-local"
+                 value="{{.RunAt}}" required>
+          <div class="form-text">{{t "scheduled.run_at_help"}}</div>
+        </div>
+      </div>
+
+      <div class="dns-toolbar mt-4">
+        <button class="btn btn-create" type="submit">{{t "scheduled.submit"}}</button>
+        <button class="btn btn-cancel" type="button" data-action="close-scheduled-panel">
+          {{t "common.cancel"}}
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{{end}}

@@ -31,6 +31,7 @@ var menu = []MenuSection{
 		Title: "nav.section.dns",
 		Items: []MenuItem{
 			{Label: "nav.dns_records", Path: "/dns", Icon: "bx-server"},
+			{Label: "nav.scheduled", Path: "/scheduled", Icon: "bx-time-five"},
 			{Label: "nav.record_diff", Path: "/diff", Icon: "bx-git-compare"},
 		},
 	},

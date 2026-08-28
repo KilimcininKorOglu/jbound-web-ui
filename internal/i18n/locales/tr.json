@@ -379,6 +379,8 @@
   "setting.panel_name.label": "Panel adı",
   "setting.records_per_page.help": "Kayıt tablosunun başlangıçtaki sayfa boyutu.",
   "setting.records_per_page.label": "Sayfa başına kayıt",
+  "setting.scheduler_check_interval.help": "Panelin, zamanı gelmiş bir zamanlanmış DNS işini hangi sıklıkla kontrol ettiği.",
+  "setting.scheduler_check_interval.label": "Zamanlanmış iş kontrol aralığı",
   "setting.session_idle_timeout.help": "Giriş yapmış bir tarayıcı, oturumu kapatılmadan önce ne kadar kullanılmadan bekleyebilir.",
   "setting.session_idle_timeout.label": "Oturum boşta kalma süresi",
   "setting.session_lifetime.help": "Ne kadar etkin olursa olsun bir oturumun yaşayabileceği en uzun süre.",

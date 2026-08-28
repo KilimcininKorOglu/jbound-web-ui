@@ -379,6 +379,8 @@
   "setting.panel_name.label": "Panel name",
   "setting.records_per_page.help": "The page size the record table starts with.",
   "setting.records_per_page.label": "Records per page",
+  "setting.scheduler_check_interval.help": "How often the panel looks for a scheduled DNS job whose time has come.",
+  "setting.scheduler_check_interval.label": "Scheduler check interval",
   "setting.session_idle_timeout.help": "How long a signed in browser may sit unused before it is signed out.",
   "setting.session_idle_timeout.label": "Session idle timeout",
   "setting.session_lifetime.help": "The longest a session may live, however active it is.",

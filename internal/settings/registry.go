@@ -43,10 +43,15 @@ const (
 	SessionLifetime      = "session_lifetime"
 	CacheRefreshInterval = "cache_refresh_interval"
 	CacheStaleAfter      = "cache_stale_after"
-	SSHConnectTimeout    = "ssh_connect_timeout"
-	SSHCommandTimeout    = "ssh_command_timeout"
-	SSHIdleTimeout       = "ssh_idle_timeout"
-	DNSQueryTimeout      = "dns_query_timeout"
+
+	// SchedulerCheckInterval is how often the panel looks for a scheduled job
+	// whose time has come. A job runs at most one interval late, so it bounds
+	// how far a scheduled change can slip past the time it was set for.
+	SchedulerCheckInterval = "scheduler_check_interval"
+	SSHConnectTimeout      = "ssh_connect_timeout"
+	SSHCommandTimeout      = "ssh_command_timeout"
+	SSHIdleTimeout         = "ssh_idle_timeout"
+	DNSQueryTimeout        = "dns_query_timeout"
 
 	// FleetOperationTimeout bounds one whole fan-out request. Its maximum has
 	// to stay well under the server's WriteTimeout in cmd/jbound, because
@@ -125,6 +130,10 @@ var registry = []Definition{
 	{
 		Key: CacheStaleAfter, Group: GroupTiming, Kind: KindDuration,
 		Default: "15m", Min: time.Minute, Max: 7 * 24 * time.Hour,
+	},
+	{
+		Key: SchedulerCheckInterval, Group: GroupTiming, Kind: KindDuration,
+		Default: "1m", Min: 15 * time.Second, Max: time.Hour,
 	},
 	{
 		Key: SSHConnectTimeout, Group: GroupTiming, Kind: KindDuration,

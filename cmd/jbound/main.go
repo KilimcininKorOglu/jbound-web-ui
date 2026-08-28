@@ -260,6 +260,13 @@ func run() error {
 		queries, auditLog, options.DurationOf(settings.CacheStaleAfter),
 		options.IntOf(settings.RecordsPerPage))
 
+	// The scheduler runs the DNS changes an operator left for a later time. It
+	// applies each due job through the same record service a live request uses,
+	// so a scheduled write and an immediate one take the same path.
+	schedules := store.NewSchedule(db.DB)
+	scheduler := fleet.NewScheduler(schedules, recordService, auditLog)
+	scheduler.Start(ctx, options.DurationOf(settings.SchedulerCheckInterval))
+
 	app, err := web.NewApp(web.Deps{
 		Config:   cfg,
 		Settings: options,

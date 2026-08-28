@@ -44,6 +44,14 @@ const (
 	ActionDNSRestart = "dns_restart"
 	ActionDNSQuery   = "dns_query"
 
+	// The schedule actions cover a DNS change left for a later time.
+	// ActionScheduleRun is written by the timer that applies the job; the
+	// change it makes is also written under its own dns_* action, so the run
+	// row is what ties that change to the job an operator scheduled.
+	ActionScheduleCreate = "schedule_create"
+	ActionScheduleCancel = "schedule_cancel"
+	ActionScheduleRun    = "schedule_run"
+
 	ActionDiffRepair   = "diff_repair"
 	ActionDiffSync     = "diff_sync"
 	ActionCacheRefresh = "cache_refresh"

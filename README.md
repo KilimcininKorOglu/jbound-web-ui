@@ -16,6 +16,8 @@ an agent that runs on it, and the choice is made per server.
   or on a whole group, one record at a time or several in one pass.
 - Blocks a name, so every resolver of the target answers NXDOMAIN or REFUSED for
   it and for everything under it.
+- Leaves an addition, an edit or a deletion for a chosen time, and applies it
+  once when that time comes.
 - Compares the servers of a group and repairs a record that is missing or
   different on some of them, one row at a time or the whole comparison at once,
   or makes them all match one chosen server.
@@ -374,6 +376,28 @@ that is not drift, and no write may target it. A page opened with no target
 lands on the first group by name. **Synchronise** is offered only once that
 group names a source.
 
+## Scheduled changes
+
+Every change the record pages make can be left for a later time instead of
+applied at once. The **Scheduled** page schedules an addition, an edit or a
+deletion. It carries the same fields as the record form (name, type, value, MX
+preference, target server or group, and several rows for an addition), plus the
+date and time to run it. The change is applied once, at that time, to the target
+you chose.
+
+The panel checks for a due change every minute, so a change runs within a minute
+of its time. A change whose time passed while the panel was down runs the next
+time the panel starts rather than being skipped. A scheduled addition can be
+told to overwrite a name that already answers on a server rather than report the
+clash, because no operator is there to answer it when the change runs.
+
+A scheduled change waits with the status Pending, and can be edited or cancelled
+until it runs. Once it runs it is kept with its outcome, Done or Failed, and a
+summary of how many servers it reached. The run is written to the audit trail
+against the account that scheduled it, alongside the ordinary record rows the
+change itself leaves. Scheduling a change is open to anyone who may write a
+record directly.
+
 ## The interface
 
 A button is named after what pressing it does, and the colour says the same
@@ -459,7 +483,7 @@ usually the state an incident is about.
 
 The **Settings** page stores its values in the database and every change takes
 effect on the next read, without a restart. It covers four groups: timings
-(session, cache, SSH, DNS and fleet operation timeouts), limits (login attempts,
+(session, cache, SSH, DNS, scheduler and fleet operation timeouts), limits (login attempts,
 fleet concurrency, page size), the SIEM switch and its collector, and the
 interface defaults a browser gets before anybody picks a language or a theme.
 
@@ -727,6 +751,7 @@ internal/transport   the connection pool, over SSH and through an agent
 internal/agentapi    the protocol both ends of the agent speak
 internal/dnsfile     the records format
 internal/fleet       actions that touch more than one server
+internal/schedule    a DNS change left for a later time
 internal/dnsquery    the query page, which runs dig on the panel host
 internal/audit       the audit trail
 internal/siem        the CEF rendering, the sender and the delivery queue

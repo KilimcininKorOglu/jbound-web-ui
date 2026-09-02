@@ -36,7 +36,12 @@ func seedDataDir(t *testing.T) string {
 			t.Fatalf("cannot write a key: %v", err)
 		}
 	}
-	// Something that is not a key, which the backup has no business copying.
+	// An agent server keeps its bearer token here instead of a key, and the
+	// backup has to carry it too.
+	if err := os.WriteFile(filepath.Join(keyDir, "3.token"), []byte("AGENT TOKEN 3"), 0o600); err != nil {
+		t.Fatalf("cannot write a token: %v", err)
+	}
+	// Something that is not a secret, which the backup has no business copying.
 	if err := os.WriteFile(filepath.Join(keyDir, "notes.txt"), []byte("scratch"), 0o600); err != nil {
 		t.Fatalf("cannot write the extra file: %v", err)
 	}
@@ -78,8 +83,15 @@ func TestBackupWritesTheDatabaseAndTheKeys(t *testing.T) {
 		}
 	}
 
+	token, err := os.ReadFile(filepath.Join(target, "keys", "3.token"))
+	if err != nil {
+		t.Errorf("the agent token is missing from the backup: %v", err)
+	} else if string(token) != "AGENT TOKEN 3" {
+		t.Errorf("the token came out as %q", token)
+	}
+
 	if _, err := os.Stat(filepath.Join(target, "keys", "notes.txt")); err == nil {
-		t.Error("the backup copied a file that is not a key")
+		t.Error("the backup copied a file that is not a secret")
 	}
 }
 

@@ -56,7 +56,7 @@ func runBackup(target string) error {
 		return err
 	}
 
-	fmt.Printf("Wrote the database and %d key(s) to %s.\n", keys, target)
+	fmt.Printf("Wrote the database and %d secret(s) to %s.\n", keys, target)
 	fmt.Println("The keys reach every managed resolver, so encrypt this directory before it leaves the host.")
 	return nil
 }
@@ -75,7 +75,12 @@ func copyKeys(source, target string) (int, error) {
 
 	copied := 0
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".key") {
+		// Both secrets a server can hold live here: the SSH private key on one
+		// transport and the agent bearer token on the other. Copying only the
+		// key would restore an agent fleet that cannot authenticate.
+		name := entry.Name()
+		if entry.IsDir() ||
+			(!strings.HasSuffix(name, ".key") && !strings.HasSuffix(name, ".token")) {
 			continue
 		}
 		if err := copyKey(filepath.Join(source, entry.Name()),

@@ -40,6 +40,16 @@ const (
 	// says nothing. Without it those accumulate.
 	readHeaderTimeout = 10 * time.Second
 
+	// readTimeout bounds the whole request read, so a peer that stalls the TLS
+	// handshake or dribbles a body cannot hold a connection open. The panel
+	// sets the same bound.
+	readTimeout = 30 * time.Second
+
+	// idleTimeout bounds a kept-alive connection between requests. Without it a
+	// peer that took its answer and went idle holds the connection forever,
+	// because Go derives the idle deadline from idleTimeout then readTimeout.
+	idleTimeout = 120 * time.Second
+
 	// writeTimeout has to clear the longest step. A restart waits for a
 	// resolver to come back, and the panel is still holding the request.
 	writeTimeout = 5 * time.Minute
@@ -86,6 +96,8 @@ func run() error {
 		Addr:              cfg.ListenAddr,
 		Handler:           agent.Routes(),
 		ReadHeaderTimeout: readHeaderTimeout,
+		ReadTimeout:       readTimeout,
+		IdleTimeout:       idleTimeout,
 		WriteTimeout:      writeTimeout,
 		ErrorLog:          slog.NewLogLogger(log.Handler(), slog.LevelWarn),
 		TLSConfig: &tls.Config{

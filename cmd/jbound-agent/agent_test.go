@@ -505,6 +505,31 @@ func TestABodyLargerThanTheLimitIsRefused(t *testing.T) {
 	}
 }
 
+func TestABodyThatCarriesASecondValueIsRefused(t *testing.T) {
+	// Two JSON values in one body mean the caller sent something the agent does
+	// not understand. The guard reads the second value from the same decoder
+	// that read the first, so the read-ahead buffer of the first read is seen.
+	h := newHarness(t, "server:\n", "server:\n")
+
+	body := strings.NewReader(`{"content":""}{"content":""}`)
+	request, err := http.NewRequest(http.MethodPut, h.server.URL+agentapi.PathRecords, body)
+	if err != nil {
+		t.Fatalf("cannot build the request: %v", err)
+	}
+	request.Header.Set("Authorization", agentapi.AuthScheme+" "+theToken)
+	request.Header.Set("Content-Type", "application/json")
+
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("the request failed: %v", err)
+	}
+	defer func() { _ = response.Body.Close() }()
+
+	if response.StatusCode != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400 for a body with a second value", response.StatusCode)
+	}
+}
+
 // filler is base64 that never stops.
 type filler struct{}
 

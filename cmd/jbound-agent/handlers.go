@@ -231,7 +231,11 @@ func (a *Agent) answerStep(w http.ResponseWriter, output string, err error) {
 func (a *Agent) read(w http.ResponseWriter, r *http.Request, into any) bool {
 	body := http.MaxBytesReader(w, r.Body, agentapi.MaxBodyBytes)
 
-	if err := json.NewDecoder(body).Decode(into); err != nil {
+	// One decoder for both reads. It buffers ahead as it decodes, so a second
+	// value already sits in its buffer; a fresh decoder over the same body
+	// would not see it and would always report a clean end.
+	decoder := json.NewDecoder(body)
+	if err := decoder.Decode(into); err != nil {
 		if _, tooLarge := errors.AsType[*http.MaxBytesError](err); tooLarge {
 			a.fail(w, http.StatusRequestEntityTooLarge, agentapi.ClassBadInput,
 				"the request is larger than this agent accepts")
@@ -245,7 +249,7 @@ func (a *Agent) read(w http.ResponseWriter, r *http.Request, into any) bool {
 	// A second value in the same body would mean the caller sent something
 	// this agent does not understand, and guessing which one was meant is
 	// worse than saying so.
-	if err := json.NewDecoder(body).Decode(new(json.RawMessage)); !errors.Is(err, io.EOF) {
+	if err := decoder.Decode(new(json.RawMessage)); !errors.Is(err, io.EOF) {
 		a.fail(w, http.StatusBadRequest, agentapi.ClassBadInput,
 			"the request carries more than one value")
 		return false

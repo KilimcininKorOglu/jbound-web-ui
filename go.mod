@@ -1,6 +1,6 @@
 module jbound
 
-go 1.26
+go 1.26.0
 
 // The language version alone accepts any 1.26.x, including the releases with
 // the reachable html/template, net/http, crypto/tls and encoding/asn1 fixes
@@ -9,7 +9,7 @@ go 1.26
 toolchain go1.26.6
 
 require (
-	golang.org/x/crypto v0.55.0
+	golang.org/x/crypto v0.56.0
 	modernc.org/sqlite v1.56.0
 )
 

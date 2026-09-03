@@ -10,8 +10,13 @@ package schedule
 import "time"
 
 // Status is where a job is in its one and only run.
+//
+// Running is the claim a run takes before it applies the change. A job the
+// timer has claimed is no longer pending, so a concurrent cancel or edit, which
+// both act on a pending job, cannot touch a job while it is being applied.
 const (
 	StatusPending = "pending"
+	StatusRunning = "running"
 	StatusDone    = "done"
 	StatusFailed  = "failed"
 )

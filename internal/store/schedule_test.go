@@ -88,6 +88,9 @@ func TestOnlyPendingJobsPastTheirTimeAreDue(t *testing.T) {
 	}
 
 	// A job that has run is no longer due, even though its time has passed.
+	if _, err := jobs.Claim(ctx, duePast.ID); err != nil {
+		t.Fatalf("cannot claim the job: %v", err)
+	}
 	if err := jobs.Finish(ctx, duePast.ID, schedule.StatusDone, "1 server updated", now); err != nil {
 		t.Fatalf("cannot finish the job: %v", err)
 	}
@@ -112,6 +115,9 @@ func TestFinishRecordsTheOutcomeOnce(t *testing.T) {
 		t.Fatalf("cannot create the job: %v", err)
 	}
 
+	if _, err := jobs.Claim(ctx, created.ID); err != nil {
+		t.Fatalf("cannot claim the job: %v", err)
+	}
 	if err := jobs.Finish(ctx, created.ID, schedule.StatusFailed, "connection refused", now); err != nil {
 		t.Fatalf("cannot finish the job: %v", err)
 	}
@@ -168,6 +174,9 @@ func TestUpdatingAScheduledJobChangesOnlyPendingOnes(t *testing.T) {
 
 	// A job that has run cannot be edited, because the guard matches only a
 	// pending row.
+	if _, err := jobs.Claim(ctx, created.ID); err != nil {
+		t.Fatalf("cannot claim the job: %v", err)
+	}
 	if err := jobs.Finish(ctx, created.ID, schedule.StatusDone, "1 server updated", now); err != nil {
 		t.Fatalf("cannot finish the job: %v", err)
 	}
@@ -235,5 +244,90 @@ func TestDeletingTheTargetTakesItsJobs(t *testing.T) {
 	}
 	if _, err := jobs.Get(ctx, onGroup.ID); err == nil {
 		t.Error("the group job outlived its group")
+	}
+}
+
+func TestClaimingAJobTakesItOnce(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	jobs := store.NewSchedule(f.db)
+	record := f.mustCreate(t, "dns1")
+
+	created, err := jobs.Create(ctx, sampleJob(record.ID, time.Now().UTC()))
+	if err != nil {
+		t.Fatalf("cannot create the job: %v", err)
+	}
+
+	took, err := jobs.Claim(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("cannot claim the job: %v", err)
+	}
+	if !took {
+		t.Fatal("the first claim did not take the pending job")
+	}
+
+	// A job already claimed is no longer pending, so a second claim takes
+	// nothing. This is what makes a cancel or an edit racing the timer lose.
+	took, err = jobs.Claim(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("cannot claim the job a second time: %v", err)
+	}
+	if took {
+		t.Error("a job was claimed twice")
+	}
+}
+
+func TestARunningJobCannotBeCancelled(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	jobs := store.NewSchedule(f.db)
+	record := f.mustCreate(t, "dns1")
+
+	created, err := jobs.Create(ctx, sampleJob(record.ID, time.Now().UTC()))
+	if err != nil {
+		t.Fatalf("cannot create the job: %v", err)
+	}
+	if _, err := jobs.Claim(ctx, created.ID); err != nil {
+		t.Fatalf("cannot claim the job: %v", err)
+	}
+
+	// The timer is applying it; a cancel must not remove the row mid-run.
+	if err := jobs.Delete(ctx, created.ID); err == nil {
+		t.Error("a running job was cancelled")
+	}
+}
+
+func TestResetRunningReopensAClaimedJob(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	jobs := store.NewSchedule(f.db)
+	record := f.mustCreate(t, "dns1")
+
+	created, err := jobs.Create(ctx, sampleJob(record.ID, time.Now().UTC()))
+	if err != nil {
+		t.Fatalf("cannot create the job: %v", err)
+	}
+	if _, err := jobs.Claim(ctx, created.ID); err != nil {
+		t.Fatalf("cannot claim the job: %v", err)
+	}
+
+	if err := jobs.ResetRunning(ctx); err != nil {
+		t.Fatalf("cannot reset the running jobs: %v", err)
+	}
+
+	got, err := jobs.Get(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("cannot read the job: %v", err)
+	}
+	if got.Status != schedule.StatusPending {
+		t.Errorf("status = %q, want pending after a reset", got.Status)
+	}
+	// Reopened, so the timer can claim and run it again.
+	took, err := jobs.Claim(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("cannot re-claim the job: %v", err)
+	}
+	if !took {
+		t.Error("a reset job could not be claimed again")
 	}
 }

@@ -44,10 +44,28 @@ type finishCall struct {
 type fakeStore struct {
 	due      []schedule.Job
 	finished []finishCall
+	claimed  []int64
+	// refuseClaim names the ids a concurrent cancel or edit already moved off
+	// pending, so Claim reports it did not take them.
+	refuseClaim map[int64]bool
+	resetCalls  int
 }
 
 func (f *fakeStore) Due(context.Context, time.Time) ([]schedule.Job, error) {
 	return f.due, nil
+}
+
+func (f *fakeStore) Claim(_ context.Context, id int64) (bool, error) {
+	if f.refuseClaim[id] {
+		return false, nil
+	}
+	f.claimed = append(f.claimed, id)
+	return true, nil
+}
+
+func (f *fakeStore) ResetRunning(context.Context) error {
+	f.resetCalls++
+	return nil
 }
 
 func (f *fakeStore) Finish(_ context.Context, id int64, status, result string, _ time.Time) error {
@@ -118,6 +136,25 @@ func TestADueJobRunsAndIsMarkedDone(t *testing.T) {
 	}
 	if len(store.finished) != 1 || store.finished[0].status != schedule.StatusDone {
 		t.Errorf("finished = %+v, want one done", store.finished)
+	}
+}
+
+func TestAJobThatCannotBeClaimedDoesNotRun(t *testing.T) {
+	job := jobFor(t, schedule.KindAdd, schedule.OnConflictFail, addOp())
+	store := &fakeStore{
+		due:         []schedule.Job{job},
+		refuseClaim: map[int64]bool{job.ID: true},
+	}
+	applier := &fakeApplier{report: okReport("dns1")}
+
+	newScheduler(store, applier).runDue(context.Background())
+
+	if len(applier.calls) != 0 {
+		t.Errorf("apply ran %d time(s) for a job that could not be claimed, want 0",
+			len(applier.calls))
+	}
+	if len(store.finished) != 0 {
+		t.Errorf("finished = %+v, want none when the claim was lost", store.finished)
 	}
 }
 

@@ -114,9 +114,51 @@ UPDATE scheduled_jobs
 	return requireOneRow(result, "scheduled job", fmt.Sprint(job.ID))
 }
 
-// Delete removes a job. It is how an operator cancels one that has not run yet.
+// Claim marks a pending job as running and reports whether it took it.
+//
+// The move is atomic, so exactly one caller wins it. A run claims a job before
+// it applies the change; a job that a concurrent cancel or edit already moved
+// off pending is not claimed, and the run leaves it alone.
+func (s *Schedule) Claim(ctx context.Context, id int64) (bool, error) {
+	result, err := s.db.ExecContext(ctx,
+		"UPDATE scheduled_jobs SET status = ? WHERE id = ? AND status = ?",
+		schedule.StatusRunning, id, schedule.StatusPending)
+	if err != nil {
+		return false, fmt.Errorf("cannot claim the scheduled job: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("cannot read the claim result: %w", err)
+	}
+	return affected == 1, nil
+}
+
+// ResetRunning returns every running job to pending.
+//
+// A job is running only while the timer applies it. The panel is one process
+// with one writer, so a running job at startup is one a crash left mid-run.
+// Returning it to pending lets the next pass run it again, which is safe
+// because the apply path is idempotent.
+func (s *Schedule) ResetRunning(ctx context.Context) error {
+	_, err := s.db.ExecContext(ctx,
+		"UPDATE scheduled_jobs SET status = ? WHERE status = ?",
+		schedule.StatusPending, schedule.StatusRunning)
+	if err != nil {
+		return fmt.Errorf("cannot reset the running scheduled jobs: %w", err)
+	}
+	return nil
+}
+
+// Delete removes a job. It is how an operator cancels one that has not run yet,
+// and how a done or failed job is cleared away.
+//
+// A running job is refused: the timer is applying it, and removing the row
+// mid-run would let the change land while the operator was told it was
+// cancelled.
 func (s *Schedule) Delete(ctx context.Context, id int64) error {
-	result, err := s.db.ExecContext(ctx, "DELETE FROM scheduled_jobs WHERE id = ?", id)
+	result, err := s.db.ExecContext(ctx,
+		"DELETE FROM scheduled_jobs WHERE id = ? AND status <> ?",
+		id, schedule.StatusRunning)
 	if err != nil {
 		return fmt.Errorf("cannot delete the scheduled job: %w", err)
 	}
@@ -125,8 +167,8 @@ func (s *Schedule) Delete(ctx context.Context, id int64) error {
 
 // Finish records the outcome of a run and closes the job.
 //
-// It moves a job out of pending only, so a job that already ran is left as it
-// stands rather than run and recorded twice.
+// It moves a job out of running only, so a job the timer never claimed, or one
+// a concurrent cancel removed, is left as it stands rather than recorded twice.
 func (s *Schedule) Finish(
 	ctx context.Context, id int64, status, result string, ranAt time.Time,
 ) error {
@@ -134,7 +176,7 @@ func (s *Schedule) Finish(
 UPDATE scheduled_jobs
    SET status = ?, result = ?, ran_at = ?
  WHERE id = ? AND status = ?`,
-		status, result, formatTime(ranAt), id, schedule.StatusPending)
+		status, result, formatTime(ranAt), id, schedule.StatusRunning)
 	if err != nil {
 		return fmt.Errorf("cannot finish the scheduled job: %w", err)
 	}

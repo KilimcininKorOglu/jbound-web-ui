@@ -17,7 +17,9 @@ import (
 // ScheduleStore is the persistence the scheduler reads and closes jobs through.
 type ScheduleStore interface {
 	Due(ctx context.Context, now time.Time) ([]schedule.Job, error)
+	Claim(ctx context.Context, id int64) (bool, error)
 	Finish(ctx context.Context, id int64, status, result string, ranAt time.Time) error
+	ResetRunning(ctx context.Context) error
 }
 
 // Applier runs one record change across a target. fleet.Service satisfies it,
@@ -51,6 +53,13 @@ func NewScheduler(store ScheduleStore, apply Applier, auditLog *audit.Logger) *S
 // before every wait.
 func (s *Scheduler) Start(ctx context.Context, interval func() time.Duration) {
 	go func() {
+		// A job left running is one a crash interrupted mid-apply, because the
+		// panel is one process. Return those to pending before the first pass so
+		// the missed-work catch-up runs them again.
+		if err := s.store.ResetRunning(ctx); err != nil {
+			slog.Error("cannot reset running scheduled jobs", "error", err)
+		}
+
 		s.runDue(ctx)
 
 		timer := time.NewTimer(interval())
@@ -87,7 +96,20 @@ func (s *Scheduler) runDue(ctx context.Context) {
 }
 
 // run applies one job and records its outcome.
+//
+// It claims the job first, so a cancel or an edit that raced the timer wins or
+// loses cleanly: a claimed job can no longer be cancelled or edited, and a job
+// already moved off pending is not run.
 func (s *Scheduler) run(ctx context.Context, job schedule.Job) {
+	claimed, err := s.store.Claim(ctx, job.ID)
+	if err != nil {
+		slog.Error("cannot claim a scheduled job", "job", job.ID, "error", err)
+		return
+	}
+	if !claimed {
+		return
+	}
+
 	var op Operation
 	if err := json.Unmarshal(job.Operation, &op); err != nil {
 		s.finish(ctx, job, schedule.StatusFailed, "the stored operation could not be read")

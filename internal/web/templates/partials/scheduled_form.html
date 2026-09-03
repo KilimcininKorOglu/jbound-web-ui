@@ -36,7 +36,7 @@
 
       <div class="form-check mt-3">
         <input class="form-check-input" type="checkbox" id="on_conflict"
-               name="on_conflict" value="1">
+               name="on_conflict" value="1"{{if .Overwrite}} checked{{end}}>
         <label class="form-check-label" for="on_conflict">{{t "scheduled.on_conflict"}}</label>
         <div class="form-text">{{t "scheduled.on_conflict_help"}}</div>
       </div>

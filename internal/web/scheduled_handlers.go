@@ -69,6 +69,11 @@ type scheduleFormData struct {
 	Groups  []server.Group
 	Types   []string
 	Problem string
+
+	// Overwrite carries the stored on_conflict choice into the addition form, so
+	// editing a job created with overwrite re-renders the box ticked rather than
+	// reverting the job to fail on save.
+	Overwrite bool
 }
 
 func (a *App) handleScheduledPage(w http.ResponseWriter, r *http.Request) {
@@ -161,6 +166,7 @@ func scheduleFormFromJob(job schedule.Job,
 	switch job.Kind {
 	case schedule.KindAdd:
 		data.Rows = rowsFromOperation(op)
+		data.Overwrite = job.OnConflict == schedule.OnConflictOverwrite
 	case schedule.KindEdit:
 		data.Old = op.Old
 		data.Record = op.Record

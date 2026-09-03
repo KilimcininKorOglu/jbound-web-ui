@@ -52,6 +52,13 @@ func (s *Settings) Save(ctx context.Context, values map[string]string) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	// The rows are the operator's overrides and nothing else. Clearing them
+	// first makes the write authoritative: a key the caller no longer sends is
+	// an override that was removed, and it must not survive as a stale row.
+	if _, err := tx.ExecContext(ctx, "DELETE FROM settings"); err != nil {
+		return fmt.Errorf("cannot clear the settings: %w", err)
+	}
+
 	const query = `
 INSERT INTO settings (key, value, updated_at)
 VALUES (?, ?, strftime('%Y-%m-%d %H:%M:%S', 'now'))

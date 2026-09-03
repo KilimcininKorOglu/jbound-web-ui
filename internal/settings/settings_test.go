@@ -35,6 +35,9 @@ func (f *fakeStore) Save(_ context.Context, values map[string]string) error {
 	if f.saveErr != nil {
 		return f.saveErr
 	}
+	// Replace the whole set, the way the real store does, so a key the caller
+	// no longer sends does not linger as a stale row.
+	f.rows = map[string]string{}
 	maps.Copy(f.rows, values)
 	return nil
 }
@@ -229,9 +232,40 @@ func TestASubmissionOfOneCardKeepsTheRest(t *testing.T) {
 	if got := service.Duration(SessionIdleTimeout); got != 30*time.Minute {
 		t.Errorf("session idle timeout = %s, want the untouched 30m", got)
 	}
-	if len(store.rows) != len(Definitions()) {
-		t.Errorf("%d row(s) stored, want the whole set of %d",
-			len(store.rows), len(Definitions()))
+	// Only the one key the operator moved is stored. Everything left at its
+	// default falls back to the registry, so a default that moves in a later
+	// release still reaches this panel.
+	if len(store.rows) != 1 {
+		t.Errorf("%d row(s) stored, want only the changed key", len(store.rows))
+	}
+	if store.rows[RecordsPerPage] != "50" {
+		t.Errorf("stored %q for the changed key, want 50", store.rows[RecordsPerPage])
+	}
+}
+
+// Moving a key back to its default removes its override row, so the key returns
+// to falling back to the registry default rather than pinning the old value.
+func TestResettingAKeyToItsDefaultRemovesItsRow(t *testing.T) {
+	store := newFakeStore()
+	service := NewService(store)
+	ctx := context.Background()
+
+	if err := service.Save(ctx, map[string]string{RecordsPerPage: "50"}); err != nil {
+		t.Fatalf("Save returned an error: %v", err)
+	}
+	if _, ok := store.rows[RecordsPerPage]; !ok {
+		t.Fatal("the override was not stored")
+	}
+
+	defaults, _ := NewValues(nil)
+	if err := service.Save(ctx, map[string]string{RecordsPerPage: defaults.String(RecordsPerPage)}); err != nil {
+		t.Fatalf("Save returned an error: %v", err)
+	}
+	if _, ok := store.rows[RecordsPerPage]; ok {
+		t.Error("the override row survived a reset to the default")
+	}
+	if got := service.Int(RecordsPerPage); got != 25 {
+		t.Errorf("records per page = %d, want the default 25", got)
 	}
 }
 

@@ -76,10 +76,28 @@ func (s *Service) Save(ctx context.Context, submitted map[string]string) error {
 	if err := ValidateAll(merged); err != nil {
 		return err
 	}
-	if err := s.store.Save(ctx, merged); err != nil {
+	// Store only the keys the operator moved off their registry default. A key
+	// left at its default is not written, so a default that moves in a later
+	// release moves with it. The store replaces the whole override set, so a
+	// key reset to its default drops out here and its row is removed.
+	if err := s.store.Save(ctx, overridesOf(merged)); err != nil {
 		return fmt.Errorf("cannot store the settings: %w", err)
 	}
 	return s.Load(ctx)
+}
+
+// overridesOf keeps only the keys whose value differs from the registry
+// default. The full validated map is the input, so a partial form that was
+// merged over the current values still yields the complete override set.
+func overridesOf(merged map[string]string) map[string]string {
+	defaults, _ := NewValues(nil)
+	overrides := make(map[string]string, len(merged))
+	for key, value := range merged {
+		if value != defaults.String(key) {
+			overrides[key] = value
+		}
+	}
+	return overrides
 }
 
 // Duration returns one duration setting.

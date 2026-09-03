@@ -251,6 +251,7 @@
   "scheduled.not_pending": "Bu iş çalıştı ve düzenlenemez.",
   "scheduled.on_conflict": "İsim zaten cevaplıyorsa üzerine yaz",
   "scheduled.on_conflict_help": "İş çalıştığında, bir sunucuda zaten cevaplayan bir isim çakışma olarak raporlanmak yerine bu değerle ezilir.",
+  "scheduled.overwrite_multi_value": "Üzerine yazma yalnızca A, AAAA ve CNAME record'ları için çalışır, çünkü bir TXT veya MX ismi birden çok değer taşıyabilir.",
   "scheduled.remove": "Kaldır",
   "scheduled.remove_question": "Bu iş ve sonucu kaldırılacak.",
   "scheduled.remove_title": "Bu iş kaldırılsın mı?",

@@ -264,6 +264,15 @@ func (a *App) jobFromForm(r *http.Request) (
 	if err := op.Validate(); err != nil {
 		return kind, op, target, runAt, recordMessage(r.Context(), catalog, err), http.StatusUnprocessableEntity, false
 	}
+
+	// Overwrite becomes a set at run time, and a set carries one value for a
+	// name. A TXT or MX name holds several, so the run would refuse it after the
+	// job was stored. It is refused here instead, the way the immediate path
+	// offers the set choice only on a one-value-per-name conflict.
+	if onConflictFrom(r.Form, op) == schedule.OnConflictOverwrite && !overwriteApplies(op) {
+		return kind, op, target, runAt, catalog.T("scheduled.overwrite_multi_value"),
+			http.StatusUnprocessableEntity, false
+	}
 	target, err = targetFromValues(r.Form)
 	if err != nil {
 		return kind, op, target, runAt, recordMessage(r.Context(), catalog, err), http.StatusBadRequest, false
@@ -480,6 +489,25 @@ func operationFromForm(form url.Values, kind string) (fleet.Operation, error) {
 	default:
 		return fleet.Operation{}, fmt.Errorf("%w: unknown change %q", dnsfile.ErrInvalid, kind)
 	}
+}
+
+// overwriteApplies reports whether every record in an addition is a
+// one-value-per-name type, which is the only kind an overwrite can set.
+//
+// A TXT or MX name legitimately carries several values, so the OpSet an
+// overwrite becomes at run time would refuse it. The choice is meaningful only
+// for A, AAAA and CNAME.
+func overwriteApplies(op fleet.Operation) bool {
+	records := op.Records
+	if len(records) == 0 {
+		records = []dnsfile.Record{op.Record}
+	}
+	for _, record := range records {
+		if !dnsfile.OneValuePerName(record.Type) {
+			return false
+		}
+	}
+	return true
 }
 
 // onConflictFrom reads the overwrite choice, which an addition alone offers.

@@ -251,6 +251,7 @@
   "scheduled.not_pending": "This job has already run and cannot be edited.",
   "scheduled.on_conflict": "Overwrite if the name already answers",
   "scheduled.on_conflict_help": "When the job runs, a name that already answers on a server is overwritten with this value rather than reported as a clash.",
+  "scheduled.overwrite_multi_value": "Overwrite works only for A, AAAA and CNAME records, because a TXT or MX name can carry several values.",
   "scheduled.remove": "Remove",
   "scheduled.remove_question": "This job and its result will be removed.",
   "scheduled.remove_title": "Remove this job?",

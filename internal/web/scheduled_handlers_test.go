@@ -154,6 +154,29 @@ func TestScheduleSummaryRendersTheStoredChange(t *testing.T) {
 	}
 }
 
+func TestOverwriteAppliesOnlyToOneValueTypes(t *testing.T) {
+	single := fleet.Operation{Kind: fleet.OpAdd,
+		Record: dnsfile.Record{FQDN: "www.example.local", Type: "A", Value: "10.0.0.1"}}
+	if !overwriteApplies(single) {
+		t.Error("an A-record addition cannot be overwritten")
+	}
+
+	txt := fleet.Operation{Kind: fleet.OpAdd,
+		Record: dnsfile.Record{FQDN: "www.example.local", Type: "TXT", Value: "v=spf1 -all"}}
+	if overwriteApplies(txt) {
+		t.Error("a TXT addition was reported as overwritable")
+	}
+
+	// A batch is overwritable only when every record in it is one-value-per-name.
+	mixed := fleet.Operation{Kind: fleet.OpAddMany, Records: []dnsfile.Record{
+		{FQDN: "www.example.local", Type: "A", Value: "10.0.0.1"},
+		{FQDN: "www.example.local", Type: "MX", Value: "mx1.example.local", Priority: 10},
+	}}
+	if overwriteApplies(mixed) {
+		t.Error("a batch containing an MX record was reported as overwritable")
+	}
+}
+
 // --- Handler flow ----------------------------------------------------------
 
 // wireSchedules gives the application the real schedule store over the test
@@ -280,6 +303,38 @@ func TestCancellingAScheduledJobRemovesIt(t *testing.T) {
 	after, _ := jobs.List(context.Background())
 	if len(after) != 0 {
 		t.Errorf("%d jobs left after the cancel, want none", len(after))
+	}
+}
+
+func TestSchedulingAnOverwriteOfAMultiValueTypeIsRefused(t *testing.T) {
+	env := newTestEnv(t)
+	jobs := env.wireSchedules(t)
+	cookie := env.login(t, "dnsadmin")
+	if code := env.addServer(t, cookie, "dns1").Code; code != http.StatusOK {
+		t.Fatalf("cannot create the target server: %d", code)
+	}
+
+	recorder := env.adminForm(t, http.MethodPost, "/scheduled", cookie, url.Values{
+		"kind":        {schedule.KindAdd},
+		"fqdn":        {"mail.example.local"},
+		"type":        {"TXT"},
+		"value":       {"v=spf1 -all"},
+		"scope":       {fleet.ScopeServer},
+		"server_id":   {"1"},
+		"run_at":      {futureRunAt()},
+		"on_conflict": {"1"},
+	})
+	if recorder.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("POST overwrite TXT = %d, want 422\n%s", recorder.Code, recorder.Body)
+	}
+
+	// Nothing may be stored, because the panel could not run it.
+	stored, err := jobs.List(context.Background())
+	if err != nil {
+		t.Fatalf("cannot list the jobs: %v", err)
+	}
+	if len(stored) != 0 {
+		t.Errorf("%d jobs stored, want none for a refused overwrite", len(stored))
 	}
 }
 

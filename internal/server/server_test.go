@@ -1,6 +1,7 @@
 package server
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -148,6 +149,36 @@ func TestTransportConfigResolvesTheKeyAgainstTheDataDirectory(t *testing.T) {
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Errorf("the produced configuration is not usable: %v", err)
+	}
+}
+
+func TestTransportConfigRefusesAKeyPathOutsideTheKeyDirectory(t *testing.T) {
+	// The service is the only writer of the key path column, but a tampered
+	// database row could point it at any file on the host. The read-for-use
+	// path carries the same boundary check as the KeyStore, so a traversing
+	// path yields an empty path that Validate then refuses rather than a file
+	// somewhere else being read as a key or sent as a token.
+	ssh := validServer()
+	ssh.SSHKeyPath = filepath.Join(KeySubdir, "..", "..", "etc", "shadow")
+	cfg := ssh.TransportConfig("/var/lib/jbound", time.Second, time.Second)
+	if cfg.KeyPath != "" {
+		t.Errorf("key path = %q, want it emptied", cfg.KeyPath)
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Error("a configuration built from a traversing key path was accepted")
+	}
+
+	agent := Server{
+		ID: 4, Name: "dns4", Host: "dns4.example", Transport: TransportAgent,
+		AgentPort: 9443, HostKey: "SHA256:abc",
+		SSHKeyPath: filepath.Join(KeySubdir, "..", "..", "etc", "shadow"),
+	}
+	cfg = agent.TransportConfig("/var/lib/jbound", time.Second, time.Second)
+	if cfg.TokenPath != "" {
+		t.Errorf("token path = %q, want it emptied", cfg.TokenPath)
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Error("an agent configuration built from a traversing token path was accepted")
 	}
 }
 

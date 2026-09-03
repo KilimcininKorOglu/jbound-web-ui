@@ -299,7 +299,7 @@ func (s Server) TransportConfig(dataDir string, connectTimeout, commandTimeout t
 			// The same column holds the token file here that holds the private
 			// key on the other transport, and the same boundary check applies
 			// to both.
-			TokenPath: filepath.Join(dataDir, s.SSHKeyPath),
+			TokenPath: keyPathWithin(dataDir, s.SSHKeyPath),
 
 			ConnectTimeout: connectTimeout,
 			CommandTimeout: commandTimeout,
@@ -313,7 +313,7 @@ func (s Server) TransportConfig(dataDir string, connectTimeout, commandTimeout t
 		Host:        s.Host,
 		Port:        s.SSHPort,
 		User:        s.SSHUser,
-		KeyPath:     filepath.Join(dataDir, s.SSHKeyPath),
+		KeyPath:     keyPathWithin(dataDir, s.SSHKeyPath),
 		HostKey:     s.HostKey,
 		RecordsPath: s.RecordsPath,
 		ReloadCmd:   s.ReloadCmd,
@@ -331,4 +331,20 @@ func (s Server) TransportConfig(dataDir string, connectTimeout, commandTimeout t
 		ConnectTimeout: connectTimeout,
 		CommandTimeout: commandTimeout,
 	}
+}
+
+// keyPathWithin joins the stored key path under dataDir and returns it only
+// while it stays inside the keys directory.
+//
+// This is the same boundary KeyStore.resolve enforces, applied on the one path
+// that actually reads the secret. TransportConfig composes the path itself, so
+// without this check the read-for-use path would be the only one the KeyStore
+// guard never reaches. A tampered servers row that points the path elsewhere
+// yields an empty string, which transport.Config.Validate then refuses.
+func keyPathWithin(dataDir, relPath string) string {
+	path := filepath.Join(dataDir, relPath)
+	if filepath.Dir(path) != filepath.Join(dataDir, KeySubdir) {
+		return ""
+	}
+	return path
 }

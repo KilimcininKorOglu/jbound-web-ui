@@ -946,6 +946,44 @@ func TestAChangeTheResolverRefusesPutsThePreviousFileBack(t *testing.T) {
 	}
 }
 
+func TestARefusedWriteKeepsThePreviousRestorePoint(t *testing.T) {
+	// A change that lands and is accepted saves the file it replaced as the one
+	// restore point. A later write the resolver refuses must not overwrite that
+	// restore point with the rolled-back content, or the last good file is lost.
+	h := newWriteHarness(t, 1)
+	target := h.targets["dns1"]
+	serverTarget := Target{Scope: ScopeServer, ServerID: 1}
+
+	// The first change succeeds, so the backup becomes the file before it.
+	first := Operation{Kind: OpAdd, Record: dnsfile.Record{
+		FQDN: "one.example.net", Type: "A", Value: "192.0.2.10"}}
+	if _, err := h.writer.Apply(context.Background(), testActor(), serverTarget, first); err != nil {
+		t.Fatalf("the first change returned an error: %v", err)
+	}
+	saved := h.backups.content(1)
+	if strings.Contains(saved, "one.example.net") {
+		t.Fatalf("the backup already holds the change it should precede:\n%s", saved)
+	}
+
+	// The second change is refused by the resolver and rolled back.
+	target.checkErr = transport.ErrCommandFailed
+	report, err := h.writer.Apply(context.Background(), testActor(), serverTarget,
+		Operation{Kind: OpAdd, Record: dnsfile.Record{
+			FQDN: "two.example.net", Type: "A", Value: "192.0.2.11"}})
+	if err != nil {
+		t.Fatalf("the second change returned an error: %v", err)
+	}
+	if report.OK() {
+		t.Fatalf("the refused change was reported as applied: %+v", report.Results)
+	}
+
+	// The restore point is still the file before the first change, not the
+	// content the refused write rolled back to.
+	if now := h.backups.content(1); now != saved {
+		t.Errorf("the refused write overwrote the restore point:\nwant %q\ngot  %q", saved, now)
+	}
+}
+
 func TestARefusedConfigurationSaysWhatTheResolverSaid(t *testing.T) {
 	// "The change failed" sends the operator to the server to find out why.
 	// The resolver already said why on stderr.

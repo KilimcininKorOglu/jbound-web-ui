@@ -738,16 +738,21 @@ func (w *Writer) write(ctx context.Context, actor server.Actor,
 		return err
 	}
 
-	// The file is replaced in one move, so this is the last moment the content
-	// it holds exists anywhere the panel can reach.
-	w.keepPrevious(ctx, record.ID, content, digest)
-
 	// The digest travels back with the write, so a file that changed on the
 	// target between the read and the write is refused rather than replaced.
 	if err := writeRecords(ctx, client, updated, digest); err != nil {
 		return err
 	}
-	return w.checkConfig(ctx, client, record, content)
+	if err := w.checkConfig(ctx, client, record, content); err != nil {
+		return err
+	}
+
+	// The change landed and the resolver accepted it, so the file it held
+	// before becomes the restore point. Saving it only now keeps the previous
+	// restore point intact when a write is refused, an editor raced the digest,
+	// or the resolver rolled the change back.
+	w.keepPrevious(ctx, record.ID, content, digest)
+	return nil
 }
 
 // writeAudit records one server's share of the change.

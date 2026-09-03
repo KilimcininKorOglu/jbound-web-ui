@@ -309,8 +309,6 @@ func (w *Writer) repairOne(ctx context.Context, actor server.Actor,
 		result.fail(err)
 		return result
 	}
-	w.keepPrevious(ctx, record.ID, content, digest)
-
 	if err := writeRecords(ctx, client, updated, digest); err != nil {
 		result.fail(err)
 		return result
@@ -320,6 +318,10 @@ func (w *Writer) repairOne(ctx context.Context, actor server.Actor,
 		result.fail(err)
 		return result
 	}
+
+	// Saved only after the resolver accepted the change, so a refused or
+	// rolled-back write leaves the previous restore point intact.
+	w.keepPrevious(ctx, record.ID, content, digest)
 
 	result.Status = StatusSuccess
 	result.Message = "Record added"
@@ -522,8 +524,6 @@ func (w *Writer) repairAllOne(ctx context.Context, actor server.Actor,
 		return result
 	}
 
-	w.keepPrevious(ctx, record.ID, content, digest)
-
 	if err := writeRecords(ctx, client, updated, digest); err != nil {
 		logging.From(ctx).Error("cannot write a repaired file",
 			"server", record.Name, "error", err)
@@ -536,6 +536,10 @@ func (w *Writer) repairAllOne(ctx context.Context, actor server.Actor,
 		result.fail(err)
 		return result
 	}
+
+	// Saved only after the resolver accepted the change, so a refused or
+	// rolled-back write leaves the previous restore point intact.
+	w.keepPrevious(ctx, record.ID, content, digest)
 
 	result.Status = StatusSuccess
 	result.Message = fmt.Sprintf("%d added", written)
@@ -722,11 +726,6 @@ func (w *Writer) mirrorOne(ctx context.Context, actor server.Actor,
 		}
 	}
 
-	// A mirror is the widest change the panel makes: it deletes as well as
-	// adds, so the copy is what a target that was synchronised from the wrong
-	// source is brought back with.
-	w.keepPrevious(ctx, record.ID, content, digest)
-
 	if err := writeRecords(ctx, client, updated, digest); err != nil {
 		logging.From(ctx).Error("cannot write a mirrored file",
 			"server", record.Name, "source", source.Name, "error", err)
@@ -739,6 +738,13 @@ func (w *Writer) mirrorOne(ctx context.Context, actor server.Actor,
 		result.fail(err)
 		return result
 	}
+
+	// A mirror is the widest change the panel makes: it deletes as well as
+	// adds, so the copy is what a target that was synchronised from the wrong
+	// source is brought back with. Saved only after the resolver accepted the
+	// change, so a refused or rolled-back write keeps the previous restore
+	// point intact.
+	w.keepPrevious(ctx, record.ID, content, digest)
 
 	result.Status = StatusSuccess
 	result.Message = fmt.Sprintf("%d added, %d removed", len(added), len(removed))

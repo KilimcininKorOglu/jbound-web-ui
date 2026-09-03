@@ -555,6 +555,45 @@ func TestEditReplacesTheRecordOnEveryServer(t *testing.T) {
 	}
 }
 
+func TestAnEditOntoATakenNameIsRefused(t *testing.T) {
+	// Moving a record onto a name that already answers would leave two values
+	// for a one-value-per-name type, the state the add path refuses. The edit
+	// path reads the file and refuses it too, rather than writing a second
+	// value.
+	h := newWriteHarness(t, 1)
+	target := h.targets["dns1"]
+	target.content = []byte(seeded + `local-data: "x.example.net. A 1.1.1.1"` + "\n")
+
+	op := Operation{
+		Kind: OpEdit,
+		Old:  dnsfile.Record{FQDN: "www.example.net", Type: "A", Value: "192.0.2.10"},
+		Record: dnsfile.Record{
+			FQDN: "x.example.net", Type: "A", Value: "3.3.3.3"},
+	}
+
+	report, err := h.writer.Apply(context.Background(), testActor(),
+		Target{Scope: ScopeServer, ServerID: 1}, op)
+	if err != nil {
+		t.Fatalf("Apply returned an error: %v", err)
+	}
+	if report.OK() {
+		t.Fatalf("the edit onto a taken name was applied: %+v", report.Results)
+	}
+	if !strings.Contains(report.Results[0].Message, "already answers") {
+		t.Errorf("the message does not explain the clash: %q", report.Results[0].Message)
+	}
+
+	// The server file is untouched: the old record stays and no second value
+	// was written for the taken name.
+	file := target.file()
+	if !strings.Contains(file, `www.example.net. A 192.0.2.10`) {
+		t.Errorf("the refused edit removed the old record:\n%s", file)
+	}
+	if strings.Contains(file, "3.3.3.3") {
+		t.Errorf("the refused edit wrote a second value:\n%s", file)
+	}
+}
+
 func TestDeleteRemovesTheRecordFromEveryServer(t *testing.T) {
 	h := newWriteHarness(t, 2)
 

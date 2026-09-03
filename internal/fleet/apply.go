@@ -197,6 +197,15 @@ func (o Operation) apply(content []byte) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
+		// An edit may move the record onto a name that already answers. A
+		// one-value-per-name type must not end with two values, the rule
+		// addRecord enforces on an add. TakenBy reads the edited content, so an
+		// in-place value change, whose only record at that name is this one, is
+		// left alone.
+		if held, taken := dnsfile.TakenBy(updated, o.Record); taken {
+			return nil, fmt.Errorf("%w: %s %s already answers with %s",
+				dnsfile.ErrNameTaken, o.Record.Type, o.Record.FQDN, held.Value)
+		}
 		// An edit may move the record to another name, and the new name may
 		// sit under a zone the file does not declare yet.
 		return checked(declareZone(updated, o.Record))

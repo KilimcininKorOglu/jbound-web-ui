@@ -122,7 +122,7 @@ func (a *App) handleScheduledEdit(w http.ResponseWriter, r *http.Request) {
 
 	job, err := a.Schedules.Get(r.Context(), id)
 	if err != nil {
-		a.internalError(w, r, "cannot read the scheduled job", err)
+		a.notFoundOrError(w, r, "cannot read the scheduled job", err)
 		return
 	}
 	servers, groups, err := a.serversAndGroups(r.Context())
@@ -133,7 +133,7 @@ func (a *App) handleScheduledEdit(w http.ResponseWriter, r *http.Request) {
 
 	data, err := scheduleFormFromJob(job, servers, groups)
 	if err != nil {
-		a.internalError(w, r, "cannot read the scheduled job", err)
+		a.notFoundOrError(w, r, "cannot read the scheduled job", err)
 		return
 	}
 	a.RenderPartial(w, r, http.StatusOK, "scheduled-form", data)
@@ -219,7 +219,7 @@ func (a *App) handleScheduledUpdate(w http.ResponseWriter, r *http.Request) {
 
 	existing, err := a.Schedules.Get(r.Context(), id)
 	if err != nil {
-		a.internalError(w, r, "cannot read the scheduled job", err)
+		a.notFoundOrError(w, r, "cannot read the scheduled job", err)
 		return
 	}
 
@@ -234,7 +234,7 @@ func (a *App) handleScheduledUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := a.updateJob(r, id, kind, op, target, runAt); err != nil {
-		a.internalError(w, r, "cannot update the scheduled job", err)
+		a.notFoundOrError(w, r, "cannot update the scheduled job", err)
 		return
 	}
 
@@ -349,11 +349,11 @@ func (a *App) handleScheduledCancel(w http.ResponseWriter, r *http.Request) {
 
 	job, err := a.Schedules.Get(r.Context(), id)
 	if err != nil {
-		a.internalError(w, r, "cannot read the scheduled job", err)
+		a.notFoundOrError(w, r, "cannot read the scheduled job", err)
 		return
 	}
 	if err := a.Schedules.Delete(r.Context(), id); err != nil {
-		a.internalError(w, r, "cannot cancel the scheduled job", err)
+		a.notFoundOrError(w, r, "cannot cancel the scheduled job", err)
 		return
 	}
 

@@ -632,6 +632,29 @@ func TestADirectiveThatIsNotARecordIsRefused(t *testing.T) {
 	}
 }
 
+func TestASecondDirectiveAfterTheValueIsRefused(t *testing.T) {
+	// Unbound reads a newline as no separator, so a directive placed after the
+	// record's quoted value on the same physical line is its own option. A
+	// prefix match would take the record and the smuggled directive together.
+	h := newHarness(t, "server:\n", "server:\n")
+
+	content := "server:\n" +
+		"local-data: \"www.example.net. A 192.0.2.10\" module-config: \"python iterator\"\n"
+	response := h.call(t, http.MethodPut, agentapi.PathRecords,
+		agentapi.WriteRequest{Content: base64.StdEncoding.EncodeToString([]byte(content))})
+
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", response.StatusCode)
+	}
+	if h.records(t) != "server:\n" {
+		t.Errorf("the smuggled directive was written anyway:\n%s", h.records(t))
+	}
+	answer := decode[agentapi.Error](t, response)
+	if !strings.Contains(answer.Message, "module-config") {
+		t.Errorf("the message does not name the smuggled directive: %q", answer.Message)
+	}
+}
+
 func TestARefusedWriteNamesTheLineAndTheDirective(t *testing.T) {
 	// An operator has to be able to find it. The line number and the directive
 	// are enough for that, and the rest of the line is not something to copy

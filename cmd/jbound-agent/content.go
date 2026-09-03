@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -47,25 +48,79 @@ func validateContent(data []byte) error {
 			continue
 		}
 
-		if allowedDirective(trimmed) {
+		// One directive per line, and that one allowed. Unbound's lexer does not
+		// treat a newline as a separator, so `local-data: "..." module-config:
+		// "..."` on one physical line is two options; matching only the prefix
+		// would take the record and the smuggled directive with it.
+		tokens := directiveTokens(trimmed)
+		if len(tokens) == 1 && allowedDirective(tokens[0]) {
 			continue
 		}
 
 		// The line number and the directive, never the whole line. What was
 		// sent is not something to copy into a log or a panel message, and the
 		// directive alone is what the operator has to remove.
-		return fmt.Errorf("line %d is not a record: %s", number+1, namedDirective(trimmed))
+		return fmt.Errorf("line %d is not a record: %s", number+1, offendingName(trimmed, tokens))
 	}
 	return nil
 }
 
-func allowedDirective(line string) bool {
-	for _, directive := range allowedDirectives {
-		if strings.HasPrefix(line, directive) {
-			return true
+// allowedDirective reports whether one directive keyword, including its colon,
+// is one a records file may carry.
+func allowedDirective(directive string) bool {
+	return slices.Contains(allowedDirectives, directive)
+}
+
+// directiveTokens returns the config directives on one line, in order, each a
+// keyword ending in a colon that sits outside any quoted string. A record line
+// carries exactly one; a second one is a directive smuggled in after the value.
+func directiveTokens(line string) []string {
+	var tokens []string
+	inQuote := false
+	start := -1
+	for i := 0; i < len(line); i++ {
+		c := line[i]
+		switch {
+		case c == '"':
+			inQuote = !inQuote
+			start = -1
+		case inQuote:
+			// Inside a value; nothing here is a top level directive.
+		case isDirectiveChar(c):
+			if start < 0 {
+				start = i
+			}
+		case c == ':' && start >= 0:
+			tokens = append(tokens, line[start:i+1])
+			start = -1
+		default:
+			start = -1
 		}
 	}
-	return false
+	return tokens
+}
+
+// isDirectiveChar reports whether c can appear in a directive keyword.
+func isDirectiveChar(c byte) bool {
+	return c >= 'a' && c <= 'z' ||
+		c >= 'A' && c <= 'Z' ||
+		c >= '0' && c <= '9' ||
+		c == '-' || c == '_'
+}
+
+// offendingName picks the directive worth naming in a refusal: the first one
+// that is not allowed, or the surplus directive when a line carries more than
+// one, or the leading word when the line carries none.
+func offendingName(line string, tokens []string) string {
+	for _, token := range tokens {
+		if !allowedDirective(token) {
+			return strings.TrimSuffix(token, ":")
+		}
+	}
+	if len(tokens) > 1 {
+		return strings.TrimSuffix(tokens[1], ":")
+	}
+	return namedDirective(line)
 }
 
 // namedDirective is the part of a refused line worth repeating.

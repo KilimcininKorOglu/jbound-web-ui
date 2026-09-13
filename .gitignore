@@ -35,3 +35,9 @@ Thumbs.db
 
 # The implementation plan stays local.
 plan.md
+.temp_files/
+
+.wrongstack/
+/.wrongstack/*
+!/.wrongstack/
+!/.wrongstack/project.json

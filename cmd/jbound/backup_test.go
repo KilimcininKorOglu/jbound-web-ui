@@ -6,11 +6,14 @@ import (
 	"path/filepath"
 	"testing"
 
+	"jbound/internal/config"
 	"jbound/internal/database"
 )
 
-// seedDataDir builds a data directory the way the panel leaves one behind.
-func seedDataDir(t *testing.T) string {
+// seedDataDir builds a data directory the way the panel leaves one behind,
+// and hands back the configuration that names it, so the tests drive the
+// command the way dispatch does instead of through the environment.
+func seedDataDir(t *testing.T) *config.Config {
 	t.Helper()
 
 	dataDir := t.TempDir()
@@ -46,15 +49,17 @@ func seedDataDir(t *testing.T) string {
 		t.Fatalf("cannot write the extra file: %v", err)
 	}
 
-	t.Setenv("DATA_DIR", dataDir)
-	return dataDir
+	return &config.Config{
+		DBPath: filepath.Join(dataDir, "jbound.db"),
+		KeyDir: keyDir,
+	}
 }
 
 func TestBackupWritesTheDatabaseAndTheKeys(t *testing.T) {
-	seedDataDir(t)
+	cfg := seedDataDir(t)
 	target := filepath.Join(t.TempDir(), "backup")
 
-	if err := runBackup(target); err != nil {
+	if err := runBackup(cfg, target); err != nil {
 		t.Fatalf("runBackup returned an error: %v", err)
 	}
 
@@ -96,10 +101,10 @@ func TestBackupWritesTheDatabaseAndTheKeys(t *testing.T) {
 }
 
 func TestBackupKeepsTheKeysUnreadableToOthers(t *testing.T) {
-	seedDataDir(t)
+	cfg := seedDataDir(t)
 	target := filepath.Join(t.TempDir(), "backup")
 
-	if err := runBackup(target); err != nil {
+	if err := runBackup(cfg, target); err != nil {
 		t.Fatalf("runBackup returned an error: %v", err)
 	}
 
@@ -123,23 +128,28 @@ func TestBackupKeepsTheKeysUnreadableToOthers(t *testing.T) {
 func TestBackupRefusesATargetThatExists(t *testing.T) {
 	// Writing into a directory that is already there could mix two backups
 	// taken at different times into one that matches neither.
-	seedDataDir(t)
+	cfg := seedDataDir(t)
 
 	target := filepath.Join(t.TempDir(), "backup")
 	if err := os.Mkdir(target, 0o700); err != nil {
 		t.Fatalf("cannot create the target: %v", err)
 	}
 
-	if err := runBackup(target); err == nil {
+	if err := runBackup(cfg, target); err == nil {
 		t.Fatal("an existing target was accepted")
 	}
 }
 
 func TestBackupLeavesNothingBehindWhenTheDatabaseIsMissing(t *testing.T) {
-	t.Setenv("DATA_DIR", t.TempDir())
+	// The configuration names a data directory that holds no database, the
+	// way a mistyped DATA_DIR does on a real host.
+	cfg := &config.Config{
+		DBPath: filepath.Join(t.TempDir(), "jbound.db"),
+		KeyDir: filepath.Join(t.TempDir(), "keys"),
+	}
 	target := filepath.Join(t.TempDir(), "backup")
 
-	if err := runBackup(target); err == nil {
+	if err := runBackup(cfg, target); err == nil {
 		t.Fatal("a missing database was accepted")
 	}
 	if _, err := os.Stat(target); err == nil {
@@ -150,15 +160,15 @@ func TestBackupLeavesNothingBehindWhenTheDatabaseIsMissing(t *testing.T) {
 func TestBackupDoesNotChangeTheSourceDatabase(t *testing.T) {
 	// The command reads. A panel of another version may be running against
 	// this file, and a migration applied from here would be a surprise.
-	dataDir := seedDataDir(t)
-	source := filepath.Join(dataDir, "jbound.db")
+	cfg := seedDataDir(t)
+	source := cfg.DBPath
 
 	before, err := os.Stat(source)
 	if err != nil {
 		t.Fatalf("cannot stat the source: %v", err)
 	}
 
-	if err := runBackup(filepath.Join(t.TempDir(), "backup")); err != nil {
+	if err := runBackup(cfg, filepath.Join(t.TempDir(), "backup")); err != nil {
 		t.Fatalf("runBackup returned an error: %v", err)
 	}
 

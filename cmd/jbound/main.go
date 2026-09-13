@@ -53,18 +53,48 @@ const usage = `jbound manages several Unbound resolvers, over SSH or through an 
   jbound import-audit <file>    read the audit trail of an older installation
 `
 
+// usageError is a refusal that says how the panel is driven, not that the
+// panel failed to start. The caller typed a subcommand the panel does not
+// know, so it earns the usage text on stderr and exit code 2 rather than the
+// startup failure log and exit code 1 that a broken configuration earns.
+type usageError struct {
+	text string
+}
+
+func (e *usageError) Error() string { return e.text }
+
+// exitCodeFor decides the process exit status of one dispatch refusal. The
+// codes are a contract the scripts around the panel read: a mistyped command
+// is usage, everything else is a malfunction.
+func exitCodeFor(err error) int {
+	var driven *usageError
+	if errors.As(err, &driven) {
+		return 2
+	}
+	return 1
+}
+
 func main() {
-	if err := dispatch(os.Args[1:]); err != nil {
-		slog.Error("startup failed", "error", err)
-		os.Exit(1)
+	if err := dispatch(os.Args[1:], config.Load); err != nil {
+		var driven *usageError
+		if errors.As(err, &driven) {
+			fmt.Fprint(os.Stderr, driven.Error())
+		} else {
+			slog.Error("startup failed", "error", err)
+		}
+		os.Exit(exitCodeFor(err))
 	}
 }
 
 // dispatch picks what the process does.
 //
 // No arguments keeps the behaviour the systemd unit relies on, so an upgrade
-// changes nothing about how the panel is started.
-func dispatch(args []string) error {
+// changes nothing about how the panel is started. The panel reads its own
+// configuration after the logger is up; the one-shot commands take it from
+// loadCfg instead, so a test drives the routing with one aimed at a
+// temporary directory. Every refusal comes back as an error, so the routing
+// stays testable without starting the panel.
+func dispatch(args []string, loadCfg func() (*config.Config, error)) error {
 	if len(args) == 0 {
 		return run()
 	}
@@ -74,16 +104,22 @@ func dispatch(args []string) error {
 		if len(args) != 2 {
 			return fmt.Errorf("backup needs one target directory")
 		}
-		return runBackup(args[1])
+		cfg, err := loadCfg()
+		if err != nil {
+			return err
+		}
+		return runBackup(cfg, args[1])
 	case "import-audit":
 		if len(args) != 2 {
 			return fmt.Errorf("import-audit needs one file to read")
 		}
-		return runImportAudit(args[1])
+		cfg, err := loadCfg()
+		if err != nil {
+			return err
+		}
+		return runImportAudit(cfg, args[1])
 	default:
-		fmt.Fprint(os.Stderr, usage)
-		os.Exit(2)
-		return nil
+		return &usageError{text: usage}
 	}
 }
 

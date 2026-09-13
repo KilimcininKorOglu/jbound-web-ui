@@ -21,12 +21,7 @@ import (
 //
 // Nothing is written to the audit trail. A command whose whole point is to
 // leave the database untouched should not begin by writing to it.
-func runBackup(target string) error {
-	cfg, err := config.Load()
-	if err != nil {
-		return err
-	}
-
+func runBackup(cfg *config.Config, target string) error {
 	preflight.WarnIfRoot("the backup will belong to root, " +
 		"and the service account will not read it back")
 

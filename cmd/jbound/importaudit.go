@@ -47,12 +47,7 @@ type importedRow struct {
 // they name no server, because the installation they come from managed a single
 // resolver and the panel has no way to know which of its own records that
 // became. Inventing the link would be worse than leaving it empty.
-func runImportAudit(path string) error {
-	cfg, err := config.Load()
-	if err != nil {
-		return err
-	}
-
+func runImportAudit(cfg *config.Config, path string) error {
 	preflight.WarnIfRoot("the rows will belong to root, " +
 		"and the service account may no longer write the database")
 

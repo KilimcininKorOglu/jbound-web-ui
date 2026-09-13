@@ -18,6 +18,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -672,5 +673,107 @@ func TestChangingTheTransportOfAServerReplacesItsConnection(t *testing.T) {
 	}
 	if _, ok := second.(*AgentTransport); !ok {
 		t.Errorf("the pool returned a %T", second)
+	}
+}
+
+func TestTheAgentStepsEachReachTheirOwnEndpoint(t *testing.T) {
+	// The three rungs are three endpoints rather than one with a parameter,
+	// so the recorded paths are the proof that each step asked for its own
+	// operation and nothing else.
+	harness := newAgentHarness(t, func(w http.ResponseWriter, r *http.Request) {
+		answerJSON(w, agentapi.CommandResult{Output: "  reloaded  \n"})
+	})
+	transport, err := NewAgent(harness.config(t))
+	if err != nil {
+		t.Fatalf("NewAgent returned an error: %v", err)
+	}
+
+	steps := []struct {
+		name string
+		run  func(context.Context) (string, error)
+	}{
+		{"ensure include", transport.EnsureInclude},
+		{"reload", transport.Reload},
+		{"reload fallback", transport.ReloadFallback},
+	}
+	for _, step := range steps {
+		output, err := step.run(t.Context())
+		if err != nil {
+			t.Fatalf("%s returned an error: %v", step.name, err)
+		}
+		if output != "reloaded" {
+			t.Errorf("%s output is %q, want the trimmed agent answer", step.name, output)
+		}
+	}
+
+	want := []string{agentapi.PathEnsureInclude, agentapi.PathReload, agentapi.PathReloadBack}
+	if !slices.Equal(harness.requests, want) {
+		t.Errorf("the steps reached %v, want %v", harness.requests, want)
+	}
+}
+
+func TestServiceStatusReportsWhatTheAgentSaidAboutTheResolver(t *testing.T) {
+	// A stopped resolver is an answer rather than a failure, so the active
+	// flag has to carry it without an error beside it.
+	cases := map[string]struct {
+		answer agentapi.StatusResult
+		active bool
+		detail string
+	}{
+		"running": {answer: agentapi.StatusResult{Active: true, Detail: " active\n"},
+			active: true, detail: "active"},
+		"stopped": {answer: agentapi.StatusResult{Active: false, Detail: "inactive"},
+			active: false, detail: "inactive"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			harness := newAgentHarness(t, func(w http.ResponseWriter, r *http.Request) {
+				answerJSON(w, tc.answer)
+			})
+			transport, err := NewAgent(harness.config(t))
+			if err != nil {
+				t.Fatalf("NewAgent returned an error: %v", err)
+			}
+
+			active, detail, err := transport.ServiceStatus(t.Context())
+			if err != nil {
+				t.Fatalf("ServiceStatus returned an error: %v", err)
+			}
+			if active != tc.active {
+				t.Errorf("active is %v, want %v", active, tc.active)
+			}
+			if detail != tc.detail {
+				t.Errorf("detail is %q, want %q", detail, tc.detail)
+			}
+			if len(harness.requests) != 1 || harness.requests[0] != agentapi.PathStatus {
+				t.Errorf("the status reached %v, want %s only", harness.requests, agentapi.PathStatus)
+			}
+		})
+	}
+}
+
+func TestARefusedAgentStepReturnsTheResolverOutputBesideTheError(t *testing.T) {
+	// The caller builds the operator's message from the refusal, so the
+	// resolver's own words have to travel: losing the line number would
+	// leave a refusal that names no cause.
+	harness := newAgentHarness(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		answerJSON(w, agentapi.Error{Class: agentapi.ClassCommand,
+			Message: "unbound-checkconf: /etc/unbound/unbound.conf:3: error"})
+	})
+	transport, err := NewAgent(harness.config(t))
+	if err != nil {
+		t.Fatalf("NewAgent returned an error: %v", err)
+	}
+
+	output, err := transport.Reload(t.Context())
+	if err == nil {
+		t.Fatal("a refused step was accepted")
+	}
+	if !errors.Is(err, ErrCommandFailed) {
+		t.Errorf("the error does not name the command failure: %v", err)
+	}
+	if !strings.Contains(output, "unbound.conf:3") {
+		t.Errorf("the resolver's own words did not travel: %q", output)
 	}
 }
